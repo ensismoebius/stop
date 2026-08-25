@@ -104,14 +104,12 @@ export function PublicScreenPage() {
   // basta o jogo ter saido de CREATED, que acontece assim que a primeira
   // rodada e criada, bem antes de alguem entrar.
   const waitingForPlayers = !round || round.status === "CREATED" || round.status === "READY";
-  const gameStarted = Boolean(view?.game?.status) && view.game.status !== "CREATED";
   const playing = round?.status === "PLAYING";
-  // Ranking so na tela publica no momento certo (spec de drama): logo apos
-  // pontuar uma rodada, no intervalo antes da proxima comecar, ou quando a
-  // partida termina. Fora isso ficaria "vazando" o placar o tempo todo e
-  // tirando a graca da virada.
-  const showRanking =
-    round?.status === "SCORED" || (!round && gameStarted) || view?.game?.status === "FINISHED";
+  // Ranking so na tela publica no exato momento de fim de rodada ou fim de
+  // partida (nunca antes, nem durante o intervalo indefinido ate a
+  // proxima rodada comecar) — fora isso ficaria "vazando" o placar o tempo
+  // todo e tirando a graca da virada.
+  const showRanking = round?.status === "SCORED" || view?.game?.status === "FINISHED";
   const seconds = useCountdown(playing ? round?.endsAt : null, now);
 
   // Efeito sonoro nos ultimos segundos (spec 22).

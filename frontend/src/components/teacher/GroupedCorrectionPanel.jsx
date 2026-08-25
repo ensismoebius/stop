@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Correção agregada por resposta distinta (enhancements.md spec 17/20/21/
@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 export function GroupedCorrectionPanel({ grid, onReviewGroup, busy }) {
   const categories = grid?.categories ?? [];
   const [activeCategoryId, setActiveCategoryId] = useState(null);
+  const rowRefs = useRef(new Map());
 
   useEffect(() => {
     if (categories.length === 0) return;
@@ -16,6 +17,46 @@ export function GroupedCorrectionPanel({ grid, onReviewGroup, busy }) {
       setActiveCategoryId(categories[0].id);
     }
   }, [categories, activeCategoryId]);
+
+  const active = categories.find((category) => category.id === activeCategoryId) ?? categories[0];
+
+  // Respostas em branco ja saem marcadas sozinhas (normalizacao/trim no
+  // servidor, spec 19-21): nao ha decisao para o professor tomar ali, entao
+  // nem entram na lista de correcao nem contam para o total da aba.
+  const actionable = useCallback((category) => category.groups.filter((group) => group.normalizedValue), []);
+  const groups = active ? actionable(active) : [];
+
+  /**
+   * Depois de marcar um grupo, avanca sozinho para o proximo a corrigir
+   * (a proxima resposta da mesma categoria ou, se acabou, a primeira aba
+   * com respostas ainda pendentes) — o professor nao precisa procurar a
+   * proxima resposta manualmente a cada clique.
+   */
+  const advanceAfterDecision = useCallback(
+    (groupIndex) => {
+      const next = groups[groupIndex + 1];
+      if (next) {
+        const node = rowRefs.current.get(next.normalizedValue || "__blank__");
+        node?.focus();
+        node?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      const currentIndex = categories.findIndex((category) => category.id === active?.id);
+      const nextCategory = categories
+        .slice(currentIndex + 1)
+        .find((category) => actionable(category).length > 0);
+      if (nextCategory) setActiveCategoryId(nextCategory.id);
+    },
+    [active, categories, groups, actionable],
+  );
+
+  const decide = useCallback(
+    (group, groupIndex, decision) => {
+      onReviewGroup(group.answerIds, decision);
+      advanceAfterDecision(groupIndex);
+    },
+    [onReviewGroup, advanceAfterDecision],
+  );
 
   if (!grid) {
     return (
@@ -26,8 +67,6 @@ export function GroupedCorrectionPanel({ grid, onReviewGroup, busy }) {
     );
   }
 
-  const active = categories.find((category) => category.id === activeCategoryId) ?? categories[0];
-
   return (
     <section className="card stack correction">
       <div className="spread">
@@ -37,8 +76,9 @@ export function GroupedCorrectionPanel({ grid, onReviewGroup, busy }) {
       </div>
 
       <p className="correction__hint">
-        Cada resposta distinta aparece uma única vez. Marque válida, inválida ou em branco e a
-        decisão se propaga para todos os alunos que responderam igual.
+        Cada resposta distinta aparece uma única vez. Marque válida ou inválida e a decisão se
+        propaga para todos os alunos que responderam igual — respostas em branco já são
+        descartadas automaticamente.
       </p>
 
       <div className="row" role="tablist" aria-label="Categorias">
@@ -51,13 +91,13 @@ export function GroupedCorrectionPanel({ grid, onReviewGroup, busy }) {
             aria-selected={category.id === active?.id}
             onClick={() => setActiveCategoryId(category.id)}
           >
-            {category.name} ({category.groups.length})
+            {category.name} ({actionable(category).length})
           </button>
         ))}
       </div>
 
       <div className="stack">
-        {(active?.groups ?? []).map((group) => (
+        {groups.map((group, groupIndex) => (
           <div key={group.normalizedValue || "__blank__"} className="group-row spread">
             <div className="group-row__info">
               <span className="group-row__value">
@@ -74,7 +114,12 @@ export function GroupedCorrectionPanel({ grid, onReviewGroup, busy }) {
                 type="button"
                 className="btn btn--success"
                 disabled={busy}
-                onClick={() => onReviewGroup(group.answerIds, "VALID")}
+                ref={(node) => {
+                  const key = group.normalizedValue || "__blank__";
+                  if (node) rowRefs.current.set(key, node);
+                  else rowRefs.current.delete(key);
+                }}
+                onClick={() => decide(group, groupIndex, "VALID")}
               >
                 ✓ Válida
               </button>
@@ -82,23 +127,19 @@ export function GroupedCorrectionPanel({ grid, onReviewGroup, busy }) {
                 type="button"
                 className="btn btn--danger"
                 disabled={busy}
-                onClick={() => onReviewGroup(group.answerIds, "INVALID")}
+                onClick={() => decide(group, groupIndex, "INVALID")}
               >
                 ✗ Inválida
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                disabled={busy}
-                onClick={() => onReviewGroup(group.answerIds, "BLANK")}
-              >
-                Em branco
               </button>
             </div>
           </div>
         ))}
-        {active && active.groups.length === 0 ? (
-          <p className="muted">Nenhuma resposta nesta categoria.</p>
+        {active && groups.length === 0 ? (
+          <p className="muted">
+            {active.groups.length > 0
+              ? "Todas as respostas desta categoria estão em branco — nada para corrigir aqui."
+              : "Nenhuma resposta nesta categoria."}
+          </p>
         ) : null}
       </div>
     </section>
