@@ -68,45 +68,71 @@ function requirePlayer(socket) {
   return context;
 }
 
+async function handlePlayerJoin(client, context, code) {
+  await client.join(realtime.rooms.players(code));
+  await client.join(realtime.rooms.player(context.session.id));
+  await playerSessionRepository.markConnected(context.session.id, client.id);
+
+  const state = await viewService.playerState(context.session.id);
+  client.emit("roomState", state);
+  realtime.toTeachers(code, "playerJoined", {
+    playerSessionId: context.session.id,
+    name: context.session.student.name,
+    registrationNumber: context.session.student.registrationNumber,
+  });
+  await roundService.broadcastState(code);
+  return state;
+}
+
+async function handleJoinRoom(client, data) {
+  const context = await authenticateJoin(data);
+  const code = context.room.code;
+
+  client.data.context = context;
+  await client.join(realtime.rooms.all(code));
+
+  if (context.role === "player") return handlePlayerJoin(client, context, code);
+
+  if (context.role === "teacher") {
+    await client.join(realtime.rooms.teachers(code));
+    const state = await viewService.teacherState(code);
+    client.emit("roomState", state);
+    return state;
+  }
+
+  await client.join(realtime.rooms.screens(code));
+  const state = await viewService.publicState(code);
+  client.emit("roomState", state);
+  return state;
+}
+
+/** Desconexao momentanea nao elimina o aluno (spec 45) — so marca offline. */
+async function handleDisconnect(socket, reason) {
+  const context = socket.data.context;
+  if (!context || context.role !== "player") return;
+  try {
+    await playerSessionRepository.markDisconnected(context.session.id);
+    await telemetryRepository.record({
+      type: "PLAYER_DISCONNECTED",
+      roomId: context.room.id,
+      playerSessionId: context.session.id,
+      payload: { reason },
+    });
+    realtime.toTeachers(context.room.code, "playerLeft", {
+      playerSessionId: context.session.id,
+      reason,
+    });
+    await roundService.broadcastState(context.room.code);
+  } catch (error) {
+    logger.warn("Falha ao tratar desconexao", error?.message ?? error);
+  }
+}
+
 export function registerHandlers(io, socket) {
   /** Registra um evento validado no socket corrente. */
   const on = (event, schema, fn) => socket.on(event, wrap(socket, schema, fn));
 
-  on("joinRoom", socketJoinRoomSchema, async (client, data) => {
-      const context = await authenticateJoin(data);
-      const code = context.room.code;
-
-      client.data.context = context;
-      await client.join(realtime.rooms.all(code));
-
-      if (context.role === "player") {
-        await client.join(realtime.rooms.players(code));
-        await client.join(realtime.rooms.player(context.session.id));
-        await playerSessionRepository.markConnected(context.session.id, client.id);
-
-        const state = await viewService.playerState(context.session.id);
-        client.emit("roomState", state);
-        realtime.toTeachers(code, "playerJoined", {
-          playerSessionId: context.session.id,
-          name: context.session.student.name,
-          registrationNumber: context.session.student.registrationNumber,
-        });
-        await roundService.broadcastState(code);
-        return state;
-      }
-
-      if (context.role === "teacher") {
-        await client.join(realtime.rooms.teachers(code));
-        const state = await viewService.teacherState(code);
-        client.emit("roomState", state);
-        return state;
-      }
-
-      await client.join(realtime.rooms.screens(code));
-      const state = await viewService.publicState(code);
-      client.emit("roomState", state);
-      return state;
-  });
+  on("joinRoom", socketJoinRoomSchema, (client, data) => handleJoinRoom(client, data));
 
   /** Consulta de matricula antes da confirmacao (spec 6). */
   on("identifyStudent", socketIdentifySchema, async (_client, data) =>
