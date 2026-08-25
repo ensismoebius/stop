@@ -20,6 +20,7 @@ import Alert from "../components/common/Alert.jsx";
 import StopSplash from "../components/common/StopSplash.jsx";
 
 const SYNC_DELAY = 450;
+const MEDAL_BY_POSITION = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
 const STATUS_MESSAGE = {
   CREATED: { title: "Aguardando", text: "O professor está preparando a rodada." },
@@ -511,7 +512,9 @@ export function StudentGamePage() {
                     entry.position <= 3 ? ` ranking__item--p${entry.position}` : ""
                   }`}
                 >
-                  <span className="ranking__position">{entry.position}</span>
+                  <span className="ranking__position">
+                    {MEDAL_BY_POSITION[entry.position] ?? entry.position}
+                  </span>
                   <span className="ranking__name">{entry.name}</span>
                   <span className="ranking__total">{entry.total}</span>
                 </li>

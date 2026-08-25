@@ -104,6 +104,16 @@ export const api = {
   nextRound: (t, gameId, body) =>
     request(`/games/${gameId}/rounds/next`, { method: "POST", body, adminToken: t }),
 
+  // Relatorios academicos entre partidas/turmas
+  searchReports: (t, filters = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== "") params.set(key, value);
+    }
+    const query = params.toString();
+    return request(`/reports/results${query ? `?${query}` : ""}`, { adminToken: t });
+  },
+
   // Aluno
   getRoom: (code) => request(`/rooms/${code}`),
   identify: (code, registrationNumber) =>

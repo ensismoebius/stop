@@ -302,4 +302,86 @@ describe("API REST (spec 30 e 34)", () => {
     const remocaoTurma = await auth(request(app).delete(`/api/classes/${turmaLivre.body.id}`));
     expect(remocaoTurma.status).toBe(204);
   });
+
+  it("bloqueia novas rodadas numa partida já finalizada (nova feature)", async () => {
+    await request(app)
+      .post(`/api/rooms/${scenario.room.code}/join`)
+      .send({ registrationNumber: scenario.students[0].registrationNumber });
+
+    const round = await auth(request(app).post("/api/rounds")).send({
+      gameId: scenario.game.id,
+      categorySetId: scenario.categorySet.id,
+      durationSeconds: 60,
+    });
+    await auth(request(app).post(`/api/rounds/${round.body.id}/letter`));
+    await auth(request(app).post(`/api/rounds/${round.body.id}/start`));
+    await waitForRoundStatus(round.body.id, "PLAYING");
+    await auth(request(app).post(`/api/rounds/${round.body.id}/stop`));
+    await auth(request(app).post(`/api/rounds/${round.body.id}/score`));
+
+    const finish = await auth(request(app).post(`/api/games/${scenario.game.id}/finish`));
+    expect(finish.status).toBe(200);
+    expect(finish.body.status).toBe("FINISHED");
+
+    const novaRodada = await auth(request(app).post("/api/rounds")).send({
+      gameId: scenario.game.id,
+      categorySetId: scenario.categorySet.id,
+      durationSeconds: 60,
+    });
+    expect(novaRodada.status).toBe(409);
+
+    const proxima = await auth(
+      request(app).post(`/api/games/${scenario.game.id}/rounds/next`),
+    ).send({ categorySetId: scenario.categorySet.id, durationSeconds: 60 });
+    expect(proxima.status).toBe(409);
+  });
+
+  it("finaliza a partida, grava GameResult com medalha por posição (empate incluso) e alimenta o relatório ordenado por nome (nova feature)", async () => {
+    await prisma.class.update({
+      where: { id: scenario.turma.id },
+      data: { discipline: "React Native" },
+    });
+
+    // Empate no 1º lugar entre os alunos[0] e [1]; alunos[2] fica atras —
+    // pela regra de posicao (nao indice), o 3º colocado cai direto pra
+    // posicao 3 e medalha de bronze, pulando a prata.
+    const [a, b, c] = scenario.students;
+    await prisma.score.create({ data: { gameId: scenario.game.id, studentId: a.id, total: 10 } });
+    await prisma.score.create({ data: { gameId: scenario.game.id, studentId: b.id, total: 10 } });
+    await prisma.score.create({ data: { gameId: scenario.game.id, studentId: c.id, total: 5 } });
+
+    const finish = await auth(request(app).post(`/api/games/${scenario.game.id}/finish`));
+    expect(finish.status).toBe(200);
+
+    const results = await auth(
+      request(app).get(`/api/reports/results?gameId=${scenario.game.id}`),
+    );
+    expect(results.status).toBe(200);
+    // "Joao da Silva", "Maria Oliveira", "Pedro Santos" — ordem alfabetica,
+    // independente da pontuacao/posicao de cada um.
+    expect(results.body.map((item) => item.student.name)).toEqual([
+      "Joao da Silva",
+      "Maria Oliveira",
+      "Pedro Santos",
+    ]);
+    const byStudentId = Object.fromEntries(results.body.map((item) => [item.studentId, item]));
+    expect(byStudentId[a.id]).toMatchObject({ score: 10, position: 1, medal: "GOLD" });
+    expect(byStudentId[b.id]).toMatchObject({ score: 10, position: 1, medal: "GOLD" });
+    expect(byStudentId[c.id]).toMatchObject({ score: 5, position: 3, medal: "BRONZE" });
+
+    const soOuro = await auth(
+      request(app).get(`/api/reports/results?gameId=${scenario.game.id}&medal=GOLD`),
+    );
+    expect(soOuro.body).toHaveLength(2);
+
+    const porDisciplina = await auth(
+      request(app).get("/api/reports/results?discipline=React Native"),
+    );
+    expect(porDisciplina.body.length).toBeGreaterThanOrEqual(3);
+
+    const outraDisciplina = await auth(
+      request(app).get("/api/reports/results?discipline=Inexistente"),
+    );
+    expect(outraDisciplina.body).toEqual([]);
+  });
 });

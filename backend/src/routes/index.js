@@ -7,6 +7,7 @@ import gameRoutes from "./gameRoutes.js";
 import roomRoutes from "./roomRoutes.js";
 import roundRoutes from "./roundRoutes.js";
 import answerRoutes from "./answerRoutes.js";
+import reportRoutes from "./reportRoutes.js";
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use("/games", gameRoutes);
 router.use("/rooms", roomRoutes);
 router.use("/rounds", roundRoutes);
 router.use("/answers", answerRoutes);
+router.use("/reports", reportRoutes);
 
 export default router;

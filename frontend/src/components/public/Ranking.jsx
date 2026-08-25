@@ -4,6 +4,8 @@ const REVEAL_INTERVAL_MS = 1100;
 const FIRST_REVEAL_DELAY_MS = 700;
 const COUNT_DURATION_MS = 800;
 
+const MEDAL_BY_POSITION = { 1: "🥇", 2: "🥈", 3: "🥉" };
+
 /** Uma linha do ranking: some ate ser revelada, depois conta os pontos subindo do zero. */
 function RankingRow({ entry, revealed }) {
   const [value, setValue] = useState(0);
@@ -30,7 +32,10 @@ function RankingRow({ entry, revealed }) {
 
   return (
     <li className={`ranking-reveal__row${podium}${winner}`}>
-      <span className="ranking-reveal__position">{entry.position}º</span>
+      <span className="ranking-reveal__position">
+        {MEDAL_BY_POSITION[entry.position] ? `${MEDAL_BY_POSITION[entry.position]} ` : ""}
+        {entry.position}º
+      </span>
       <span className="ranking-reveal__name">
         {entry.avatarUrl ? <img className="ranking-reveal__avatar" src={entry.avatarUrl} alt="" /> : null}
         {entry.name}

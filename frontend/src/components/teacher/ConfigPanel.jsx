@@ -6,6 +6,7 @@ function ClassRow({ item, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [code, setCode] = useState(item.code);
+  const [discipline, setDiscipline] = useState(item.discipline ?? "");
 
   if (editing) {
     return (
@@ -17,12 +18,24 @@ function ClassRow({ item, onUpdate, onDelete }) {
           <input className="input" value={code} onChange={(event) => setCode(event.target.value)} />
         </td>
         <td>
+          <input
+            className="input"
+            value={discipline}
+            onChange={(event) => setDiscipline(event.target.value)}
+            placeholder="—"
+          />
+        </td>
+        <td>
           <div className="row">
             <button
               type="button"
               className="btn btn--primary small"
               onClick={() => {
-                onUpdate(item.id, { name: name.trim(), code: code.trim() });
+                onUpdate(item.id, {
+                  name: name.trim(),
+                  code: code.trim(),
+                  discipline: discipline.trim() || null,
+                });
                 setEditing(false);
               }}
             >
@@ -34,6 +47,7 @@ function ClassRow({ item, onUpdate, onDelete }) {
               onClick={() => {
                 setName(item.name);
                 setCode(item.code);
+                setDiscipline(item.discipline ?? "");
                 setEditing(false);
               }}
             >
@@ -49,6 +63,7 @@ function ClassRow({ item, onUpdate, onDelete }) {
     <tr>
       <td>{item.name}</td>
       <td>{item.code}</td>
+      <td className="small muted">{item.discipline || "—"}</td>
       <td>
         <div className="row">
           <button type="button" className="btn btn--ghost small" onClick={() => setEditing(true)}>
@@ -213,6 +228,7 @@ export function ConfigPanel({
 }) {
   const [className, setClassName] = useState("");
   const [classCode, setClassCode] = useState("");
+  const [classDiscipline, setClassDiscipline] = useState("");
   const [registration, setRegistration] = useState("");
   const [studentName, setStudentName] = useState("");
   const [bulk, setBulk] = useState("");
@@ -236,9 +252,14 @@ export function ConfigPanel({
           className="row"
           onSubmit={(event) => {
             event.preventDefault();
-            onCreateClass({ name: className.trim(), code: classCode.trim() });
+            onCreateClass({
+              name: className.trim(),
+              code: classCode.trim(),
+              discipline: classDiscipline.trim() || null,
+            });
             setClassName("");
             setClassCode("");
+            setClassDiscipline("");
           }}
         >
           <input
@@ -259,6 +280,14 @@ export function ConfigPanel({
             required
             aria-label="Código da turma"
           />
+          <input
+            className="input"
+            style={{ flex: "1 1 160px" }}
+            placeholder="Disciplina"
+            value={classDiscipline}
+            onChange={(event) => setClassDiscipline(event.target.value)}
+            aria-label="Disciplina da turma"
+          />
           <button type="submit" className="btn btn--primary">
             Adicionar
           </button>
@@ -271,6 +300,7 @@ export function ConfigPanel({
                 <tr>
                   <th scope="col">Nome</th>
                   <th scope="col">Código</th>
+                  <th scope="col">Disciplina</th>
                   <th scope="col" />
                 </tr>
               </thead>

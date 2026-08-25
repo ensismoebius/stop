@@ -14,6 +14,7 @@ export const loginSchema = z.object({
 export const classSchema = z.object({
   name: trimmed(120),
   code: trimmed(40),
+  discipline: z.string().trim().max(120).optional().nullable(),
 });
 
 export const classUpdateSchema = classSchema.partial();

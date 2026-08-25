@@ -23,9 +23,56 @@ export const gameService = {
     return gameRepository.create({ name, classId, teacherId, status: "CREATED" });
   },
 
+  /**
+   * Finaliza a partida e grava o resultado de cada aluno (`GameResult`) —
+   * registro permanente que alimenta os relatorios academicos entre
+   * partidas/turmas, distinto de `Score` (total corrente da partida em
+   * andamento). Top 3 posicoes ganham medalha; empates contam pela posicao
+   * (nao pelo indice na lista), entao dois alunos empatados em 1o lugar
+   * ganham ouro os dois.
+   */
   async finish(id) {
     await gameService.get(id);
-    return gameRepository.update(id, { status: "FINISHED", finishedAt: new Date() });
+    const updated = await gameRepository.update(id, { status: "FINISHED", finishedAt: new Date() });
+
+    const ranking = await viewService.loadRanking(id);
+    const medalFor = (position) =>
+      position === 1 ? "GOLD" : position === 2 ? "SILVER" : position === 3 ? "BRONZE" : null;
+    if (ranking.length > 0) {
+      await prisma.$transaction(
+        ranking.map((entry) =>
+          prisma.gameResult.upsert({
+            where: { gameId_studentId: { gameId: id, studentId: entry.studentId } },
+            create: {
+              gameId: id,
+              studentId: entry.studentId,
+              score: entry.total,
+              position: entry.position,
+              medal: medalFor(entry.position),
+            },
+            update: {
+              score: entry.total,
+              position: entry.position,
+              medal: medalFor(entry.position),
+            },
+          }),
+        ),
+      );
+    }
+
+    // Best-effort: quem estiver conectado agora precisa ver o podio final
+    // na hora (tela publica/aluno ja mostram o ranking quando
+    // game.status === FINISHED — so faltava avisa-los). Nunca deixa uma
+    // falha aqui derrubar a finalizacao, que ja foi persistida com sucesso.
+    try {
+      const room = await resolveRoom(id);
+      realtime.toRoom(room.code, "rankingUpdated", { ranking });
+      await broadcastState(room.code);
+    } catch (error) {
+      logger.warn(`Falha ao difundir estado após finalizar a partida ${id}`, error?.message ?? error);
+    }
+
+    return updated;
   },
 
   /** Ranking oficial: sempre calculado pelo servidor (spec 42). */

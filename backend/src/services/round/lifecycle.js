@@ -25,6 +25,11 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, m
  * ja realizada (spec 17).
  */
 export async function create({ gameId, categorySetId, durationSeconds, themeName }) {
+  const game = await gameRepository.findById(gameId);
+  if (game?.status === "FINISHED") {
+    throw conflict("Esta partida já foi finalizada e não pode receber novas rodadas.");
+  }
+
   const set = await categorySetRepository.findById(categorySetId);
   if (!set) throw badRequest("Conjunto de categorias inexistente");
   const categories = set.categories.filter((category) => category.active);

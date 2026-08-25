@@ -14,6 +14,7 @@ import RankingPanel from "../components/teacher/RankingPanel.jsx";
 import StatisticsPanel from "../components/teacher/StatisticsPanel.jsx";
 import ConfigPanel from "../components/teacher/ConfigPanel.jsx";
 import CategorySetsPanel from "../components/teacher/CategorySetsPanel.jsx";
+import ReportsPanel from "../components/teacher/ReportsPanel.jsx";
 import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
 import EmojiBursts from "../components/common/EmojiBursts.jsx";
 import Alert from "../components/common/Alert.jsx";
@@ -23,6 +24,7 @@ const TABS = [
   { key: "correction", label: "Correção" },
   { key: "config", label: "Configuração" },
   { key: "categories", label: "Categorias" },
+  { key: "reports", label: "Relatórios" },
 ];
 
 const GAME_KEY = "stop:teacher:game";
@@ -59,6 +61,8 @@ export function TeacherDashboardPage() {
   const [collabProgress, setCollabProgress] = useState(null);
   const [statistics, setStatistics] = useState(null);
   const [history, setHistory] = useState(null);
+  const [allStudents, setAllStudents] = useState([]);
+  const [reportResults, setReportResults] = useState([]);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -103,6 +107,13 @@ export function TeacherDashboardPage() {
       .then(setStudents)
       .catch((listError) => setError(listError.message));
   }, [token, selectedClassId]);
+
+  // Lista completa de alunos (todas as turmas) para o filtro de relatórios —
+  // carregada só quando a aba é aberta, não no load inicial do dashboard.
+  useEffect(() => {
+    if (!token || tab !== "reports") return;
+    api.listStudents(token).then(setAllStudents).catch((listError) => setError(listError.message));
+  }, [token, tab]);
 
   // Restaura a partida selecionada entre recargas de pagina.
   useEffect(() => {
@@ -630,6 +641,23 @@ export function TeacherDashboardPage() {
               guard(async () => {
                 await api.deleteCategory(token, id);
                 await loadBasics();
+              })
+            }
+          />
+        </div>
+      ) : null}
+
+      {tab === "reports" ? (
+        <div className="panel">
+          <ReportsPanel
+            classes={classes}
+            students={allStudents}
+            games={games}
+            results={reportResults}
+            busy={busy}
+            onSearch={(filters) =>
+              guard(async () => {
+                setReportResults(await api.searchReports(token, filters));
               })
             }
           />

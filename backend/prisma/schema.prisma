@@ -67,6 +67,14 @@ enum ReviewState {
   DUPLICATE
 }
 
+/// Colocacao no podio ao finalizar uma partida — so o top 3 (empates
+/// contam pela posicao, nao pelo indice na lista).
+enum Medal {
+  GOLD
+  SILVER
+  BRONZE
+}
+
 /// Professor / administrador (spec 35)
 model Teacher {
   id           Int      @id @default(autoincrement())
@@ -82,11 +90,16 @@ model Teacher {
 }
 
 model Class {
-  id        Int      @id @default(autoincrement())
-  name      String
-  code      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  name       String
+  code       String   @unique
+  /// Disciplina que esta turma oferece (ex.: "React Native") — usada para
+  /// filtrar relatorios entre partidas/turmas diferentes da mesma materia.
+  /// Nula ate o professor preencher; turmas antigas nao sao migradas
+  /// automaticamente.
+  discipline String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   enrollments Enrollment[]
   games       Game[]
@@ -106,6 +119,7 @@ model Student {
   enrollments Enrollment[]
   sessions    PlayerSession[]
   scores      Score[]
+  gameResults GameResult[]
 
   @@index([registrationNumber])
 }
@@ -142,9 +156,10 @@ model Game {
   class   Class   @relation(fields: [classId], references: [id], onDelete: Restrict)
   teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
-  rooms  Room[]
-  rounds Round[]
-  scores Score[]
+  rooms   Room[]
+  rounds  Round[]
+  scores  Score[]
+  results GameResult[]
 
   @@index([classId])
   @@index([teacherId])
@@ -360,6 +375,29 @@ model Score {
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, studentId])
+  @@index([gameId])
+}
+
+/// Registro permanente de desempenho por aluno numa partida finalizada —
+/// diferente de `Score` (total corrente, existe desde o inicio da partida),
+/// isto so e criado quando o professor finaliza o jogo e alimenta os
+/// relatorios academicos entre partidas/turmas.
+model GameResult {
+  id        Int      @id @default(autoincrement())
+  gameId    Int
+  studentId Int
+  score     Int
+  position  Int
+  medal     Medal?
+  createdAt DateTime @default(now())
+
+  game    Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  // Restrict: apagar um aluno nao pode levar junto o historico academico
+  // que o professor usa para avaliacao (mesmo padrao de PlayerSession).
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([gameId, studentId])
+  @@index([studentId])
   @@index([gameId])
 }
 
