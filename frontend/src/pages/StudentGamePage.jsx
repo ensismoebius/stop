@@ -17,6 +17,7 @@ import EmojiPicker from "../components/student/EmojiPicker.jsx";
 import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
 import EmojiBursts from "../components/common/EmojiBursts.jsx";
 import Alert from "../components/common/Alert.jsx";
+import StopSplash from "../components/common/StopSplash.jsx";
 
 const SYNC_DELAY = 450;
 
@@ -46,6 +47,7 @@ export function StudentGamePage() {
   const [reviews, setReviews] = useState([]);
   const [completedReviewIds, setCompletedReviewIds] = useState(() => new Set());
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [stopSplash, setStopSplash] = useState(false);
 
   const timersRef = useRef({});
   const socketRef = useRef(null);
@@ -111,6 +113,8 @@ export function StudentGamePage() {
       },
       roundStopped: (payload) => {
         audio.play("STOPPED");
+        audio.playVoice();
+        setStopSplash(true);
         setFeedback({
           kind: "warning",
           message: payload.firstStopperName
@@ -120,6 +124,8 @@ export function StudentGamePage() {
       },
       roundTimedOut: () => {
         audio.play("STOPPED");
+        audio.playVoice();
+        setStopSplash(true);
         setFeedback({ kind: "warning", message: "O tempo acabou. A rodada foi encerrada." });
       },
       playerEliminated: (payload) => {
@@ -530,6 +536,8 @@ export function StudentGamePage() {
       </div>
 
       <EmojiBursts items={emojiBursts.items} />
+
+      {stopSplash ? <StopSplash onDone={() => setStopSplash(false)} /> : null}
     </div>
   );
 }

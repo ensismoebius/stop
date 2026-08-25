@@ -504,6 +504,107 @@ tbody tr:hover {
   box-shadow: none;
 }
 
+/* STOP splash ----------------------------------------------------------- */
+
+.stop-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 45, 85, 0.92);
+  animation: stop-splash-shake 0.15s ease-in-out 4;
+  overflow: hidden;
+}
+
+.stop-splash__flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  animation: stop-splash-flash 0.5s ease-out forwards;
+  pointer-events: none;
+}
+
+.stop-splash__text-wrap {
+  position: relative;
+  z-index: 1;
+}
+
+.stop-splash__text {
+  display: block;
+  font-size: clamp(6rem, 22vw, 18rem);
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.08em;
+  text-shadow:
+    0 6px 0 var(--red-dark),
+    0 12px 0 rgba(0, 0, 0, 0.2);
+  animation: stop-splash-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.stop-splash__confetti {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: hsl(var(--hue), 90%, 60%);
+  left: var(--x);
+  top: 50%;
+  animation: stop-splash-confetti 0.8s ease-out var(--delay) both;
+  pointer-events: none;
+}
+
+@keyframes stop-splash-in {
+  0% {
+    transform: scale(0) rotate(-12deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15) rotate(3deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes stop-splash-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+@keyframes stop-splash-flash {
+  0% { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+
+@keyframes stop-splash-confetti {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(
+        calc((var(--hue, 0) - 180) * 0.3px),
+        calc(-100px - var(--hue, 0) * 0.5px)
+      )
+      rotate(calc(var(--hue, 0) * 3deg))
+      scale(0.4);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stop-splash { animation: none; }
+  .stop-splash__text { animation: none; transform: scale(1); opacity: 1; }
+  .stop-splash__confetti { animation: none; display: none; }
+  .stop-splash__flash { animation: none; display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

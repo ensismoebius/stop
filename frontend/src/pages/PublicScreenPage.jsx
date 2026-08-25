@@ -15,6 +15,7 @@ import Field from "../components/common/Field.jsx";
 import api from "../services/api.js";
 import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
 import EmojiBursts from "../components/common/EmojiBursts.jsx";
+import StopSplash from "../components/common/StopSplash.jsx";
 
 /**
  * Tela publica para TV/projetor (spec 22).
@@ -28,6 +29,7 @@ export function PublicScreenPage() {
   const { sync, now } = useServerClock();
   const [collabProgress, setCollabProgress] = useState(null);
   const emojiBursts = useEmojiBursts();
+  const [stopSplash, setStopSplash] = useState(false);
 
   const handlers = useMemo(
     () => ({
@@ -39,8 +41,8 @@ export function PublicScreenPage() {
       // agora e o proprio <Ranking>, no ritmo da revelacao dramatica, nao
       // o instante em que o evento de rede chega.
       roundStarted: () => audio.play("START"),
-      roundStopped: () => audio.play("STOPPED"),
-      roundTimedOut: () => audio.play("STOPPED"),
+      roundStopped: () => { audio.play("STOPPED"); audio.playVoice(); setStopSplash(true); },
+      roundTimedOut: () => { audio.play("STOPPED"); audio.playVoice(); setStopSplash(true); },
       // Correcao colaborativa (spec 36): so o progresso agregado, nunca
       // respostas individuais na tela publica.
       collaborativeCorrectionStarted: (payload) => setCollabProgress(payload),
@@ -240,6 +242,8 @@ export function PublicScreenPage() {
       </footer>
 
       <EmojiBursts items={emojiBursts.items} />
+
+      {stopSplash ? <StopSplash onDone={() => setStopSplash(false)} /> : null}
     </div>
   );
 }

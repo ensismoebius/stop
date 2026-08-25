@@ -54,6 +54,17 @@ function readPreference() {
   }
 }
 
+const VOICE_SRC = "/audio/stop-voice.mp3";
+
+let preloadedVoice = null;
+try {
+  preloadedVoice = new Audio(VOICE_SRC);
+  preloadedVoice.preload = "auto";
+  preloadedVoice.volume = 1;
+} catch {
+  /* SSR ou browser antigo: ignora */
+}
+
 export function useAudio() {
   const [preference, setPreference] = useState(readPreference);
   const contextRef = useRef(null);
@@ -108,16 +119,29 @@ export function useAudio() {
     [ensureContext, preference],
   );
 
+  const playVoice = useCallback(() => {
+    if (!preference.enabled) return;
+    if (!preloadedVoice) return;
+    try {
+      preloadedVoice.currentTime = 0;
+      preloadedVoice.volume = preference.volume;
+      preloadedVoice.play().catch(() => {});
+    } catch {
+      /* ignora erro de reproducao */
+    }
+  }, [preference]);
+
   return useMemo(
     () => ({
       play,
+      playVoice,
       unlock,
       enabled: preference.enabled,
       volume: preference.volume,
       toggle: () => setPreference((current) => ({ ...current, enabled: !current.enabled })),
       setVolume: (volume) => setPreference((current) => ({ ...current, volume })),
     }),
-    [play, unlock, preference],
+    [play, playVoice, unlock, preference],
   );
 }
 

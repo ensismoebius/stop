@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 
-const PRESET_COUNT = 12;
+const PRESET_COUNT = 24;
 const PRESET_AVATARS = Array.from(
   { length: PRESET_COUNT },
   (_, i) => `/avatars/avatar-${String(i + 1).padStart(2, "0")}.svg`,
