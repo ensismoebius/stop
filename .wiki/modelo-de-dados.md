@@ -1,0 +1,89 @@
+# Modelo de dados
+
+Schema completo: [backend/prisma/schema.prisma](../backend/prisma/schema.prisma).
+MySQL 8 via Prisma. Esta página documenta as relações e, principalmente, *por que*
+certas decisões de `onDelete` existem — não é óbvio lendo o schema isolado.
+
+## Entidades e relações
+
+```
+Teacher 1───* Game *───1 Class (discipline: String?)
+                │            │
+                │            └─1───* Enrollment *───1 Student
+                │
+                ├──1───* Room ──1───* PlayerSession ──1─── Student
+                │
+                ├──1───* Round ──1───* RoundCategory ──*───1 Category ──*───1 CategorySet
+                │         │              │
+                │         │              └──1───* Answer ──1─── PlayerSession
+                │         │                         │
+                │         │                         └──*─── AnswerReview ──1─── PlayerSession (grader)
+                │         │
+                │         └──1───* RoundParticipant ──1─── PlayerSession
+                │
+                ├──1───* Score (total corrente por aluno, existe desde o início da partida)
+                │
+                └──1───* GameResult (registro permanente pós-finalização, um por aluno)
+```
+
+## `Restrict` vs. `Cascade`: o padrão de proteção de histórico
+
+Regra usada de forma consistente no schema: se apagar o registro pai apagaria
+**histórico acadêmico** que o professor usa para avaliação, a FK é `Restrict` (a
+exclusão falha com 409 enquanto houver dependentes) em vez de `Cascade`.
+
+| Relação | `onDelete` | Por quê |
+| --- | --- | --- |
+| `Game.class → Class` | `Restrict` | Apagar uma turma não pode levar junto o histórico de partidas já jogadas nela (spec 44). |
+| `PlayerSession.student → Student` | `Restrict` | Apagar um aluno não pode levar junto o histórico de partidas em que participou (spec 44). |
+| `GameResult.student → Student` | `Restrict` | Mesmo padrão — apagar um aluno não pode apagar o registro que o professor usa para avaliação acadêmica. |
+| `Enrollment.student/class` | `Cascade` | Matrícula é um vínculo administrativo, não histórico de desempenho. |
+| `Round.game`, `Answer.round`, `RoundParticipant.round` | `Cascade` | Filhos de uma rodada não têm sentido sem ela; apagar a rodada (ex.: `gameService.removeRound`) deve limpar tudo em cascata. |
+| `Round.categorySet` | `SetNull` | Uma `CategorySet` pode ser removida sem invalidar rodadas passadas — `RoundCategory` já guarda uma **cópia imutável** dos dados no momento da criação da rodada (spec 17), então a rodada não depende mais do `CategorySet` original depois de criada. |
+
+Ao adicionar uma nova entidade com histórico acadêmico, siga esse padrão: `Restrict`
+na FK para `Student` (ou qualquer entidade "fonte de verdade" que não pode sumir
+silenciosamente), `Cascade` para dados puramente derivados/dependentes.
+
+## `Score` vs. `GameResult`: por que dois modelos parecidos
+
+* **`Score`** — total corrente por aluno **enquanto a partida está em andamento**.
+  Atualizado a cada rodada pontuada. Existe desde `Game.status === "CREATED"`.
+* **`GameResult`** — registro **permanente**, criado só quando o professor finaliza a
+  partida (`gameService.finish`, ver [Ciclo de vida da rodada](ciclo-de-vida-da-rodada.md)).
+  Guarda `score` (cópia do total final), `position` (com empates — ver algoritmo de
+  ranking) e `medal` (GOLD/SILVER/BRONZE para o top 3, `null` para os demais). É a
+  fonte de dados do painel de [Relatórios](frontend.md#reportspanel).
+
+Eles não são o mesmo dado com nomes diferentes: `Score` pode mudar a qualquer
+momento até o fim da partida; `GameResult` é gravado uma vez (via `upsert` idempotente
+por `@@unique([gameId, studentId])`, seguro para reexecução) e nunca mais muda depois
+que `finish()` roda.
+
+## `RoundCategory`: cópia imutável, não referência
+
+`RoundCategory` duplica `name`/`description`/`required`/`order` de `Category` no
+momento em que a rodada é criada (spec 17), em vez de apenas referenciar
+`categoryId`. Isso é o que permite editar ou apagar um `CategorySet` livremente sem
+corromper rodadas já jogadas — e é a razão pela qual `Round.categorySet` pode ser
+`SetNull` com segurança.
+
+## Discipline em `Class`
+
+`Class.discipline` (`String?`, nullable) foi adicionado para permitir filtrar
+relatórios por matéria (ex.: "React Native") quando várias turmas/ofertas da mesma
+disciplina existem. É opcional e não retroativo — turmas antigas ficam com
+`discipline = null` até o professor preencher via `ConfigPanel.jsx`. Uma turma =
+uma oferta de uma disciplina; se a mesma disciplina for oferecida a duas turmas
+diferentes, cada uma tem seu próprio registro `Class` com o mesmo valor de
+`discipline`.
+
+## Migrações
+
+Fluxo usado neste projeto (ver [Testes](testes.md) para o setup do banco isolado):
+
+1. `DATABASE_URL=...stop_test npx prisma migrate dev --name <nome>` — gera e aplica
+   a migração no banco de teste, produz `prisma/migrations/<timestamp>_<nome>/migration.sql`.
+2. Inspecionar o SQL gerado manualmente antes de tocar produção.
+3. `npx prisma migrate deploy` (usando o `DATABASE_URL` de produção do `.env`) —
+   aplica a **mesma** migração já testada, nunca `migrate dev` direto em produção.
