@@ -1,5 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { createScenario, prisma, resetDatabase } from "../helpers/fixtures.js";
+import {
+  createScenario,
+  prisma,
+  resetDatabase,
+  joinAllStudents,
+  startedRound as startedRoundFixture,
+  waitForRoundStatus,
+} from "../helpers/fixtures.js";
 import roomService from "../../src/services/roomService.js";
 import roundService from "../../src/services/roundService.js";
 import answerService from "../../src/services/answerService.js";
@@ -8,33 +15,8 @@ import viewService from "../../src/services/viewService.js";
 
 let scenario;
 
-async function joinAll() {
-  const sessions = [];
-  for (const student of scenario.students) {
-    sessions.push(await roomService.join(scenario.room.code, student.registrationNumber));
-  }
-  return sessions;
-}
-
-async function startedRound() {
-  const round = await roundService.create({
-    gameId: scenario.game.id,
-    categorySetId: scenario.categorySet.id,
-  });
-  await roundService.drawRoundLetter(round.id);
-  return roundService.start(round.id);
-}
-
-async function fillAll(round, playerSessionId, prefix) {
-  for (const category of round.categories) {
-    await answerService.submit({
-      roundId: round.id,
-      playerSessionId,
-      roundCategoryId: category.id,
-      value: `${prefix}${category.name}`,
-    });
-  }
-}
+const joinAll = () => joinAllStudents(scenario);
+const startedRound = () => startedRoundFixture(scenario);
 
 beforeEach(async () => {
   await resetDatabase();
@@ -125,6 +107,7 @@ describe("fluxo completo da partida (spec 60)", () => {
       const { round: withLetter } = await roundService.drawRoundLetter(round.id);
       letters.push(withLetter.letter);
       await roundService.start(round.id);
+      await waitForRoundStatus(round.id, "PLAYING");
       await roundService.forceStop(round.id);
       await roundService.score(round.id);
     }
@@ -174,9 +157,14 @@ describe("fluxo completo da partida (spec 60)", () => {
     expect(stopped.status).toBe("STOPPED");
     expect(stopped.firstStopperId).toBe(joao.playerSessionId);
 
-    // A correcao abre imediatamente apos o STOP (spec 12, item 10).
+    // A correcao colaborativa abre imediatamente apos o STOP, antes da
+    // correcao oficial do professor (enhancements.md secao 8).
     const afterStop = await roundService.get(round.id);
-    expect(afterStop.status).toBe("CORRECTION");
+    expect(afterStop.status).toBe("COLLABORATIVE_CORRECTION");
+
+    await roundService.closeCollaborativeCorrection(round.id);
+    const afterCollab = await roundService.get(round.id);
+    expect(afterCollab.status).toBe("CORRECTION");
 
     const grid = await roundService.correctionGrid(round.id);
     expect(grid.players).toHaveLength(3);
@@ -221,6 +209,7 @@ describe("fluxo completo da partida (spec 60)", () => {
     });
     await roundService.drawRoundLetter(proxima.id);
     await roundService.start(proxima.id);
+    await waitForRoundStatus(proxima.id, "PLAYING");
 
     const participante = await prisma.roundParticipant.findUnique({
       where: {

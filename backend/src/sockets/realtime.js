@@ -48,4 +48,38 @@ export const toScreens = (code, event, payload) => emit(rooms.screens(code), eve
 export const toPlayer = (playerSessionId, event, payload) =>
   emit(rooms.player(playerSessionId), event, payload);
 
-export default { setIo, getIo, toRoom, toPlayers, toTeachers, toScreens, toPlayer, rooms };
+/**
+ * Emite para uma sala e aguarda o reconhecimento (ack) de cada socket
+ * conectado naquele momento, com timeout — nunca trava indefinidamente por
+ * causa de um dispositivo lento ou offline (enhancements.md secao 54).
+ *
+ * Resolve sempre (nunca rejeita): um timeout e tratado como "alguns
+ * dispositivos nao confirmaram a tempo", nao como falha da operacao.
+ */
+export function requestAck(target, event, payload, timeoutMs) {
+  return new Promise((resolve) => {
+    if (!io) {
+      resolve({ acked: 0, total: 0, timedOut: false });
+      return;
+    }
+    io.in(target)
+      .timeout(timeoutMs)
+      .emit(event, payload, (err, responses) => {
+        const total = Array.isArray(responses) ? responses.length : 0;
+        const acked = Array.isArray(responses) ? responses.filter(Boolean).length : 0;
+        resolve({ acked, total, timedOut: Boolean(err) });
+      });
+  });
+}
+
+export default {
+  setIo,
+  getIo,
+  toRoom,
+  toPlayers,
+  toTeachers,
+  toScreens,
+  toPlayer,
+  requestAck,
+  rooms,
+};

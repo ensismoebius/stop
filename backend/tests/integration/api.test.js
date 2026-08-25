@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../../src/app.js";
-import { createScenario, prisma, resetDatabase } from "../helpers/fixtures.js";
+import { createScenario, prisma, resetDatabase, waitForRoundStatus } from "../helpers/fixtures.js";
 
 const app = createApp();
 let scenario;
@@ -138,7 +138,8 @@ describe("API REST (spec 30 e 34)", () => {
 
     const start = await auth(request(app).post(`/api/rounds/${round.body.id}/start`));
     expect(start.status).toBe(200);
-    expect(start.body.status).toBe("PLAYING");
+    expect(start.body.status).toBe("STARTING");
+    await waitForRoundStatus(round.body.id, "PLAYING");
 
     const stop = await auth(request(app).post(`/api/rounds/${round.body.id}/stop`));
     expect(stop.status).toBe(200);

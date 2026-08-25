@@ -8,6 +8,7 @@ import {
   socketRoundSchema,
   socketTelemetrySchema,
   socketIdentifySchema,
+  socketReviewSchema,
 } from "../validators/schemas.js";
 import { authenticateJoin } from "./socketAuth.js";
 import * as realtime from "./realtime.js";
@@ -187,6 +188,16 @@ export function registerHandlers(io, socket) {
     return result ?? { ignored: true };
   });
 
+  /** Correcao colaborativa: decisao do aluno sobre a resposta de um colega (spec 9-16, 45). */
+  on("submitReview", socketReviewSchema, async (client, data) => {
+    const context = requirePlayer(client);
+    return roundService.submitReview({
+      playerSessionId: context.session.id,
+      reviewId: data.reviewId,
+      decision: data.decision,
+    });
+  });
+
   /** Eventos de foco/visibilidade sao apenas telemetria (spec 25). */
   on("telemetry", socketTelemetrySchema, async (client, data) => {
     const context = requireContext(client);
@@ -208,27 +219,7 @@ export function registerHandlers(io, socket) {
     return viewService.publicState(context.room.code);
   });
 
-  socket.on("disconnect", async (reason) => {
-    const context = socket.data.context;
-    if (!context || context.role !== "player") return;
-    try {
-      // Desconexao momentanea nao elimina o aluno (spec 45).
-      await playerSessionRepository.markDisconnected(context.session.id);
-      await telemetryRepository.record({
-        type: "PLAYER_DISCONNECTED",
-        roomId: context.room.id,
-        playerSessionId: context.session.id,
-        payload: { reason },
-      });
-      realtime.toTeachers(context.room.code, "playerLeft", {
-        playerSessionId: context.session.id,
-        reason,
-      });
-      await roundService.broadcastState(context.room.code);
-    } catch (error) {
-      logger.warn("Falha ao tratar desconexao", error?.message ?? error);
-    }
-  });
+  socket.on("disconnect", (reason) => handleDisconnect(socket, reason));
 }
 
 export default registerHandlers;

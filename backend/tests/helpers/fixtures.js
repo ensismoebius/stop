@@ -1,6 +1,9 @@
 import bcrypt from "bcryptjs";
 import prisma from "../../src/lib/prisma.js";
 import { clearAllTimers } from "../../src/game/timers.js";
+import roomService from "../../src/services/roomService.js";
+import roundService from "../../src/services/roundService.js";
+import answerService from "../../src/services/answerService.js";
 
 const TABLES = [
   "TelemetryEvent",
@@ -85,6 +88,60 @@ export async function createScenario(options = {}) {
   });
   const room = await prisma.room.create({ data: { gameId: game.id, code: "STOP-TEST" } });
   return { teacher, turma, students, categorySet, game, room };
+}
+
+/** Todos os alunos do cenario entram na sala (helper compartilhado entre suites). */
+export async function joinAllStudents(scenario) {
+  const sessions = [];
+  for (const student of scenario.students) {
+    sessions.push(await roomService.join(scenario.room.code, student.registrationNumber));
+  }
+  return sessions;
+}
+
+/**
+ * `roundService.start` so leva a rodada ate STARTING e devolve — o
+ * cronometro so liga (status PLAYING) depois da sequencia de revelacao
+ * (animacao + contagem regressiva), que roda em segundo plano (spec 4-7 e
+ * 54). Em ambiente de teste essa sequencia esta configurada para duracao
+ * ~0 (`env.letterRevealAnimationMs`/`countdownAckTimeoutMs`/
+ * `countdownDurationMs`), mas ainda atravessa alguns ticks assincronos —
+ * este helper espera o status desejado aparecer no banco, com timeout.
+ */
+export async function waitForRoundStatus(roundId, status, { timeoutMs = 2000, intervalMs = 5 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const round = await roundService.get(roundId);
+    if (round.status === status) return round;
+    if (Date.now() >= deadline) {
+      throw new Error(`Rodada ${roundId} não chegou a ${status} a tempo (está em ${round.status})`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
+/** Cria, sorteia a letra e inicia uma rodada pronta para responder. */
+export async function startedRound(scenario, { durationSeconds } = {}) {
+  const round = await roundService.create({
+    gameId: scenario.game.id,
+    categorySetId: scenario.categorySet.id,
+    durationSeconds,
+  });
+  await roundService.drawRoundLetter(round.id);
+  await roundService.start(round.id);
+  return waitForRoundStatus(round.id, "PLAYING");
+}
+
+/**
+ * Preenche todas as categorias da rodada para um jogador.
+ * `prefix`, quando informado, usa o nome da categoria (histórico do teste
+ * de fluxo completo); sem `prefix`, usa `letra + id da categoria`.
+ */
+export async function fillAllAnswers(round, playerSessionId, { prefix } = {}) {
+  for (const category of round.categories) {
+    const value = prefix ? `${prefix}${category.name}` : `${round.letter}${category.id}`;
+    await answerService.submit({ roundId: round.id, playerSessionId, roundCategoryId: category.id, value });
+  }
 }
 
 export { prisma };

@@ -1,5 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { createScenario, prisma, resetDatabase } from "../helpers/fixtures.js";
+import {
+  createScenario,
+  prisma,
+  resetDatabase,
+  joinAllStudents,
+  startedRound as startedRoundFixture,
+  fillAllAnswers,
+} from "../helpers/fixtures.js";
 import roomService from "../../src/services/roomService.js";
 import roundService, { lockKey } from "../../src/services/roundService.js";
 import answerService from "../../src/services/answerService.js";
@@ -9,39 +16,13 @@ import gameLock from "../../src/lib/asyncLock.js";
 let scenario;
 let players;
 
-async function joinAll() {
-  const sessions = [];
-  for (const student of scenario.students) {
-    sessions.push(await roomService.join(scenario.room.code, student.registrationNumber));
-  }
-  return sessions;
-}
-
-async function startedRound(durationSeconds) {
-  const round = await roundService.create({
-    gameId: scenario.game.id,
-    categorySetId: scenario.categorySet.id,
-    durationSeconds,
-  });
-  await roundService.drawRoundLetter(round.id);
-  return roundService.start(round.id);
-}
-
-async function fillAll(round, playerSessionId) {
-  for (const category of round.categories) {
-    await answerService.submit({
-      roundId: round.id,
-      playerSessionId,
-      roundCategoryId: category.id,
-      value: `${round.letter}${category.id}`,
-    });
-  }
-}
+const startedRound = (durationSeconds) => startedRoundFixture(scenario, { durationSeconds });
+const fillAll = (round, playerSessionId) => fillAllAnswers(round, playerSessionId);
 
 beforeEach(async () => {
   await resetDatabase();
   scenario = await createScenario();
-  players = await joinAll();
+  players = await joinAllStudents(scenario);
 });
 
 afterAll(async () => {
@@ -253,6 +234,7 @@ describe("testes criticos (spec 61)", () => {
       players[0].playerSessionId,
     );
 
+    await roundService.closeCollaborativeCorrection(round.id);
     await roundService.score(round.id);
     const participant = await prisma.roundParticipant.findUnique({
       where: {
@@ -298,6 +280,7 @@ describe("testes criticos (spec 61)", () => {
     const round = await startedRound();
     await fillAll(round, players[0].playerSessionId);
     await roundService.forceStop(round.id);
+    await roundService.closeCollaborativeCorrection(round.id);
     await roundService.score(round.id);
     await expect(roundService.score(round.id)).rejects.toMatchObject({ status: 409 });
   });

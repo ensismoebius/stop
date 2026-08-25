@@ -12,6 +12,22 @@ import env from "../config/env.js";
 
 const MAX_CODE_ATTEMPTS = 8;
 
+/**
+ * Resolve a matricula para um aluno matriculado na turma da sala —
+ * checagem repetida por `identify`/`setAvatar`/`join` (mesma regra de
+ * posse, spec 6). Centralizado para nao divergir entre os tres pontos.
+ */
+async function resolveEnrolledStudent(room, registrationNumber) {
+  const student = await studentService.findByRegistration(registrationNumber);
+  if (!student) {
+    throw notFound("Matrícula não encontrada. Verifique o número informado.");
+  }
+  if (!studentService.belongsToClass(student, room.game.classId)) {
+    throw forbidden("Esta matrícula não pertence à turma desta partida.");
+  }
+  return student;
+}
+
 export const roomService = {
   /** Cria a sala e o identificador publico exibido no QR Code (spec 5). */
   async create(gameId) {
@@ -65,13 +81,7 @@ export const roomService = {
    */
   async identify(code, registrationNumber) {
     const room = await roomService.getByCode(code);
-    const student = await studentService.findByRegistration(registrationNumber);
-    if (!student) {
-      throw notFound("Matrícula não encontrada. Verifique o número informado.");
-    }
-    if (!studentService.belongsToClass(student, room.game.classId)) {
-      throw forbidden("Esta matrícula não pertence à turma desta partida.");
-    }
+    const student = await resolveEnrolledStudent(room, registrationNumber);
     return {
       student: {
         name: student.name,
@@ -90,11 +100,7 @@ export const roomService = {
    */
   async setAvatar(code, registrationNumber, avatarUrl) {
     const room = await roomService.getByCode(code);
-    const student = await studentService.findByRegistration(registrationNumber);
-    if (!student) throw notFound("Matrícula não encontrada");
-    if (!studentService.belongsToClass(student, room.game.classId)) {
-      throw forbidden("Esta matrícula não pertence à turma desta partida.");
-    }
+    const student = await resolveEnrolledStudent(room, registrationNumber);
     const updated = await studentService.update(student.id, { avatarUrl });
     return { avatarUrl: updated.avatarUrl };
   },
@@ -104,11 +110,7 @@ export const roomService = {
     const room = await roomService.getByCode(code);
     if (room.status === "CLOSED") throw badRequest("Esta sala está encerrada");
 
-    const student = await studentService.findByRegistration(registrationNumber);
-    if (!student) throw notFound("Matrícula não encontrada");
-    if (!studentService.belongsToClass(student, room.game.classId)) {
-      throw forbidden("Esta matrícula não pertence à turma desta partida.");
-    }
+    const student = await resolveEnrolledStudent(room, registrationNumber);
 
     const existing = await playerSessionRepository.findByRoomAndStudent(room.id, student.id);
     const session =

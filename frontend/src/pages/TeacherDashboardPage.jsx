@@ -8,6 +8,7 @@ import RoomControl from "../components/teacher/RoomControl.jsx";
 import RoundControl from "../components/teacher/RoundControl.jsx";
 import PlayerMonitor from "../components/teacher/PlayerMonitor.jsx";
 import CorrectionPanel from "../components/teacher/CorrectionPanel.jsx";
+import GroupedCorrectionPanel from "../components/teacher/GroupedCorrectionPanel.jsx";
 import RankingPanel from "../components/teacher/RankingPanel.jsx";
 import StatisticsPanel from "../components/teacher/StatisticsPanel.jsx";
 import ConfigPanel from "../components/teacher/ConfigPanel.jsx";
@@ -48,6 +49,9 @@ export function TeacherDashboardPage() {
   const [selectedClassId, setSelectedClassId] = useState(null);
   const [usedLetters, setUsedLetters] = useState([]);
   const [grid, setGrid] = useState(null);
+  const [groupedGrid, setGroupedGrid] = useState(null);
+  const [correctionView, setCorrectionView] = useState("grouped");
+  const [collabProgress, setCollabProgress] = useState(null);
   const [statistics, setStatistics] = useState(null);
   const [history, setHistory] = useState(null);
   const [error, setError] = useState(null);
@@ -149,9 +153,15 @@ export function TeacherDashboardPage() {
     async (roundId) => {
       if (!token || !roundId) return;
       try {
-        setGrid(await api.correctionGrid(token, roundId));
+        const [flat, grouped] = await Promise.all([
+          api.correctionGrid(token, roundId),
+          api.groupedCorrectionGrid(token, roundId),
+        ]);
+        setGrid(flat);
+        setGroupedGrid(grouped);
       } catch {
         setGrid(null);
+        setGroupedGrid(null);
       }
     },
     [token],
@@ -169,18 +179,28 @@ export function TeacherDashboardPage() {
         loadGrid(payload.roundId);
         setTab("correction");
       },
-      correctionStarted: (payload) => loadGrid(payload.roundId),
+      collaborativeCorrectionStarted: (payload) => setCollabProgress(payload),
+      collaborativeCorrectionProgress: (payload) => setCollabProgress(payload),
+      collaborativeCorrectionFinished: () => setCollabProgress(null),
+      correctionStarted: (payload) => {
+        setCollabProgress(null);
+        loadGrid(payload.roundId);
+      },
       answerReviewed: (payload) => loadGrid(payload.roundId),
       answersReviewed: (payload) => loadGrid(payload.roundId),
       letterSelected: () => reloadGame(),
       scoreUpdated: () => reloadGame(),
       nextRound: () => {
         setGrid(null);
+        setGroupedGrid(null);
+        setCollabProgress(null);
         setTab("control");
         reloadGame();
       },
       roundCancelled: () => {
         setGrid(null);
+        setGroupedGrid(null);
+        setCollabProgress(null);
         setTab("control");
         reloadGame();
       },
@@ -253,6 +273,7 @@ export function TeacherDashboardPage() {
     guard(async () => {
       await api.createRound(token, { ...payload, gameId: game.id });
       setGrid(null);
+      setGroupedGrid(null);
       await reloadGame();
     });
 
@@ -265,11 +286,19 @@ export function TeacherDashboardPage() {
   const startRound = () => guard(() => api.startRound(token, round.id));
   const stopRound = () => guard(() => api.stopRound(token, round.id));
 
+  /** Fecha a correção colaborativa antecipadamente (spec 38-39). */
+  const finishCollaborativeCorrection = () =>
+    guard(async () => {
+      await api.finishCollaborativeCorrection(token, round.id);
+      setCollabProgress(null);
+    });
+
   /** Descarta a rodada atual sem pontuar e libera a criacao de outra. */
   const cancelRound = () =>
     guard(async () => {
       await api.cancelRound(token, round.id);
       setGrid(null);
+      setGroupedGrid(null);
       setTab("control");
       await reloadGame();
     });
@@ -280,6 +309,7 @@ export function TeacherDashboardPage() {
       await api.finishGame(token, game.id);
       setGame(null);
       setGrid(null);
+      setGroupedGrid(null);
       window.localStorage.removeItem(GAME_KEY);
       await loadBasics();
     });
@@ -294,6 +324,7 @@ export function TeacherDashboardPage() {
     guard(async () => {
       await api.nextRound(token, game.id, payload);
       setGrid(null);
+      setGroupedGrid(null);
       setTab("control");
       await reloadGame();
     });
@@ -313,6 +344,16 @@ export function TeacherDashboardPage() {
           })),
         };
       });
+    });
+
+  /** Marca todas as respostas de um grupo agregado de uma vez (spec 18). */
+  const reviewGroup = (answerIds, reviewState) =>
+    guard(async () => {
+      await api.reviewAnswers(
+        token,
+        answerIds.map((answerId) => ({ answerId, reviewState })),
+      );
+      await loadGrid(round.id);
     });
 
   if (checking) return <div className="container">Carregando...</div>;
@@ -361,7 +402,7 @@ export function TeacherDashboardPage() {
               <div className="card row spread">
                 <span className="small muted">Ações rápidas</span>
                 <div className="row">
-                  {round && ["STARTING", "PLAYING"].includes(round.status) ? (
+                  {round && round.status === "PLAYING" ? (
                     <button
                       type="button"
                       className="btn btn--danger"
@@ -404,6 +445,8 @@ export function TeacherDashboardPage() {
                 onStart={startRound}
                 onStop={stopRound}
                 onCancel={cancelRound}
+                collabProgress={collabProgress}
+                onFinishCollaborativeCorrection={finishCollaborativeCorrection}
                 onScore={scoreRound}
                 onNextRound={nextRound}
                 onGoToCorrection={() => setTab("correction")}
@@ -441,7 +484,31 @@ export function TeacherDashboardPage() {
 
       {tab === "correction" ? (
         <div className="panel">
-          <CorrectionPanel grid={grid} onReview={review} busy={busy} />
+          <div className="row small">
+            <button
+              type="button"
+              className="tab"
+              role="tab"
+              aria-selected={correctionView === "grouped"}
+              onClick={() => setCorrectionView("grouped")}
+            >
+              Agregada por resposta
+            </button>
+            <button
+              type="button"
+              className="tab"
+              role="tab"
+              aria-selected={correctionView === "grid"}
+              onClick={() => setCorrectionView("grid")}
+            >
+              Grade por aluno
+            </button>
+          </div>
+          {correctionView === "grouped" ? (
+            <GroupedCorrectionPanel grid={groupedGrid} onReviewGroup={reviewGroup} busy={busy} />
+          ) : (
+            <CorrectionPanel grid={grid} onReview={review} busy={busy} />
+          )}
           {round?.status === "CORRECTION" || round?.status === "STOPPED" ? (
             <button type="button" className="btn btn--success" disabled={busy} onClick={scoreRound}>
               Pontuar rodada e atualizar ranking

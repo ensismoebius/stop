@@ -5,9 +5,9 @@ import {
   assertTransition,
   canTransition,
   isClosed,
-  isEligible,
   nextStates,
 } from "../../src/game/roundState.js";
+import { isEligible } from "../../src/game/playerState.js";
 
 describe("maquina de estados da rodada (spec 32)", () => {
   it("permite o caminho feliz completo", () => {
@@ -17,6 +17,7 @@ describe("maquina de estados da rodada (spec 32)", () => {
       ROUND_STATUS.STARTING,
       ROUND_STATUS.PLAYING,
       ROUND_STATUS.STOPPED,
+      ROUND_STATUS.COLLABORATIVE_CORRECTION,
       ROUND_STATUS.CORRECTION,
       ROUND_STATUS.SCORED,
       ROUND_STATUS.FINISHED,

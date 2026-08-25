@@ -11,6 +11,7 @@ import GameHeader from "../components/student/GameHeader.jsx";
 import CategoryList from "../components/student/CategoryList.jsx";
 import AnswerEditor from "../components/student/AnswerEditor.jsx";
 import StopButton from "../components/student/StopButton.jsx";
+import CollaborativeCorrection from "../components/student/CollaborativeCorrection.jsx";
 import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
 import Alert from "../components/common/Alert.jsx";
 
@@ -18,7 +19,7 @@ const SYNC_DELAY = 450;
 
 const STATUS_MESSAGE = {
   CREATED: { title: "Aguardando", text: "O professor está preparando a rodada." },
-  READY: { title: "Preparar!", text: "A letra foi sorteada. A rodada começa em instantes." },
+  READY: { title: "Preparar!", text: "A letra foi sorteada. Aguarde a revelação na tela." },
   STARTING: { title: "Preparar!", text: "A rodada vai começar." },
   STOPPED: { title: "STOP!", text: "A rodada foi encerrada. Aguarde a correção." },
   CORRECTION: { title: "Correção", text: "O professor está corrigindo as respostas." },
@@ -38,6 +39,9 @@ export function StudentGamePage() {
   const [eliminated, setEliminated] = useState(null);
   const [ranking, setRanking] = useState([]);
   const [entered, setEntered] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [completedReviewIds, setCompletedReviewIds] = useState(() => new Set());
+  const [reviewBusy, setReviewBusy] = useState(false);
 
   const timersRef = useRef({});
   const socketRef = useRef(null);
@@ -56,6 +60,14 @@ export function StudentGamePage() {
       for (const answer of state.answers ?? []) next[answer.roundCategoryId] = answer.value;
       setAnswers(next);
       setEliminated(state.roundStatus === "ELIMINATED" ? { reason: "FULLSCREEN_EXIT" } : null);
+      // Recupera a correcao colaborativa ao reconectar (spec 38/45): o
+      // evento `reviewAssigned` so chega uma vez, ao vivo.
+      if (state.reviews) {
+        setReviews(state.reviews);
+        setCompletedReviewIds(
+          new Set(state.reviews.filter((review) => review.decision !== "PENDING").map((review) => review.reviewId)),
+        );
+      }
     },
     [sync],
   );
@@ -68,11 +80,14 @@ export function StudentGamePage() {
       onState: (state) => applyState(state),
       onError: (payload) => setFeedback({ kind: "error", message: payload.message }),
       letterSelected: () => audio.play("LETTER"),
+      syncCountdownRequested: () => audio.play("LETTER"),
       roundCreated: () => {
         setAnswers({});
         setCurrentId(null);
         setEliminated(null);
         setFeedback(null);
+        setReviews([]);
+        setCompletedReviewIds(new Set());
       },
       roundStarted: () => {
         audio.play("START");
@@ -80,6 +95,15 @@ export function StudentGamePage() {
         setCurrentId(null);
         setEliminated(null);
         setFeedback(null);
+      },
+      // Correcao colaborativa (spec 9-16): respostas anonimas de colegas,
+      // atribuidas so a este aluno.
+      reviewAssigned: (payload) => {
+        setReviews(payload.reviews ?? []);
+        setCompletedReviewIds(new Set());
+      },
+      reviewCompleted: (payload) => {
+        setCompletedReviewIds((current) => new Set(current).add(payload.reviewId));
       },
       roundStopped: (payload) => {
         audio.play("STOPPED");
@@ -156,6 +180,13 @@ export function StudentGamePage() {
   const categories = round?.categories ?? [];
   const playing = round?.status === "PLAYING" && state?.roundStatus === "PLAYING" && !eliminated;
   const seconds = useCountdown(round?.status === "PLAYING" ? round?.endsAt : null, now);
+  // Contagem regressiva sincronizada antes da letra/categorias aparecerem
+  // (spec 54) — mesmo mecanismo de relogio do servidor usado no `seconds`
+  // acima, so que apontando para `revealAt` em vez de `endsAt`.
+  const revealSeconds = useCountdown(
+    round?.status === "STARTING" ? round?.revealAt : null,
+    now,
+  );
 
   // Aviso sonoro nos ultimos segundos (spec 22 e 23).
   const lastBeepRef = useRef(null);
@@ -298,6 +329,25 @@ export function StudentGamePage() {
     }
   }, [round, categories, commit, refresh, stopping]);
 
+  const handleDecideReview = useCallback(
+    async (reviewId, decision) => {
+      const socketInstance = socketRef.current;
+      if (!socketInstance) return;
+      setReviewBusy(true);
+      try {
+        const response = await emitAck(socketInstance, "submitReview", { reviewId, decision });
+        if (response.ok) {
+          setCompletedReviewIds((current) => new Set(current).add(reviewId));
+        } else if (response.error?.code !== "TIMEOUT") {
+          setFeedback({ kind: "error", message: response.error?.message ?? "Falha ao enviar avaliação" });
+        }
+      } finally {
+        setReviewBusy(false);
+      }
+    },
+    [],
+  );
+
   if (!player) return null;
 
   const message = round ? STATUS_MESSAGE[round.status] : null;
@@ -347,10 +397,29 @@ export function StudentGamePage() {
           </Alert>
         ) : null}
 
-        {!playing && message ? (
+        {!playing && round?.status === "COLLABORATIVE_CORRECTION" ? (
+          <CollaborativeCorrection
+            reviews={reviews}
+            completedIds={completedReviewIds}
+            onDecide={handleDecideReview}
+            deciding={reviewBusy}
+            letter={round?.letter}
+          />
+        ) : null}
+
+        {!playing && round?.status !== "COLLABORATIVE_CORRECTION" && message ? (
           <div className="notice">
             <div className="notice__title">{message.title}</div>
             <p className="muted">{message.text}</p>
+            {round?.status === "STARTING" ? (
+              <span className="letter__value" aria-live="polite">
+                {round?.letter
+                  ? round.letter
+                  : revealSeconds !== null && revealSeconds > 0
+                    ? revealSeconds
+                    : "—"}
+              </span>
+            ) : null}
             {round?.status === "READY" || round?.status === "CREATED" ? (
               <button type="button" className="btn btn--primary btn--block" onClick={enterGame}>
                 {entered ? "Pronto!" : "Entrar na partida"}

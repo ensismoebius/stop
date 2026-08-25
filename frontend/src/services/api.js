@@ -85,7 +85,12 @@ export const api = {
   drawLetter: (t, id) => request(`/rounds/${id}/letter`, { method: "POST", adminToken: t }),
   startRound: (t, id) => request(`/rounds/${id}/start`, { method: "POST", adminToken: t }),
   stopRound: (t, id) => request(`/rounds/${id}/stop`, { method: "POST", adminToken: t }),
+  collaborativeCorrectionProgress: (t, id) =>
+    request(`/rounds/${id}/collaborative-correction`, { adminToken: t }),
+  finishCollaborativeCorrection: (t, id) =>
+    request(`/rounds/${id}/collaborative-correction/finish`, { method: "POST", adminToken: t }),
   correctionGrid: (t, id) => request(`/rounds/${id}/correction`, { adminToken: t }),
+  groupedCorrectionGrid: (t, id) => request(`/rounds/${id}/correction/grouped`, { adminToken: t }),
   reviewAnswer: (t, id, reviewState) =>
     request(`/answers/${id}`, { method: "PATCH", body: { reviewState }, adminToken: t }),
   reviewAnswers: (t, reviews) =>

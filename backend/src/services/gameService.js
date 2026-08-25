@@ -1,8 +1,7 @@
 import gameRepository from "../repositories/gameRepository.js";
 import classRepository from "../repositories/classRepository.js";
-import scoreRepository from "../repositories/scoreRepository.js";
 import roundRepository from "../repositories/roundRepository.js";
-import { buildRanking } from "../game/scoring.js";
+import viewService from "./viewService.js";
 import { badRequest, notFound } from "../lib/errors.js";
 
 export const gameService = {
@@ -28,15 +27,7 @@ export const gameService = {
   /** Ranking oficial: sempre calculado pelo servidor (spec 42). */
   async ranking(gameId) {
     await gameService.get(gameId);
-    const scores = await scoreRepository.listByGame(gameId);
-    return buildRanking(
-      scores.map((score) => ({
-        studentId: score.studentId,
-        name: score.student?.name ?? "—",
-        registrationNumber: score.student?.registrationNumber ?? null,
-        total: score.total,
-      })),
-    );
+    return viewService.loadRanking(gameId, { includeRegistration: true });
   },
 
   /** Historico completo da partida para auditoria (spec 44). */

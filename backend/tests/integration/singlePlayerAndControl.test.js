@@ -1,33 +1,21 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { createScenario, prisma, resetDatabase } from "../helpers/fixtures.js";
+import {
+  createScenario,
+  prisma,
+  resetDatabase,
+  startedRound as startedRoundFixture,
+  fillAllAnswers,
+  waitForRoundStatus,
+} from "../helpers/fixtures.js";
 import roomService from "../../src/services/roomService.js";
 import roundService from "../../src/services/roundService.js";
-import answerService from "../../src/services/answerService.js";
 import gameService from "../../src/services/gameService.js";
 import viewService from "../../src/services/viewService.js";
 
 let scenario;
 
-async function newRound(durationSeconds) {
-  const round = await roundService.create({
-    gameId: scenario.game.id,
-    categorySetId: scenario.categorySet.id,
-    durationSeconds,
-  });
-  await roundService.drawRoundLetter(round.id);
-  return roundService.start(round.id);
-}
-
-async function fillAll(round, playerSessionId) {
-  for (const category of round.categories) {
-    await answerService.submit({
-      roundId: round.id,
-      playerSessionId,
-      roundCategoryId: category.id,
-      value: `${round.letter}${category.id}`,
-    });
-  }
-}
+const newRound = (durationSeconds) => startedRoundFixture(scenario, { durationSeconds });
+const fillAll = (round, playerSessionId) => fillAllAnswers(round, playerSessionId);
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -91,7 +79,8 @@ describe("partida com um unico jogador", () => {
         categorySetId: scenario.categorySet.id,
       });
       await roundService.drawRoundLetter(round.id);
-      const started = await roundService.start(round.id);
+      await roundService.start(round.id);
+      const started = await waitForRoundStatus(round.id, "PLAYING");
       await fillAll(started, player.playerSessionId);
       await roundService.requestStop({
         roundId: started.id,
@@ -155,7 +144,10 @@ describe("controle da partida pelo professor", () => {
         categorySetId: scenario.categorySet.id,
       });
       if (setup !== "CREATED") await roundService.drawRoundLetter(round.id);
-      if (setup === "PLAYING" || setup === "CORRECTION") await roundService.start(round.id);
+      if (setup === "PLAYING" || setup === "CORRECTION") {
+        await roundService.start(round.id);
+        await waitForRoundStatus(round.id, "PLAYING");
+      }
       if (setup === "CORRECTION") await roundService.forceStop(round.id);
 
       const cancelled = await roundService.cancel(round.id);
@@ -178,7 +170,8 @@ describe("controle da partida pelo professor", () => {
       categorySetId: scenario.categorySet.id,
     });
     await roundService.drawRoundLetter(round.id);
-    const started = await roundService.start(round.id);
+    await roundService.start(round.id);
+    const started = await waitForRoundStatus(round.id, "PLAYING");
     await fillAll(started, players[0].playerSessionId);
 
     await roundService.cancel(round.id);
@@ -198,6 +191,7 @@ describe("controle da partida pelo professor", () => {
     });
     await roundService.drawRoundLetter(round.id);
     await roundService.start(round.id);
+    await waitForRoundStatus(round.id, "PLAYING");
     await roundService.eliminate({
       roundId: round.id,
       playerSessionId: players[0].playerSessionId,
@@ -214,7 +208,8 @@ describe("controle da partida pelo professor", () => {
       categorySetId: scenario.categorySet.id,
     });
     await roundService.drawRoundLetter(proxima.id);
-    const started = await roundService.start(proxima.id);
+    await roundService.start(proxima.id);
+    const started = await waitForRoundStatus(proxima.id, "PLAYING");
     const participant = await prisma.roundParticipant.findUnique({
       where: {
         roundId_playerSessionId: {
@@ -243,7 +238,9 @@ describe("controle da partida pelo professor", () => {
     });
     await roundService.drawRoundLetter(round.id);
     await roundService.start(round.id);
+    await waitForRoundStatus(round.id, "PLAYING");
     await roundService.forceStop(round.id);
+    await roundService.closeCollaborativeCorrection(round.id);
     await roundService.score(round.id);
 
     const finished = await gameService.finish(scenario.game.id);
@@ -270,7 +267,8 @@ describe("controle da partida pelo professor", () => {
       categorySetId: scenario.categorySet.id,
     });
     await roundService.drawRoundLetter(novaRodada.id);
-    const started = await roundService.start(novaRodada.id);
+    await roundService.start(novaRodada.id);
+    const started = await waitForRoundStatus(novaRodada.id, "PLAYING");
     expect(started.status).toBe("PLAYING");
     // O placar da nova partida comeca do zero.
     const ranking = await gameService.ranking(outra.id);

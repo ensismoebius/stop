@@ -57,17 +57,34 @@ export function useRoomSocket({ roomCode, role, playerToken, adminToken, handler
     });
     instance.on("error", (payload) => handlersRef.current?.onError?.(payload));
 
+    // Unico evento server->cliente desta lista que espera um ack de volta:
+    // o servidor usa isso so como sinal de "o dispositivo recebeu o
+    // horario combinado", com timeout (spec 54) — nunca trava a partida
+    // por um device lento ou offline. O handler do chamador nao precisa
+    // fazer nada alem de tratar o payload; o ack e automatico aqui.
+    instance.on("syncCountdownRequested", (payload, ack) => {
+      handlersRef.current?.syncCountdownRequested?.(payload);
+      if (typeof ack === "function") ack(true);
+    });
+
     const named = [
       "playerJoined",
       "playerLeft",
       "roundCreated",
       "letterSelected",
+      "roundStarting",
+      "syncCountdownReleased",
       "roundStarted",
       "answerUpdated",
       "playerProgress",
       "playerEliminated",
       "roundStopped",
       "roundTimedOut",
+      "collaborativeCorrectionStarted",
+      "reviewAssigned",
+      "reviewCompleted",
+      "collaborativeCorrectionProgress",
+      "collaborativeCorrectionFinished",
       "correctionStarted",
       "answerReviewed",
       "answersReviewed",

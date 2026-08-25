@@ -24,6 +24,7 @@ export function PublicScreenPage() {
   const [input, setInput] = useState("");
   const audio = useAudio();
   const { sync, now } = useServerClock();
+  const [collabProgress, setCollabProgress] = useState(null);
 
   const handlers = useMemo(
     () => ({
@@ -35,6 +36,11 @@ export function PublicScreenPage() {
       roundStopped: () => audio.play("STOPPED"),
       roundTimedOut: () => audio.play("STOPPED"),
       rankingUpdated: () => audio.play("RANKING"),
+      // Correcao colaborativa (spec 36): so o progresso agregado, nunca
+      // respostas individuais na tela publica.
+      collaborativeCorrectionStarted: (payload) => setCollabProgress(payload),
+      collaborativeCorrectionProgress: (payload) => setCollabProgress(payload),
+      collaborativeCorrectionFinished: () => setCollabProgress(null),
     }),
     [audio, sync],
   );
@@ -165,6 +171,27 @@ export function PublicScreenPage() {
           </>
         )}
         <GameStatus status={round?.status} />
+        {round?.status === "COLLABORATIVE_CORRECTION" && collabProgress ? (
+          <div className="screen__collabProgress" role="status">
+            <div className="screen__collabProgressBar">
+              <div
+                className="screen__collabProgressFill"
+                style={{
+                  width: `${
+                    collabProgress.totalAssignments > 0
+                      ? Math.round(
+                          (collabProgress.completedAssignments / collabProgress.totalAssignments) * 100,
+                        )
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+            <span className="small">
+              {collabProgress.completedGraders} / {collabProgress.totalGraders} jogadores concluíram
+            </span>
+          </div>
+        ) : null}
         <PlayerCount
           active={view?.activePlayers ?? view?.connectedPlayers ?? 0}
           total={view?.totalPlayers ?? 0}

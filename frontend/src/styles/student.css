@@ -272,6 +272,17 @@
   font-weight: 800;
 }
 
+/* Resposta anonima na correcao colaborativa (spec 10 e 23). */
+.review__value {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--ink);
+  padding: 0.8rem;
+  border-radius: var(--radius);
+  background: var(--bg-soft, #f4f2ff);
+  text-align: center;
+}
+
 /* Botao STOP fixo no rodape (spec 11). */
 .stopbar {
   position: fixed;

@@ -136,6 +136,12 @@ export const socketFullscreenSchema = z.object({
   reason: z.string().trim().max(60).optional(),
 });
 
+/** Decisao do aluno na correcao colaborativa (enhancements.md secao 45). */
+export const socketReviewSchema = z.object({
+  reviewId: id,
+  decision: z.enum(["VALID", "INVALID"]),
+});
+
 export const socketTelemetrySchema = z.object({
   roundId: id.optional(),
   type: trimmed(40),

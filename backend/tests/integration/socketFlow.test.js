@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { io as createClient } from "socket.io-client";
 import { createApp } from "../../src/app.js";
 import { createSocketServer } from "../../src/sockets/index.js";
-import { createScenario, prisma, resetDatabase } from "../helpers/fixtures.js";
+import { createScenario, prisma, resetDatabase, waitForRoundStatus } from "../helpers/fixtures.js";
 import authService from "../../src/services/authService.js";
 import roomService from "../../src/services/roomService.js";
 import roundService from "../../src/services/roundService.js";
@@ -210,6 +210,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     expect(tarde.ok).toBe(false);
     expect(tarde.error.code).toBe("CONFLICT");
 
+    await roundService.closeCollaborativeCorrection(round.id);
     const rankingOnScreen = waitFor(screen, "rankingUpdated");
     await roundService.score(round.id);
     const ranking = (await rankingOnScreen).ranking;
@@ -227,6 +228,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     });
     const { round: comLetra } = await roundService.drawRoundLetter(round.id);
     await roundService.start(round.id);
+    await waitForRoundStatus(round.id, "PLAYING");
 
     for (const player of players.slice(0, 2)) {
       for (const category of comLetra.categories) {
@@ -256,6 +258,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     });
     await roundService.drawRoundLetter(round.id);
     await roundService.start(round.id);
+    await waitForRoundStatus(round.id, "PLAYING");
 
     const eliminadoNoAluno = waitFor(players[0].client, "playerEliminated");
     const eliminadoNoProfessor = waitFor(teacher.client, "playerEliminated");
@@ -280,6 +283,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     });
     const { round: comLetra } = await roundService.drawRoundLetter(round.id);
     await roundService.start(round.id);
+    await waitForRoundStatus(round.id, "PLAYING");
 
     await emit(players[0].client, "submitAnswer", {
       roundId: round.id,

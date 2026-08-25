@@ -3,8 +3,27 @@ import roomRepository from "../repositories/roomRepository.js";
 import roundRepository, { roundParticipantRepository } from "../repositories/roundRepository.js";
 import scoreRepository from "../repositories/scoreRepository.js";
 import answerRepository from "../repositories/answerRepository.js";
-import { buildRanking } from "../game/scoring.js";
+import answerReviewRepository from "../repositories/answerReviewRepository.js";
+import { buildRanking } from "../game/ranking.js";
 import { notFound } from "../lib/errors.js";
+
+/**
+ * Avaliacoes atribuidas a um aluno na correcao colaborativa, no mesmo
+ * formato anonimo de `reviewAssigned` (spec 10) — usado para a
+ * reconexao recuperar o estado sem depender de ter recebido o evento ao
+ * vivo (spec 38/45).
+ */
+async function reviewsForPlayer(round, playerSessionId) {
+  if (!round || round.status !== "COLLABORATIVE_CORRECTION") return [];
+  const assigned = await answerReviewRepository.listByGrader(round.id, playerSessionId);
+  return assigned.map((review) => ({
+    reviewId: review.id,
+    roundCategoryId: review.answer.roundCategoryId,
+    categoryName: review.answer.roundCategory.name,
+    value: review.answer.value,
+    decision: review.decision,
+  }));
+}
 
 /**
  * Projecoes enviadas aos clientes.
@@ -15,13 +34,26 @@ import { notFound } from "../lib/errors.js";
  *  - tela publica: nada de dados privados (spec 4.3).
  */
 
-const REVEALED_STATUSES = ["READY", "STARTING", "PLAYING", "STOPPED", "CORRECTION", "SCORED", "FINISHED"];
+// A letra sempre aparece a partir de PLAYING. Durante STARTING ela so
+// aparece depois que `revealAt` e preenchido — ou seja, depois que a
+// animacao publica e a contagem regressiva sincronizada terminaram
+// (enhancements.md secoes 4-7). READY nunca revela: e exatamente a fase em
+// que a tela publica esta tocando o "drama" do sorteio.
+const LETTER_REVEALED_STATUSES = [
+  "PLAYING",
+  "STOPPED",
+  "COLLABORATIVE_CORRECTION",
+  "CORRECTION",
+  "SCORED",
+  "FINISHED",
+];
 
-/** Monta o round como o aluno deve ve-lo: letra oculta antes do sorteio. */
+/** Monta o round como o aluno deve ve-lo: letra oculta antes da revelacao. */
 function roundForPlayer(round) {
   const summary = roundSummary(round);
-  const revealed = summary && REVEALED_STATUSES.includes(summary.status);
-  return revealed ? summary : summary ? { ...summary, letter: null } : null;
+  if (!summary) return null;
+  const revealed = LETTER_REVEALED_STATUSES.includes(summary.status) || Boolean(summary.revealAt);
+  return revealed ? summary : { ...summary, letter: null };
 }
 
 /** A letra so e revelada depois de sorteada. */
@@ -35,7 +67,9 @@ function roundSummary(round) {
     letter: round.letter || null,
     durationSeconds: round.durationSeconds,
     startedAt: round.startedAt,
+    revealAt: round.revealAt,
     endsAt: round.endsAt,
+    collaborativeCorrectionEndsAt: round.collaborativeCorrectionEndsAt,
     stoppedAt: round.stoppedAt,
     stopReason: round.stopReason,
     firstStopperId: round.firstStopperId,
@@ -59,12 +93,24 @@ async function filledCountByPlayer(roundId) {
   return new Map(rows.map((row) => [row.playerSessionId, row._count._all]));
 }
 
-async function loadRanking(gameId) {
+/**
+ * Ranking oficial de uma partida (spec 42): unica fonte usada pelas
+ * projecoes de sala (professor/tela publica/aluno) e por
+ * `gameService.ranking` (consulta administrativa) — evita duas
+ * implementacoes divergentes do mesmo calculo.
+ *
+ * `includeRegistration` fica desligado por padrao: a tela publica usa
+ * este mesmo ranking e nunca pode expor a matricula do aluno (spec 4.3).
+ * So a consulta administrativa (`gameService.ranking`, atras de
+ * `requireTeacher`) pede explicitamente esse campo.
+ */
+async function loadRanking(gameId, { includeRegistration = false } = {}) {
   const scores = await scoreRepository.listByGame(gameId);
   return buildRanking(
     scores.map((score) => ({
       studentId: score.studentId,
       name: score.student?.name ?? "—",
+      ...(includeRegistration ? { registrationNumber: score.student?.registrationNumber ?? null } : {}),
       avatarUrl: score.student?.avatarUrl ?? null,
       total: score.total,
     })),
@@ -164,6 +210,23 @@ export const viewService = {
       }
     }
 
+    // Avaliacoes atribuidas, agrupadas por avaliador — mesmo padrao acima:
+    // uma consulta para a sala inteira em vez de uma por aluno (spec 49).
+    const reviewsByGrader = new Map();
+    if (round && round.status === "COLLABORATIVE_CORRECTION") {
+      for (const review of await answerReviewRepository.listByRoundWithAnswers(round.id)) {
+        const list = reviewsByGrader.get(review.graderPlayerSessionId) ?? [];
+        list.push({
+          reviewId: review.id,
+          roundCategoryId: review.answer.roundCategoryId,
+          categoryName: review.answer.roundCategory.name,
+          value: review.answer.value,
+          decision: review.decision,
+        });
+        reviewsByGrader.set(review.graderPlayerSessionId, list);
+      }
+    }
+
     // A letra e o tema so aparecem quando o servidor autoriza — mesma
     // regra para todos os alunos da sala nesse instante do broadcast.
     const roundForPlayers = roundForPlayer(round);
@@ -188,6 +251,7 @@ export const viewService = {
               roundCategoryId: answer.roundCategoryId,
               value: answer.value,
             })),
+            reviews: reviewsByGrader.get(session.id) ?? [],
             canAnswer:
               Boolean(round) && round.status === "PLAYING" && participant?.status === "PLAYING",
           },
@@ -212,6 +276,7 @@ export const viewService = {
       ? await roundParticipantRepository.find(round.id, session.id)
       : null;
     const answers = round ? await answerRepository.listByPlayer(round.id, session.id) : [];
+    const reviews = await reviewsForPlayer(round, session.id);
 
     return {
       playerSessionId: session.id,
@@ -221,6 +286,7 @@ export const viewService = {
       roomStatus: session.status,
       roundStatus: participant?.status ?? null,
       round: roundForPlayer(round),
+      reviews,
       serverTime: new Date().toISOString(),
       answers: answers.map((answer) => ({
         roundCategoryId: answer.roundCategoryId,

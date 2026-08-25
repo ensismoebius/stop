@@ -5,7 +5,8 @@ const MESSAGES = {
   STARTING: "Preparar!",
   PLAYING: "VALENDO!",
   STOPPED: "STOP!",
-  CORRECTION: "Correção",
+  COLLABORATIVE_CORRECTION: "Correção colaborativa",
+  CORRECTION: "Correção do professor",
   SCORED: "Ranking atualizado",
   FINISHED: "Próxima rodada",
 };

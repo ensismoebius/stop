@@ -359,6 +359,28 @@
   min-width: 720px;
 }
 
+/* Correcao agregada por resposta distinta (spec 17/20/21/52). */
+.group-row {
+  align-items: center;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius);
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e4e2f5);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.group-row__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.group-row__value {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
 .answer-cell {
   padding: 0.3rem;
   min-width: 170px;

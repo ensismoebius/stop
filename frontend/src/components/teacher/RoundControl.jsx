@@ -17,7 +17,7 @@ function stepStateFor(status) {
   if (status === "CREATED") return "letter";
   if (status === "READY") return "start";
   if (status === "STARTING" || status === "PLAYING") return "play";
-  if (status === "STOPPED" || status === "CORRECTION") return "correct";
+  if (["STOPPED", "COLLABORATIVE_CORRECTION", "CORRECTION"].includes(status)) return "correct";
   if (status === "SCORED") return "next";
   return "theme";
 }
@@ -60,6 +60,8 @@ export function RoundControl({
   onScore,
   onNextRound,
   onGoToCorrection,
+  collabProgress,
+  onFinishCollaborativeCorrection,
   disabled,
 }) {
   const [categorySetId, setCategorySetId] = useState("");
@@ -195,7 +197,17 @@ export function RoundControl({
         <CancelLink onCancel={onCancel} disabled={busy} />
       </div>
     );
-  } else if (status === "STARTING" || status === "PLAYING") {
+  } else if (status === "STARTING") {
+    phase = (
+      <div className="phase phase--starting">
+        <p className="phase__hint">
+          <strong>{round.themeName}</strong> — sincronizando o início com os dispositivos dos
+          alunos. A letra ainda está oculta para eles; o cronômetro começa em instantes.
+        </p>
+        <CancelLink onCancel={onCancel} disabled={busy} />
+      </div>
+    );
+  } else if (status === "PLAYING") {
     phase = (
       <div className="phase phase--playing">
         <div className="phase__live">
@@ -216,11 +228,42 @@ export function RoundControl({
         <CancelLink onCancel={onCancel} disabled={busy} />
       </div>
     );
-  } else if (status === "STOPPED" || status === "CORRECTION") {
+  } else if (status === "STOPPED") {
+    phase = (
+      <div className="phase phase--correction">
+        <p className="phase__hint">A rodada foi encerrada. Preparando a correção colaborativa…</p>
+      </div>
+    );
+  } else if (status === "COLLABORATIVE_CORRECTION") {
+    const done = collabProgress?.completedAssignments ?? 0;
+    const total = collabProgress?.totalAssignments ?? 0;
     phase = (
       <div className="phase phase--correction">
         <p className="phase__hint">
-          A rodada foi encerrada. Corrija as respostas na aba <strong>Correção</strong>.
+          Os alunos estão corrigindo as respostas dos colegas antes da correção oficial.
+        </p>
+        <div className="phase__live">
+          <span className="phase__clock">
+            {done} / {total}
+          </span>
+          <span className="small muted">avaliações concluídas</span>
+        </div>
+        <button
+          type="button"
+          className="btn btn--primary btn--block phase__action"
+          disabled={busy}
+          onClick={onFinishCollaborativeCorrection}
+        >
+          Finalizar correção colaborativa agora →
+        </button>
+        <CancelLink onCancel={onCancel} disabled={busy} />
+      </div>
+    );
+  } else if (status === "CORRECTION") {
+    phase = (
+      <div className="phase phase--correction">
+        <p className="phase__hint">
+          Corrija as respostas na aba <strong>Correção</strong>.
         </p>
         <button
           type="button"
@@ -229,11 +272,9 @@ export function RoundControl({
         >
           Abrir correção →
         </button>
-        {status === "CORRECTION" ? (
-          <button type="button" className="btn btn--success btn--block" disabled={busy} onClick={onScore}>
-            Pontuar rodada agora
-          </button>
-        ) : null}
+        <button type="button" className="btn btn--success btn--block" disabled={busy} onClick={onScore}>
+          Pontuar rodada agora
+        </button>
         <CancelLink onCancel={onCancel} disabled={busy} />
       </div>
     );

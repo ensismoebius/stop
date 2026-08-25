@@ -67,6 +67,16 @@ export const env = {
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "",
   defaultRoundDuration: int("DEFAULT_ROUND_DURATION", 120),
   letterPool: process.env.LETTER_POOL ?? "ABCDEFGHIJLMNOPRSTUV",
+  // Sincronizacao da revelacao da letra (enhancements: correcao colaborativa,
+  // secoes 4-7 e 54). Em teste, os tres colapsam para 0 para nao pagar a
+  // duracao real da animacao/contagem em cada teste de integracao.
+  letterRevealAnimationMs: int("LETTER_REVEAL_ANIMATION_MS", nodeEnv === "test" ? 0 : 3400),
+  countdownAckTimeoutMs: int("COUNTDOWN_ACK_TIMEOUT_MS", nodeEnv === "test" ? 0 : 1500),
+  countdownDurationMs: int("COUNTDOWN_DURATION_MS", nodeEnv === "test" ? 0 : 3000),
+  // Correcao colaborativa entre alunos (secoes 9-14 e 27-29).
+  collaborativeReviewCount: int("COLLABORATIVE_REVIEW_COUNT", 8),
+  collaborativeReviewBonus: int("COLLABORATIVE_REVIEW_BONUS", 2),
+  collaborativeCorrectionDurationSeconds: int("COLLABORATIVE_CORRECTION_DURATION_SECONDS", 60),
   bootstrapAdmin: {
     email: process.env.ADMIN_EMAIL ?? "professor@stop.local",
     password: productionSecret("ADMIN_PASSWORD", "stop-admin"),

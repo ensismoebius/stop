@@ -20,16 +20,30 @@ enum PlayerStatus {
   FINISHED
 }
 
-/// Maquina de estados da rodada (spec 32)
+/// Maquina de estados da rodada (spec 32).
+/// COLLABORATIVE_CORRECTION fica entre STOPPED e CORRECTION: correcao dos
+/// colegas primeiro, depois a correcao oficial do professor (CORRECTION,
+/// inalterada) — ver enhancements.md secao 35.
 enum RoundStatus {
   CREATED
   READY
   STARTING
   PLAYING
   STOPPED
+  COLLABORATIVE_CORRECTION
   CORRECTION
   SCORED
   FINISHED
+}
+
+/// Decisao de um aluno ao corrigir a resposta de um colega (enhancements.md
+/// secao 15). PENDING e o estado inicial: a atribuicao ja existe (para
+/// progresso "5/8" e para impedir auto-correcao/duplicidade), mas o aluno
+/// ainda nao decidiu.
+enum ReviewDecision {
+  PENDING
+  VALID
+  INVALID
 }
 
 enum GameStatus {
@@ -170,6 +184,7 @@ model PlayerSession {
   answers      Answer[]
   participants RoundParticipant[]
   stoppedRounds Round[] @relation("FirstStopper")
+  answerReviewsGiven AnswerReview[]
 
   @@unique([roomId, studentId])
   @@index([roomId])
@@ -215,7 +230,16 @@ model Round {
   durationSeconds Int         @default(120)
   status          RoundStatus @default(CREATED)
   startedAt       DateTime?
+  /// Momento (absoluto, servidor) em que a letra deixa de ficar oculta do
+  /// aluno e o cronometro de fato comeca — preenchido apos a animacao
+  /// publica e a contagem regressiva sincronizada (enhancements.md secoes
+  /// 4-7 e 54). Nulo enquanto a rodada nao chegou a esse ponto.
+  revealAt        DateTime?
   endsAt          DateTime?
+  /// Prazo da fase de correcao colaborativa (enhancements.md secao 40);
+  /// usado para recalcular o timer se o servidor reiniciar no meio da fase
+  /// (mesmo padrao de `endsAt`/`recoverActiveRounds`).
+  collaborativeCorrectionEndsAt DateTime?
   stoppedAt       DateTime?
   scoredAt        DateTime?
   stopReason      String?
@@ -227,9 +251,10 @@ model Round {
   categorySet  CategorySet?   @relation(fields: [categorySetId], references: [id], onDelete: SetNull)
   firstStopper PlayerSession? @relation("FirstStopper", fields: [firstStopperId], references: [id], onDelete: SetNull)
 
-  categories   RoundCategory[]
-  answers      Answer[]
-  participants RoundParticipant[]
+  categories    RoundCategory[]
+  answers       Answer[]
+  participants  RoundParticipant[]
+  answerReviews AnswerReview[]
 
   @@unique([gameId, roundNumber])
   @@index([gameId])
@@ -292,12 +317,36 @@ model Answer {
   round         Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
   playerSession PlayerSession @relation(fields: [playerSessionId], references: [id], onDelete: Cascade)
   roundCategory RoundCategory @relation(fields: [roundCategoryId], references: [id], onDelete: Cascade)
+  reviews       AnswerReview[]
 
   @@unique([roundId, playerSessionId, roundCategoryId])
   @@index([roundId])
   @@index([playerSessionId])
   @@index([roundCategoryId])
   @@index([roundId, roundCategoryId])
+}
+
+/// Avaliacao de um colega sobre a resposta de outro aluno — correcao
+/// colaborativa (enhancements.md secoes 9-16). Nunca o proprio autor da
+/// resposta (checado em servico, nao aqui: o schema nao consegue expressar
+/// "grader != autor"). Nunca mais de uma avaliacao por par
+/// avaliador/resposta (@@unique abaixo, secao 14).
+model AnswerReview {
+  id                    Int            @id @default(autoincrement())
+  roundId               Int
+  answerId              Int
+  graderPlayerSessionId Int
+  decision              ReviewDecision
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  round               Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  answer              Answer        @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  graderPlayerSession PlayerSession @relation(fields: [graderPlayerSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([answerId, graderPlayerSessionId])
+  @@index([roundId])
+  @@index([graderPlayerSessionId])
 }
 
 model Score {

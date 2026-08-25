@@ -16,12 +16,25 @@ export const roundController = {
   /** STOP administrativo (o STOP do aluno chega por Socket.IO). */
   stop: asyncHandler(async (req, res) => res.json(await roundService.forceStop(Number(req.params.id)))),
 
+  collaborativeCorrectionProgress: asyncHandler(async (req, res) =>
+    res.json(await roundService.collaborativeCorrectionProgress(Number(req.params.id))),
+  ),
+
+  /** Fechamento antecipado da correcao colaborativa pelo professor (spec 39). */
+  finishCollaborativeCorrection: asyncHandler(async (req, res) =>
+    res.json(await roundService.closeCollaborativeCorrection(Number(req.params.id))),
+  ),
+
   correction: asyncHandler(async (req, res) =>
     res.json(await roundService.openCorrection(Number(req.params.id))),
   ),
 
   correctionGrid: asyncHandler(async (req, res) =>
     res.json(await roundService.correctionGrid(Number(req.params.id))),
+  ),
+
+  groupedCorrectionGrid: asyncHandler(async (req, res) =>
+    res.json(await roundService.groupedCorrectionGrid(Number(req.params.id))),
   ),
 
   score: asyncHandler(async (req, res) => res.json(await roundService.score(Number(req.params.id)))),
