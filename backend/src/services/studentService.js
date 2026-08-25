@@ -3,9 +3,10 @@ import classRepository from "../repositories/classRepository.js";
 import { badRequest, notFound } from "../lib/errors.js";
 
 async function assertClassesExist(classIds) {
-  const found = await Promise.all(classIds.map((classId) => classRepository.findById(classId)));
-  const missingIndex = found.findIndex((turma) => !turma);
-  if (missingIndex !== -1) throw badRequest(`Turma inexistente: ${classIds[missingIndex]}`);
+  const found = await classRepository.findByIds(classIds);
+  const foundIds = new Set(found.map((turma) => turma.id));
+  const missing = classIds.filter((classId) => !foundIds.has(classId));
+  if (missing.length > 0) throw badRequest(`Turma inexistente: ${missing[0]}`);
 }
 
 export const studentService = {

@@ -100,6 +100,10 @@ export const statisticsService = {
       (sum, round) => sum + round.answers.filter((answer) => answer.normalizedValue).length,
       0,
     );
+    const validAnswers = rounds.reduce(
+      (sum, round) => sum + round.answers.filter((answer) => answer.score > 0).length,
+      0,
+    );
 
     return {
       game: { id: game.id, name: game.name, status: game.status },
@@ -108,10 +112,10 @@ export const statisticsService = {
         answers: totalAnswers,
         filledAnswers,
         fillRate: totalAnswers === 0 ? 0 : Number((filledAnswers / totalAnswers).toFixed(3)),
-        validAnswers: rounds.reduce(
-          (sum, round) => sum + round.answers.filter((answer) => answer.score > 0).length,
-          0,
-        ),
+        validAnswers,
+        // Preenchidas mas nao pontuadas (invalida, em branco apos trim,
+        // duplicada ou ainda pendente de correcao) — spec 43.
+        invalidAnswers: filledAnswers - validAnswers,
         eliminations: rounds.reduce(
           (sum, round) =>
             sum + round.participants.filter((participant) => participant.status === "ELIMINATED").length,

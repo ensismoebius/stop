@@ -122,7 +122,10 @@ model Game {
   startedAt  DateTime?
   finishedAt DateTime?
 
-  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  // Restrict (nao Cascade): apagar uma turma nao pode levar junto o
+  // historico de partidas ja jogadas nela (spec 44). O endpoint de remocao
+  // de turma deve falhar com 409 enquanto houver partidas vinculadas.
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Restrict)
   teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
   rooms  Room[]
@@ -159,7 +162,10 @@ model PlayerSession {
   updatedAt      DateTime     @updatedAt
 
   room    Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // Restrict: apagar um aluno nao pode levar junto o historico de partidas
+  // em que ele ja participou (spec 44). O endpoint de remocao de aluno deve
+  // falhar com 409 enquanto houver sessoes vinculadas.
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
 
   answers      Answer[]
   participants RoundParticipant[]

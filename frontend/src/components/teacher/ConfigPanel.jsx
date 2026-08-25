@@ -1,6 +1,5 @@
 import { useState } from "react";
 import Field from "../common/Field.jsx";
-import Alert from "../common/Alert.jsx";
 
 /** Uma turma da lista, com edição/remoção inline. */
 function ClassRow({ item, onUpdate, onDelete }) {
@@ -381,7 +380,6 @@ export function ConfigPanel({
   onCreateCategory,
   onUpdateCategory,
   onDeleteCategory,
-  error,
 }) {
   const [className, setClassName] = useState("");
   const [classCode, setClassCode] = useState("");
@@ -404,8 +402,6 @@ export function ConfigPanel({
 
   return (
     <div className="stack">
-      <Alert kind="error">{error}</Alert>
-
       <section className="card stack">
         <h2>Turmas</h2>
         <form

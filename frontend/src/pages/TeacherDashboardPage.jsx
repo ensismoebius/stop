@@ -230,7 +230,7 @@ export function TeacherDashboardPage() {
         setStatistics(stats);
         setHistory(hist);
       })
-      .catch(() => {});
+      .catch((statsError) => setError(statsError.message));
   }, [token, game?.id, round?.status, tab]);
 
   // Acoes ---------------------------------------------------------------

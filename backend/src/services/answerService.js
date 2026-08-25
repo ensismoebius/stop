@@ -1,11 +1,12 @@
 import prisma from "../lib/prisma.js";
+import gameLock from "../lib/asyncLock.js";
 import answerRepository from "../repositories/answerRepository.js";
 import roundRepository, { roundParticipantRepository } from "../repositories/roundRepository.js";
 import { normalizeAnswer, isFilled } from "../game/normalize.js";
 import { ROUND_STATUS, PLAYER_STATUS, acceptsAnswers } from "../game/roundState.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import * as realtime from "../sockets/realtime.js";
-import roundService from "./roundService.js";
+import roundService, { lockKey } from "./roundService.js";
 import viewService from "./viewService.js";
 
 export const answerService = {
@@ -29,25 +30,36 @@ export const answerService = {
       throw conflict("O tempo da rodada terminou");
     }
 
-    const participant = await roundParticipantRepository.find(roundId, playerSessionId);
-    if (!participant) throw forbidden("Você não participa desta rodada");
-    if (participant.status === PLAYER_STATUS.ELIMINATED) {
-      throw forbidden("Você foi eliminado desta rodada");
-    }
-    if (participant.status !== PLAYER_STATUS.PLAYING) {
-      throw forbidden("Você não pode mais alterar respostas");
-    }
-
     const category = round.categories.find((item) => item.id === roundCategoryId);
     if (!category) throw badRequest("Categoria não pertence a esta rodada");
 
     const value_ = String(value ?? "").slice(0, 120).trim();
-    const answer = await answerRepository.upsert({
-      roundId,
-      playerSessionId,
-      roundCategoryId,
-      value: value_,
-      normalizedValue: normalizeAnswer(value_),
+    const normalizedValue = normalizeAnswer(value_);
+
+    // Revalida dentro da secao critica: um STOP, timeout ou eliminacao pode
+    // ter fechado a rodada/o participante entre a checagem acima e agora
+    // (mesma trava usada por requestStop/handleTimeout/forceStop/eliminate
+    // em roundService, spec 47).
+    const answer = await gameLock.run(lockKey(roundId), async () => {
+      const fresh = await roundRepository.findById(roundId);
+      if (!fresh || !acceptsAnswers(fresh.status)) {
+        throw conflict("A rodada não aceita mais respostas");
+      }
+      const participant = await roundParticipantRepository.find(roundId, playerSessionId);
+      if (!participant) throw forbidden("Você não participa desta rodada");
+      if (participant.status === PLAYER_STATUS.ELIMINATED) {
+        throw forbidden("Você foi eliminado desta rodada");
+      }
+      if (participant.status !== PLAYER_STATUS.PLAYING) {
+        throw forbidden("Você não pode mais alterar respostas");
+      }
+      return answerRepository.upsert({
+        roundId,
+        playerSessionId,
+        roundCategoryId,
+        value: value_,
+        normalizedValue,
+      });
     });
 
     const progress = await answerService.progress(round, playerSessionId);

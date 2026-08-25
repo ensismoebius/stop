@@ -1,9 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createScenario, prisma, resetDatabase } from "../helpers/fixtures.js";
 import roomService from "../../src/services/roomService.js";
-import roundService from "../../src/services/roundService.js";
+import roundService, { lockKey } from "../../src/services/roundService.js";
 import answerService from "../../src/services/answerService.js";
-import roundRepository from "../../src/repositories/roundRepository.js";
+import roundRepository, { roundParticipantRepository } from "../../src/repositories/roundRepository.js";
+import gameLock from "../../src/lib/asyncLock.js";
 
 let scenario;
 let players;
@@ -97,6 +98,14 @@ describe("testes criticos (spec 61)", () => {
     const stored = await roundService.get(round.id);
     expect(stored.firstStopperId).not.toBeNull();
     expect([players[0].playerSessionId, players[1].playerSessionId]).toContain(stored.firstStopperId);
+
+    // Quem deu o STOP tambem precisa alcancar um status terminal, nao
+    // ficar parado em SUBMITTED enquanto os demais viram FINISHED.
+    const winnerParticipant = await roundParticipantRepository.find(
+      round.id,
+      stored.firstStopperId,
+    );
+    expect(winnerParticipant.status).toBe("FINISHED");
   });
 
   it("a transicao condicional do STOP so pode ser reivindicada uma vez", async () => {
@@ -291,6 +300,50 @@ describe("testes criticos (spec 61)", () => {
     await roundService.forceStop(round.id);
     await roundService.score(round.id);
     await expect(roundService.score(round.id)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("resposta que cai bem no fechamento da rodada (STOP concorrente) e rejeitada, nunca gravada", async () => {
+    const round = await startedRound();
+    const category = round.categories[0];
+
+    // Segura a mesma trava que requestStop/forceStop/handleTimeout usam,
+    // simulando um fechamento de rodada "por dentro" enquanto um submit
+    // esta parado na fila esperando a secao critica.
+    let releaseHeld;
+    const held = gameLock.run(
+      lockKey(round.id),
+      () => new Promise((resolve) => (releaseHeld = resolve)),
+    );
+
+    const submitPromise = answerService.submit({
+      roundId: round.id,
+      playerSessionId: players[0].playerSessionId,
+      roundCategoryId: category.id,
+      value: `${round.letter}teste`,
+    });
+
+    // Da tempo do submit passar pelas checagens sem trava (round ainda
+    // PLAYING) e ficar enfileirado atras do `held` acima.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Fecha a rodada "por baixo do tapete", como um forceStop concorrente
+    // faria, e so entao libera a trava para o submit seguir.
+    await roundRepository.transitionIfStatus(round.id, "PLAYING", {
+      status: "STOPPED",
+      stoppedAt: new Date(),
+      stopReason: "TEACHER",
+    });
+    releaseHeld();
+    await held;
+
+    await expect(submitPromise).rejects.toMatchObject({ status: 409 });
+
+    const stored = await answerService.listByRound(round.id);
+    const leaked = stored.find(
+      (answer) =>
+        answer.roundCategoryId === category.id && answer.playerSessionId === players[0].playerSessionId,
+    );
+    expect(leaked).toBeUndefined();
   });
 
   it("nao permite reabrir uma rodada finalizada (spec 32)", async () => {

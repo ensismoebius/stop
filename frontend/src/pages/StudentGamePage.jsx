@@ -178,11 +178,13 @@ export function StudentGamePage() {
 
   const handleFullscreenExit = useCallback(() => {
     const socketInstance = socketRef.current;
+    // A eliminacao e por rodada, nunca uma saida da sala (spec 24/26): o
+    // servidor elimina o aluno so daquela rodada, avisa via `playerEliminated`
+    // e o aluno continua na tela do jogo, apto a jogar a proxima rodada.
     if (socketInstance && round && round.status === "PLAYING" && state?.roundStatus === "PLAYING") {
       emitAck(socketInstance, "fullscreenExited", { roundId: round.id });
     }
-    if (entered) leaveRoom();
-  }, [round, state?.roundStatus, entered, leaveRoom]);
+  }, [round, state?.roundStatus]);
 
   const fullscreen = useFullscreen({ onExit: handleFullscreenExit });
 
@@ -190,34 +192,29 @@ export function StudentGamePage() {
     audio.unlock();
     await fullscreen.enter(document.documentElement);
     setEntered(true);
+    // Identificado e pronto para a rodada (spec 7): sem isso o professor so
+    // ve WAITING ate a rodada comecar, mesmo com o aluno ja na tela do jogo.
+    const socketInstance = socketRef.current;
+    if (socketInstance) emitAck(socketInstance, "ready", {});
   }, [audio, fullscreen]);
 
-  // Sair da aba/janela ou trocar de app tambem devolve para a entrada
-  // (spec 24/25): a telemetria continua registrada, mas agora e tambem
-  // motivo de saida — antes so avisava o professor, sem consequencia local.
+  // `blur`/`visibilitychange` sao apenas telemetria (spec 25): podem
+  // acontecer por motivos legitimos (notificacao, troca rapida de app), e a
+  // regra de eliminacao deve se basear so na saida do fullscreen. Nunca
+  // devolvem o aluno para a entrada.
   useEffect(() => {
     if (!entered) return undefined;
     const report = (type) =>
       socket?.emit("telemetry", { type, roundId: round?.id, payload: { at: Date.now() } });
-    const onVisibility = () => {
-      if (document.hidden) {
-        report("VISIBILITY_HIDDEN");
-        leaveRoom();
-      } else {
-        report("VISIBILITY_VISIBLE");
-      }
-    };
-    const onBlur = () => {
-      report("WINDOW_BLUR");
-      leaveRoom();
-    };
+    const onVisibility = () => report(document.hidden ? "VISIBILITY_HIDDEN" : "VISIBILITY_VISIBLE");
+    const onBlur = () => report("WINDOW_BLUR");
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", onBlur);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("blur", onBlur);
     };
-  }, [entered, leaveRoom, socket, round?.id]);
+  }, [entered, socket, round?.id]);
 
   // ------------------------------------------------------------------
   // Respostas: estado local + sincronizacao controlada (spec 48).
@@ -281,19 +278,25 @@ export function StudentGamePage() {
     requiredCategories.length > 0 &&
     requiredCategories.every((category) => (answers[category.id] ?? "").trim().length > 0);
 
+  const [stopping, setStopping] = useState(false);
   const handleStop = useCallback(async () => {
     const socketInstance = socketRef.current;
-    if (!socketInstance || !round) return;
-    // Garante que tudo foi enviado antes de reivindicar o STOP.
-    await Promise.all(categories.map((category) => commit(category.id)));
-    const response = await emitAck(socketInstance, "requestStop", { roundId: round.id });
-    if (response.ok) {
-      setFeedback({ kind: "success", message: "Você deu STOP primeiro!" });
-    } else {
-      setFeedback({ kind: "error", message: response.error?.message ?? "STOP recusado" });
+    if (!socketInstance || !round || stopping) return;
+    setStopping(true);
+    try {
+      // Garante que tudo foi enviado antes de reivindicar o STOP.
+      await Promise.all(categories.map((category) => commit(category.id)));
+      const response = await emitAck(socketInstance, "requestStop", { roundId: round.id });
+      if (response.ok) {
+        setFeedback({ kind: "success", message: "Você deu STOP primeiro!" });
+      } else {
+        setFeedback({ kind: "error", message: response.error?.message ?? "STOP recusado" });
+      }
+      refresh();
+    } finally {
+      setStopping(false);
     }
-    refresh();
-  }, [round, categories, commit, refresh]);
+  }, [round, categories, commit, refresh, stopping]);
 
   if (!player) return null;
 
@@ -412,14 +415,7 @@ export function StudentGamePage() {
           <button type="button" className="btn btn--ghost" onClick={audio.toggle}>
             {audio.enabled ? "🔊 Som ligado" : "🔇 Som desligado"}
           </button>
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={() => {
-              clear();
-              navigate("/", { replace: true });
-            }}
-          >
+          <button type="button" className="btn btn--ghost" onClick={leaveRoom}>
             Sair
           </button>
         </div>
@@ -427,7 +423,7 @@ export function StudentGamePage() {
 
       <div className="stopbar">
         <StopButton
-          disabled={!canStop}
+          disabled={!canStop || stopping}
           filled={filledCount}
           total={categories.length}
           onClick={handleStop}

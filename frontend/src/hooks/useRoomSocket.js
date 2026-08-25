@@ -60,7 +60,6 @@ export function useRoomSocket({ roomCode, role, playerToken, adminToken, handler
     const named = [
       "playerJoined",
       "playerLeft",
-      "studentIdentified",
       "roundCreated",
       "letterSelected",
       "roundStarted",

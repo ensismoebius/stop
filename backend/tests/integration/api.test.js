@@ -221,4 +221,36 @@ describe("API REST (spec 30 e 34)", () => {
     const lista = await auth(request(app).get(`/api/students?classId=${turma.body.id}`));
     expect(lista.body).toHaveLength(3);
   });
+
+  it("bloqueia a remoção de turma e aluno com histórico de partidas (spec 44)", async () => {
+    // O aluno entra na sala: isso cria a PlayerSession que liga o aluno,
+    // via a partida, ao histórico daquela turma.
+    const join = await request(app)
+      .post(`/api/rooms/${scenario.room.code}/join`)
+      .send({ registrationNumber: scenario.students[0].registrationNumber });
+    expect(join.status).toBe(201);
+
+    const turmaDelete = await auth(request(app).delete(`/api/classes/${scenario.turma.id}`));
+    expect(turmaDelete.status).toBe(409);
+
+    const alunoDelete = await auth(request(app).delete(`/api/students/${scenario.students[0].id}`));
+    expect(alunoDelete.status).toBe(409);
+
+    // Turma e aluno sem nenhuma partida vinculada continuam removíveis normalmente.
+    const turmaLivre = await auth(request(app).post("/api/classes")).send({
+      name: "Sem uso",
+      code: "SEM-USO",
+    });
+    const alunoLivre = await auth(request(app).post("/api/students")).send({
+      registrationNumber: "202600009",
+      name: "Aluno Sem Uso",
+      classIds: [turmaLivre.body.id],
+    });
+
+    const remocaoAluno = await auth(request(app).delete(`/api/students/${alunoLivre.body.id}`));
+    expect(remocaoAluno.status).toBe(204);
+
+    const remocaoTurma = await auth(request(app).delete(`/api/classes/${turmaLivre.body.id}`));
+    expect(remocaoTurma.status).toBe(204);
+  });
 });

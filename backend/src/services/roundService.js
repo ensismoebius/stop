@@ -17,7 +17,7 @@ import { clearRoundTimer, scheduleRoundEnd } from "../game/timers.js";
 import * as realtime from "../sockets/realtime.js";
 import viewService from "./viewService.js";
 
-const lockKey = (roundId) => `round:${roundId}`;
+export const lockKey = (roundId) => `round:${roundId}`;
 
 async function resolveRoom(gameId) {
   const rooms = await roomRepository.listByGame(gameId);
@@ -53,20 +53,17 @@ async function broadcastState(roomCode) {
     realtime.toScreens(roomCode, "roomState", publicView);
 
     // Cada aluno recebe apenas o proprio estado (spec 49): mesma rodada,
-    // nunca as respostas de outro colega.
-    await Promise.all(
-      teacher.players.map(async (player) => {
-        try {
-          const playerState = await viewService.playerState(player.playerSessionId);
-          realtime.toPlayer(player.playerSessionId, "roomState", playerState);
-        } catch (error) {
-          logger.warn(
-            `Falha ao atualizar estado do aluno ${player.playerSessionId}`,
-            error?.message ?? error,
-          );
-        }
-      }),
-    );
+    // nunca as respostas de outro colega. Carregado em lote (uma consulta
+    // por tabela para a sala inteira) em vez de uma rodada de queries por
+    // aluno conectado.
+    try {
+      const playerStates = await viewService.playerStatesForRoom(roomCode);
+      for (const [playerSessionId, playerState] of playerStates) {
+        realtime.toPlayer(playerSessionId, "roomState", playerState);
+      }
+    } catch (error) {
+      logger.warn(`Falha ao atualizar estado dos alunos da sala ${roomCode}`, error?.message ?? error);
+    }
   } catch (error) {
     logger.warn("Falha ao difundir estado da sala", error?.message ?? error);
   }
@@ -96,28 +93,48 @@ export const roundService = {
     }
 
     const roundNumber = (await gameRepository.lastRoundNumber(gameId)) + 1;
-    const round = await roundRepository.create({
-      gameId,
-      roundNumber,
-      categorySetId,
-      themeName: themeName ?? set.name,
-      letter: "",
-      durationSeconds: durationSeconds ?? env.defaultRoundDuration,
-      status: ROUND_STATUS.CREATED,
-    });
-
-    await roundRepository.createCategories(round.id, categories);
-
-    // Novo round: eliminacoes anteriores nao valem mais (spec 27).
     const room = await resolveRoom(gameId);
-    await prisma.playerSession.updateMany({
-      where: { roomId: room.id, status: { in: ["PLAYING", "SUBMITTED", "ELIMINATED", "FINISHED"] } },
-      data: { status: PLAYER_STATUS.READY },
-    });
 
-    await prisma.game.updateMany({
-      where: { id: gameId, status: "CREATED" },
-      data: { status: "ACTIVE", startedAt: new Date() },
+    // Round + categorias + reset dos jogadores + status do jogo formam um
+    // unico passo logico: uma falha no meio deixaria uma rodada sem
+    // categorias (que passaria a aceitar STOP imediato, spec 11) ou o jogo
+    // "ACTIVE" com nenhuma rodada de fato criada.
+    const round = await prisma.$transaction(async (tx) => {
+      const created = await tx.round.create({
+        data: {
+          gameId,
+          roundNumber,
+          categorySetId,
+          themeName: themeName ?? set.name,
+          letter: "",
+          durationSeconds: durationSeconds ?? env.defaultRoundDuration,
+          status: ROUND_STATUS.CREATED,
+        },
+      });
+
+      await tx.roundCategory.createMany({
+        data: categories.map((category, index) => ({
+          roundId: created.id,
+          categoryId: category.categoryId ?? category.id ?? null,
+          name: category.name,
+          description: category.description ?? null,
+          required: category.required ?? true,
+          order: category.order ?? index,
+        })),
+      });
+
+      // Novo round: eliminacoes anteriores nao valem mais (spec 27).
+      await tx.playerSession.updateMany({
+        where: { roomId: room.id, status: { in: ["PLAYING", "SUBMITTED", "ELIMINATED", "FINISHED"] } },
+        data: { status: PLAYER_STATUS.READY },
+      });
+
+      await tx.game.updateMany({
+        where: { id: gameId, status: "CREATED" },
+        data: { status: "ACTIVE", startedAt: new Date() },
+      });
+
+      return created;
     });
 
     const created = await getRoundOrFail(round.id);
@@ -330,9 +347,13 @@ export const roundService = {
       });
     }
 
-    await roundParticipantRepository.updateManyStatus(round.id, [PLAYER_STATUS.PLAYING], {
-      status: PLAYER_STATUS.FINISHED,
-    });
+    // Inclui SUBMITTED: quem deu STOP ja foi marcado assim antes de chegar
+    // aqui e tambem precisa alcancar o status terminal FINISHED.
+    await roundParticipantRepository.updateManyStatus(
+      round.id,
+      [PLAYER_STATUS.PLAYING, PLAYER_STATUS.SUBMITTED],
+      { status: PLAYER_STATUS.FINISHED },
+    );
     const room = await resolveRoom(round.gameId);
     await prisma.playerSession.updateMany({
       where: { roomId: room.id, status: { in: [PLAYER_STATUS.PLAYING, PLAYER_STATUS.SUBMITTED] } },

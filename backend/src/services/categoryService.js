@@ -70,6 +70,10 @@ export const categoryService = {
 
   async updateCategory(id, data) {
     await categoryService.getCategory(id);
+    if (data.categorySetId) {
+      const set = await categorySetRepository.findById(data.categorySetId);
+      if (!set) throw badRequest("Conjunto de categorias inexistente");
+    }
     return categoryRepository.update(id, data);
   },
 

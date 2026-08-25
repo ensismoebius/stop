@@ -26,6 +26,17 @@ export function errorHandler(error, _req, res, _next) {
       .status(404)
       .json({ error: { code: "NOT_FOUND", message: "Recurso não encontrado" } });
   }
+  // Violacao de FK: normalmente uma tentativa de remover algo que ainda
+  // tem partidas/sessoes vinculadas (spec 44 — historico nao pode sumir junto).
+  if (error?.code === "P2003") {
+    return res.status(409).json({
+      error: {
+        code: "CONFLICT",
+        message: "Não é possível remover: existem registros vinculados (partidas ou participações).",
+        details: error.meta?.field_name ?? null,
+      },
+    });
+  }
   if (error?.code === "INVALID_ROUND_TRANSITION") {
     return res.status(409).json({ error: { code: error.code, message: error.message } });
   }

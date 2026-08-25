@@ -32,6 +32,25 @@ function list(name, fallback) {
 const nodeEnv = process.env.NODE_ENV ?? "development";
 const isProduction = nodeEnv === "production";
 
+// Valores padrao de desenvolvimento (inclusive os defaults do docker-compose).
+// Em producao eles nunca devem chegar aqui sem terem sido trocados: um
+// segredo ou senha de admin previsivel em producao e uma porta aberta.
+const KNOWN_PLACEHOLDERS = {
+  SESSION_SECRET: new Set(["change-me", "dev-session-secret-change-me"]),
+  ADMIN_PASSWORD: new Set(["stop-admin"]),
+};
+
+function productionSecret(name, devFallback) {
+  if (!isProduction) return process.env[name] ?? devFallback;
+  const value = required(name);
+  if (KNOWN_PLACEHOLDERS[name]?.has(value)) {
+    throw new Error(
+      `Variável de ambiente ${name} está usando um valor padrão de desenvolvimento em produção. Defina um valor real e único.`,
+    );
+  }
+  return value;
+}
+
 export const env = {
   nodeEnv,
   isProduction,
@@ -39,9 +58,7 @@ export const env = {
   port: int("PORT", 3000),
   host: process.env.HOST ?? "0.0.0.0",
   databaseUrl: process.env.DATABASE_URL ?? "",
-  sessionSecret: isProduction
-    ? required("SESSION_SECRET")
-    : process.env.SESSION_SECRET ?? "dev-session-secret-change-me",
+  sessionSecret: productionSecret("SESSION_SECRET", "dev-session-secret-change-me"),
   adminTokenTtl: process.env.ADMIN_TOKEN_TTL ?? "12h",
   playerTokenTtl: process.env.PLAYER_TOKEN_TTL ?? "12h",
   // Origens permitidas. Em rede local aceitamos qualquer origem por padrao,
@@ -52,7 +69,7 @@ export const env = {
   letterPool: process.env.LETTER_POOL ?? "ABCDEFGHIJLMNOPRSTUV",
   bootstrapAdmin: {
     email: process.env.ADMIN_EMAIL ?? "professor@stop.local",
-    password: process.env.ADMIN_PASSWORD ?? "stop-admin",
+    password: productionSecret("ADMIN_PASSWORD", "stop-admin"),
     name: process.env.ADMIN_NAME ?? "Professor",
   },
   rateLimit: {

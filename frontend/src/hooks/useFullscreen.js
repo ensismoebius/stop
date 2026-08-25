@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function currentElement() {
   return (
@@ -40,12 +40,19 @@ export function useFullscreen({ onExit } = {}) {
       ),
   );
 
+  // `onExit` costuma ser um novo `useCallback` a cada mudanca de estado da
+  // rodada no chamador; guardar em ref evita reassinar os listeners do
+  // documento (e recriar a closure de `handleChange`) a cada uma dessas
+  // mudancas — o efeito abaixo so precisa rodar uma vez.
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
+
   useEffect(() => {
     const handleChange = () => {
       const active = Boolean(currentElement());
       setIsFullscreen((previous) => {
         // Transicao de "dentro" para "fora" e o que importa (spec 24).
-        if (previous && !active && typeof onExit === "function") onExit();
+        if (previous && !active && typeof onExitRef.current === "function") onExitRef.current();
         return active;
       });
     };
@@ -55,7 +62,7 @@ export function useFullscreen({ onExit } = {}) {
     return () => {
       for (const event of events) document.removeEventListener(event, handleChange);
     };
-  }, [onExit]);
+  }, []);
 
   const enter = useCallback((element) => requestOn(element), []);
 

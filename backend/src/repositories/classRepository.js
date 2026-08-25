@@ -15,6 +15,8 @@ export const classRepository = {
 
   findByCode: (code) => prisma.class.findUnique({ where: { code } }),
 
+  findByIds: (ids) => prisma.class.findMany({ where: { id: { in: ids } } }),
+
   create: (data) => prisma.class.create({ data }),
 
   update: (id, data) => prisma.class.update({ where: { id }, data }),

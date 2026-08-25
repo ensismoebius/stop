@@ -15,6 +15,15 @@ import { notFound } from "../lib/errors.js";
  *  - tela publica: nada de dados privados (spec 4.3).
  */
 
+const REVEALED_STATUSES = ["READY", "STARTING", "PLAYING", "STOPPED", "CORRECTION", "SCORED", "FINISHED"];
+
+/** Monta o round como o aluno deve ve-lo: letra oculta antes do sorteio. */
+function roundForPlayer(round) {
+  const summary = roundSummary(round);
+  const revealed = summary && REVEALED_STATUSES.includes(summary.status);
+  return revealed ? summary : summary ? { ...summary, letter: null } : null;
+}
+
 /** A letra so e revelada depois de sorteada. */
 function roundSummary(round) {
   if (!round) return null;
@@ -133,6 +142,60 @@ export const viewService = {
     };
   },
 
+  /**
+   * Mesmo formato de `playerState`, mas para todos os jogadores da sala de
+   * uma vez (usado no broadcast apos cada mudanca de rodada). Em vez de
+   * repetir a consulta da rodada e buscar participante/respostas aluno por
+   * aluno — o padrao N+1 que `playerState` tem ao ser chamado em loop —,
+   * carrega a sala, os participantes e as respostas em uma consulta cada
+   * e monta o estado de cada aluno em memoria (spec 49).
+   */
+  async playerStatesForRoom(roomCode) {
+    const { room, round } = await viewService.loadRoomContext(roomCode);
+    const participants = round ? await roundParticipantRepository.listByRound(round.id) : [];
+    const participantBySession = new Map(participants.map((p) => [p.playerSessionId, p]));
+
+    const answersByPlayer = new Map();
+    if (round) {
+      for (const answer of await answerRepository.listByRound(round.id)) {
+        const list = answersByPlayer.get(answer.playerSessionId) ?? [];
+        list.push(answer);
+        answersByPlayer.set(answer.playerSessionId, list);
+      }
+    }
+
+    // A letra e o tema so aparecem quando o servidor autoriza — mesma
+    // regra para todos os alunos da sala nesse instante do broadcast.
+    const roundForPlayers = roundForPlayer(round);
+    const serverTime = new Date().toISOString();
+
+    return new Map(
+      room.sessions.map((session) => {
+        const participant = participantBySession.get(session.id);
+        const answers = answersByPlayer.get(session.id) ?? [];
+        return [
+          session.id,
+          {
+            playerSessionId: session.id,
+            student: session.student,
+            room: { code: room.code, status: room.status },
+            game: { id: room.game.id, name: room.game.name },
+            roomStatus: session.status,
+            roundStatus: participant?.status ?? null,
+            round: roundForPlayers,
+            serverTime,
+            answers: answers.map((answer) => ({
+              roundCategoryId: answer.roundCategoryId,
+              value: answer.value,
+            })),
+            canAnswer:
+              Boolean(round) && round.status === "PLAYING" && participant?.status === "PLAYING",
+          },
+        ];
+      }),
+    );
+  },
+
   /** Estado do aluno: apenas a propria rodada e as proprias respostas. */
   async playerState(playerSessionId) {
     const session = await prisma.playerSession.findUnique({
@@ -150,10 +213,6 @@ export const viewService = {
       : null;
     const answers = round ? await answerRepository.listByPlayer(round.id, session.id) : [];
 
-    const summary = roundSummary(round);
-    // A letra e o tema so aparecem quando o servidor autoriza.
-    const revealed = summary && ["READY", "STARTING", "PLAYING", "STOPPED", "CORRECTION", "SCORED", "FINISHED"].includes(summary.status);
-
     return {
       playerSessionId: session.id,
       student: session.student,
@@ -161,7 +220,7 @@ export const viewService = {
       game: { id: session.room.game.id, name: session.room.game.name },
       roomStatus: session.status,
       roundStatus: participant?.status ?? null,
-      round: revealed ? summary : summary ? { ...summary, letter: null } : null,
+      round: roundForPlayer(round),
       serverTime: new Date().toISOString(),
       answers: answers.map((answer) => ({
         roundCategoryId: answer.roundCategoryId,
