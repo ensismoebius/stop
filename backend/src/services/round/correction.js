@@ -90,6 +90,12 @@ export async function openCorrection(roundId, { skipLock = false } = {}) {
     const updated = await getRoundOrFail(roundId);
     const room = await resolveRoom(round.gameId);
     realtime.toRoom(room.code, "correctionStarted", { roundId, status: updated.status });
+    // Sem isso o `round.status` que o professor/aluno/tela publica tem em
+    // cache local nunca avanca para CORRECTION: `correctionStarted` sozinho
+    // so aciona o carregamento da grade (loadGrid no professor), nao
+    // atualiza o `roomState` que os tres tipos de cliente guardam — o
+    // botao "Pontuar rodada" (gated em round.status) nunca apareceria.
+    await broadcastState(room.code);
     return updated;
   };
 
