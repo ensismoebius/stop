@@ -3,13 +3,19 @@ import { useCallback, useRef, useState } from "react";
 const PRESET_COUNT = 24;
 const PRESET_AVATARS = Array.from(
   { length: PRESET_COUNT },
-  (_, i) => `/avatars/avatar-${String(i + 1).padStart(2, "0")}.svg`,
+  (_, idx) => `/avatars/avatar-${String(idx + 1).padStart(2, "0")}.svg`,
 );
 
 const PHOTO_SIZE = 256;
 const PHOTO_QUALITY = 0.7;
 
-/** Redimensiona a foto (recorte central quadrado) para nao pesar no banco. */
+/**
+ * Resize a captured photo (centre-crop to square) so it does not bloat
+ * the database. Returns a base-64 JPEG data URL.
+ *
+ * @param {File} file
+ * @returns {Promise<string>}
+ */
 function resizePhoto(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -19,13 +25,13 @@ function resizePhoto(file) {
       img.onerror = () => reject(new Error("Não foi possível carregar a foto"));
       img.onload = () => {
         const side = Math.min(img.width, img.height);
-        const sx = (img.width - side) / 2;
-        const sy = (img.height - side) / 2;
+        const sourceX = (img.width - side) / 2;
+        const sourceY = (img.height - side) / 2;
         const canvas = document.createElement("canvas");
         canvas.width = PHOTO_SIZE;
         canvas.height = PHOTO_SIZE;
         const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, PHOTO_SIZE, PHOTO_SIZE);
+        ctx.drawImage(img, sourceX, sourceY, side, side, 0, 0, PHOTO_SIZE, PHOTO_SIZE);
         resolve(canvas.toDataURL("image/jpeg", PHOTO_QUALITY));
       };
       img.src = reader.result;
@@ -35,8 +41,11 @@ function resizePhoto(file) {
 }
 
 /**
- * Escolha de avatar do aluno (spec 6): uma foto tirada na hora ou um dos
- * avatares prontos. Opcional — o aluno pode seguir sem escolher nada.
+ * Avatar picker for the student (spec 6): take a photo on the spot or
+ * choose one of the preset avatars. Optional — the student can proceed
+ * without picking anything.
+ *
+ * @param {{ value: string | null, onChange: (url: string | null) => void }} props
  */
 export function AvatarPicker({ value, onChange }) {
   const [error, setError] = useState(null);
@@ -92,18 +101,30 @@ export function AvatarPicker({ value, onChange }) {
       {error ? <p className="small" style={{ color: "var(--red)" }}>{error}</p> : null}
 
       <span className="small muted">Ou escolha um avatar:</span>
-      <div className="avatar-picker__grid">
-        {PRESET_AVATARS.map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            className={`avatar-picker__option${value === preset ? " avatar-picker__option--selected" : ""}`}
-            onClick={() => onChange(preset)}
-          >
-            <img src={preset} alt="" />
-          </button>
-        ))}
-      </div>
+      <AvatarGrid avatars={PRESET_AVATARS} selected={value} onSelect={onChange} />
+    </div>
+  );
+}
+
+/**
+ * Grid of preset avatar buttons. Extracted to keep AvatarPicker under
+ * the function-length threshold.
+ *
+ * @param {{ avatars: string[], selected: string | null, onSelect: (url: string) => void }} props
+ */
+function AvatarGrid({ avatars, selected, onSelect }) {
+  return (
+    <div className="avatar-picker__grid">
+      {avatars.map((preset) => (
+        <button
+          key={preset}
+          type="button"
+          className={`avatar-picker__option${selected === preset ? " avatar-picker__option--selected" : ""}`}
+          onClick={() => onSelect(preset)}
+        >
+          <img src={preset} alt="" />
+        </button>
+      ))}
     </div>
   );
 }

@@ -18,8 +18,11 @@ import EmojiBursts from "../components/common/EmojiBursts.jsx";
 import StopSplash from "../components/common/StopSplash.jsx";
 
 /**
- * Tela publica para TV/projetor (spec 22).
- * Nao exibe nenhum dado privado dos alunos.
+ * Public screen page for TV/projector (spec 22).
+ * Shows the game state to the classroom without revealing any
+ * private student data.
+ *
+ * @returns {JSX.Element}
  */
 export function PublicScreenPage() {
   const { code } = useParams();

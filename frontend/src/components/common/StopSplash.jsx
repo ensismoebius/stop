@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from "react";
 const SPLASH_DURATION = 2500;
 
 /**
- * Tela cheia dramatica de "STOP" que aparece no aluno e na TV ao mesmo tempo
- * quando alguem aperta STOP. Anima spring-bounce gigante, flash vermelho,
- * screen shake e confetes coloridos.
+ * Full-screen dramatic "STOP" overlay shown on student and TV screens
+ * simultaneously when someone presses STOP. Animates a spring-bounce
+ * giant text, red flash, screen shake, and confetti particles.
+ *
+ * @param {{ onDone?: () => void }} props
  */
 export function StopSplash({ onDone }) {
   const [visible, setVisible] = useState(true);
@@ -27,14 +29,14 @@ export function StopSplash({ onDone }) {
       <div className="stop-splash__text-wrap">
         <span className="stop-splash__text">STOP</span>
       </div>
-      {[...Array(18)].map((_, i) => (
+      {[...Array(18)].map((_, idx) => (
         <span
-          key={i}
+          key={idx}
           className="stop-splash__confetti"
           style={{
-            "--x": `${8 + (i * 17) % 84}%`,
-            "--delay": `${(i * 0.07).toFixed(2)}s`,
-            "--hue": `${(i * 37) % 360}`,
+            "--x": `${8 + (idx * 17) % 84}%`,
+            "--delay": `${(idx * 0.07).toFixed(2)}s`,
+            "--hue": `${(idx * 37) % 360}`,
           }}
         />
       ))}

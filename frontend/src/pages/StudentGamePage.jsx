@@ -31,6 +31,12 @@ const STATUS_MESSAGE = {
   FINISHED: { title: "Rodada encerrada", text: "Aguarde o professor iniciar a próxima." },
 };
 
+/**
+ * Student game page: displays categories, answer inputs, the STOP
+ * button, and handles all round lifecycle events via WebSocket.
+ *
+ * @returns {JSX.Element}
+ */
 export function StudentGamePage() {
   const { player, clear } = usePlayer();
   const navigate = useNavigate();

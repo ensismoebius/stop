@@ -3,11 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const STORAGE_KEY = "stop:audio";
 
 /**
- * Efeitos sonoros por estado (spec 23).
+ * Sound cues per game state (spec 23).
  *
- * Os sons sao sintetizados via WebAudio: nao ha arquivos externos e o jogo
- * funciona normalmente com o audio bloqueado ou desligado. A preferencia
- * fica no armazenamento local.
+ * Sounds are synthesized via WebAudio with no external files. The game
+ * works normally even when audio is blocked or muted. User preference
+ * is persisted in localStorage.
  */
 const CUES = {
   START: [
@@ -19,7 +19,7 @@ const CUES = {
     { freq: 880, duration: 0.1 },
     { freq: 1174, duration: 0.18 },
   ],
-  /** Fanfarra do momento em que a letra realmente para de girar na TV. */
+  /** Fanfare when the letter stops spinning on the TV. */
   LETTER_REVEAL: [
     { freq: 659, duration: 0.09, gain: 0.16 },
     { freq: 880, duration: 0.09, gain: 0.16 },
@@ -44,6 +44,12 @@ const CUES = {
   ],
 };
 
+/**
+ * Read audio preference from localStorage, returning defaults when
+ * nothing is stored or parsing fails.
+ *
+ * @returns {{ enabled: boolean, volume: number }}
+ */
 function readPreference() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -62,9 +68,16 @@ try {
   preloadedVoice.preload = "auto";
   preloadedVoice.volume = 1;
 } catch {
-  /* SSR ou browser antigo: ignora */
+  /* SSR or legacy browser: ignore */
 }
 
+/**
+ * Audio hook for the STOP game. Provides synthesized sound cues via
+ * WebAudio, a preloaded voice clip for the STOP moment, and user
+ * preference persistence (mute toggle + volume).
+ *
+ * @returns {{ play: (cue: string) => void, playVoice: () => void, unlock: () => void, enabled: boolean, volume: number, toggle: () => void, setVolume: (v: number) => void }}
+ */
 export function useAudio() {
   const [preference, setPreference] = useState(readPreference);
   const contextRef = useRef(null);
@@ -73,7 +86,7 @@ export function useAudio() {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preference));
     } catch {
-      /* armazenamento indisponivel: segue sem persistir */
+      /* storage unavailable: proceed without persisting */
     }
   }, [preference]);
 
@@ -85,7 +98,7 @@ export function useAudio() {
     return contextRef.current;
   }, []);
 
-  /** Deve ser chamado a partir de um gesto do usuario (spec 23). */
+  /** Must be called from a user gesture (spec 23). */
   const unlock = useCallback(() => {
     const context = ensureContext();
     if (context && context.state === "suspended") context.resume().catch(() => {});
@@ -127,7 +140,7 @@ export function useAudio() {
       preloadedVoice.volume = preference.volume;
       preloadedVoice.play().catch(() => {});
     } catch {
-      /* ignora erro de reproducao */
+      /* ignore playback error */
     }
   }, [preference]);
 

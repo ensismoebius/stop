@@ -324,6 +324,7 @@ export function TeacherDashboardPage() {
     guard(async () => {
       await api.scoreRound(token, round.id);
       await reloadGame();
+      setTab("control");
     });
 
   const nextRound = (payload) =>
