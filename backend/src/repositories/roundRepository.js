@@ -33,6 +33,9 @@ export const roundRepository = {
 
   update: (id, data) => prisma.round.update({ where: { id }, data, include: roundInclude }),
 
+  /** Cascata via schema apaga categorias, participantes, respostas e avaliações. */
+  remove: (id) => prisma.round.delete({ where: { id } }),
+
   /**
    * Transicao condicional e atomica: so aplica se o status atual for
    * exatamente `expectedStatus`. Retorna a quantidade de linhas afetadas.

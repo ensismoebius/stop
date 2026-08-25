@@ -1,8 +1,12 @@
+import prisma from "../lib/prisma.js";
 import gameRepository from "../repositories/gameRepository.js";
 import classRepository from "../repositories/classRepository.js";
-import roundRepository from "../repositories/roundRepository.js";
+import roundRepository, { roundParticipantRepository } from "../repositories/roundRepository.js";
 import viewService from "./viewService.js";
-import { badRequest, notFound } from "../lib/errors.js";
+import { resolveRoom, broadcastState } from "./round/shared.js";
+import * as realtime from "../sockets/realtime.js";
+import logger from "../lib/logger.js";
+import { badRequest, conflict, notFound } from "../lib/errors.js";
 
 export const gameService = {
   list: (filters) => gameRepository.list(filters),
@@ -53,6 +57,48 @@ export const gameService = {
   },
 
   usedLetters: (gameId) => gameRepository.usedLetters(gameId),
+
+  /**
+   * Remove uma rodada do histórico. Só rodadas já concluídas (SCORED ou
+   * FINISHED) podem ser removidas — uma em andamento nunca some debaixo
+   * dos jogadores. Reverte primeiro os pontos que ela tiver gerado (via
+   * `RoundParticipant.roundScore`, que já soma base + bônus da correção
+   * colaborativa) para o ranking não ficar inflado; a exclusão do round em
+   * si cai em cascata sobre categorias/participantes/respostas/avaliações
+   * pelo schema.
+   */
+  async removeRound(gameId, roundId) {
+    const round = await roundRepository.findById(roundId);
+    if (!round || round.gameId !== gameId) throw notFound("Rodada não encontrada");
+    if (!["SCORED", "FINISHED"].includes(round.status)) {
+      throw conflict("Só é possível remover rodadas já concluídas");
+    }
+
+    const participants = await roundParticipantRepository.listByRound(roundId);
+    await prisma.$transaction([
+      ...participants
+        .filter((participant) => participant.roundScore !== 0)
+        .map((participant) =>
+          prisma.score.updateMany({
+            where: { gameId, studentId: participant.playerSession.studentId },
+            data: { total: { decrement: participant.roundScore } },
+          }),
+        ),
+      prisma.round.delete({ where: { id: roundId } }),
+    ]);
+
+    // Best-effort: o ranking pode ter mudado para quem estiver conectado
+    // agora (spec 42/45). Nunca deixa uma falha aqui derrubar a remocao,
+    // que ja foi persistida com sucesso.
+    try {
+      const room = await resolveRoom(gameId);
+      const ranking = await viewService.loadRanking(gameId);
+      realtime.toRoom(room.code, "rankingUpdated", { ranking });
+      await broadcastState(room.code);
+    } catch (error) {
+      logger.warn(`Falha ao difundir estado após remover a rodada ${roundId}`, error?.message ?? error);
+    }
+  },
 };
 
 export default gameService;

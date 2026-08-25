@@ -94,6 +94,7 @@ export function useRoomSocket({ roomCode, role, playerToken, adminToken, handler
       "roundCancelled",
       "nextRound",
       "roomStatusChanged",
+      "emojiReceived",
     ];
     for (const event of named) {
       instance.on(event, (payload) => handlersRef.current?.[event]?.(payload));

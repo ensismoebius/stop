@@ -5,6 +5,7 @@ import useRoomSocket from "../hooks/useRoomSocket.js";
 import { useServerClock, useCountdown } from "../hooks/useServerClock.js";
 import useFullscreen from "../hooks/useFullscreen.js";
 import useAudio from "../hooks/useAudio.js";
+import useEmojiBursts from "../hooks/useEmojiBursts.js";
 import { emitAck } from "../socket/socket.js";
 import api from "../services/api.js";
 import GameHeader from "../components/student/GameHeader.jsx";
@@ -12,7 +13,9 @@ import CategoryList from "../components/student/CategoryList.jsx";
 import AnswerEditor from "../components/student/AnswerEditor.jsx";
 import StopButton from "../components/student/StopButton.jsx";
 import CollaborativeCorrection from "../components/student/CollaborativeCorrection.jsx";
+import EmojiPicker from "../components/student/EmojiPicker.jsx";
 import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
+import EmojiBursts from "../components/common/EmojiBursts.jsx";
 import Alert from "../components/common/Alert.jsx";
 
 const SYNC_DELAY = 450;
@@ -32,6 +35,7 @@ export function StudentGamePage() {
   const navigate = useNavigate();
   const audio = useAudio();
   const { sync, now } = useServerClock();
+  const emojiBursts = useEmojiBursts();
 
   const [answers, setAnswers] = useState({});
   const [currentId, setCurrentId] = useState(null);
@@ -135,8 +139,11 @@ export function StudentGamePage() {
           message: payload?.message ?? "O professor cancelou esta rodada.",
         });
       },
+      // Reacoes em emoji (Kahoot-like): visivel para todo mundo na sala,
+      // inclusive quem mandou — puramente visual, sem estado persistido.
+      emojiReceived: (payload) => emojiBursts.push(payload.emoji),
     }),
-    [applyState, audio],
+    [applyState, audio, emojiBursts],
   );
 
   const { socket, connected, state, setState } = useRoomSocket({
@@ -179,6 +186,7 @@ export function StudentGamePage() {
   const round = state?.round ?? null;
   const categories = round?.categories ?? [];
   const playing = round?.status === "PLAYING" && state?.roundStatus === "PLAYING" && !eliminated;
+  const roundHasStarted = Boolean(round) && !["CREATED", "READY", "STARTING"].includes(round.status);
   const seconds = useCountdown(round?.status === "PLAYING" ? round?.endsAt : null, now);
   // Contagem regressiva sincronizada antes da letra/categorias aparecerem
   // (spec 54) — mesmo mecanismo de relogio do servidor usado no `seconds`
@@ -228,6 +236,21 @@ export function StudentGamePage() {
     const socketInstance = socketRef.current;
     if (socketInstance) emitAck(socketInstance, "ready", {});
   }, [audio, fullscreen]);
+
+  // Sem botao "Entrar na partida": o primeiro toque/tecla do aluno nesta
+  // tela ja conta como o gesto exigido pelo navegador para som e tela
+  // cheia (mesmo padrao "toque em qualquer lugar" do useAutoFullscreen a
+  // nivel de app) e dispara a mesma acao que o botao antigo disparava.
+  useEffect(() => {
+    if (entered) return undefined;
+    if (round?.status !== "CREATED" && round?.status !== "READY") return undefined;
+    const trigger = () => enterGame();
+    const events = ["pointerdown", "keydown"];
+    for (const event of events) document.addEventListener(event, trigger, { once: true });
+    return () => {
+      for (const event of events) document.removeEventListener(event, trigger);
+    };
+  }, [entered, round?.status, enterGame]);
 
   // `blur`/`visibilitychange` sao apenas telemetria (spec 25): podem
   // acontecer por motivos legitimos (notificacao, troca rapida de app), e a
@@ -348,6 +371,11 @@ export function StudentGamePage() {
     [],
   );
 
+  const sendEmoji = useCallback((emoji) => {
+    const socketInstance = socketRef.current;
+    if (socketInstance) emitAck(socketInstance, "sendEmoji", { emoji });
+  }, []);
+
   if (!player) return null;
 
   const message = round ? STATUS_MESSAGE[round.status] : null;
@@ -420,11 +448,6 @@ export function StudentGamePage() {
                     : "—"}
               </span>
             ) : null}
-            {round?.status === "READY" || round?.status === "CREATED" ? (
-              <button type="button" className="btn btn--primary btn--block" onClick={enterGame}>
-                {entered ? "Pronto!" : "Entrar na partida"}
-              </button>
-            ) : null}
           </div>
         ) : null}
 
@@ -450,7 +473,11 @@ export function StudentGamePage() {
           />
         ) : null}
 
-        {categories.length > 0 ? (
+        {/* As categorias so aparecem quando a rodada de fato comeca a valer
+            (spec): antes disso (CREATED/READY/STARTING) nao ha nada a
+            responder ainda, entao mostrar a lista so antecipa/spoila o
+            conteudo sem utilidade. */}
+        {roundHasStarted && categories.length > 0 ? (
           <CategoryList
             categories={categories}
             answers={answers}
@@ -460,7 +487,8 @@ export function StudentGamePage() {
           />
         ) : null}
 
-        {ranking.length > 0 && !playing ? (
+        {ranking.length > 0 &&
+        (round?.status === "SCORED" || round?.status === "FINISHED" || !round) ? (
           <section className="card">
             <h2>Ranking</h2>
             <ol className="ranking__list">
@@ -480,6 +508,8 @@ export function StudentGamePage() {
           </section>
         ) : null}
 
+        <EmojiPicker onSend={sendEmoji} />
+
         <div className="row small">
           <button type="button" className="btn btn--ghost" onClick={audio.toggle}>
             {audio.enabled ? "🔊 Som ligado" : "🔇 Som desligado"}
@@ -498,6 +528,8 @@ export function StudentGamePage() {
           onClick={handleStop}
         />
       </div>
+
+      <EmojiBursts items={emojiBursts.items} />
     </div>
   );
 }

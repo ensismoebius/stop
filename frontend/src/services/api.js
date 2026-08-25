@@ -78,6 +78,8 @@ export const api = {
   gameScores: (t, id) => request(`/games/${id}/scores`, { adminToken: t }),
   gameStatistics: (t, id) => request(`/games/${id}/statistics`, { adminToken: t }),
   gameHistory: (t, id) => request(`/games/${id}/history`, { adminToken: t }),
+  deleteRound: (t, gameId, roundId) =>
+    request(`/games/${gameId}/rounds/${roundId}`, { method: "DELETE", adminToken: t }),
   usedLetters: (t, id) => request(`/games/${id}/letters`, { adminToken: t }),
 
   // Rodadas

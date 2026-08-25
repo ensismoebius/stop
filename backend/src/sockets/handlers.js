@@ -9,6 +9,7 @@ import {
   socketTelemetrySchema,
   socketIdentifySchema,
   socketReviewSchema,
+  socketEmojiSchema,
 } from "../validators/schemas.js";
 import { authenticateJoin } from "./socketAuth.js";
 import * as realtime from "./realtime.js";
@@ -129,6 +130,12 @@ async function handleDisconnect(socket, reason) {
   }
 }
 
+// Cooldown por sessao para a reacao em emoji: nao persiste em banco (e
+// puramente visual/efemero), so precisa evitar que um aluno consiga
+// inundar a sala de eventos.
+const EMOJI_COOLDOWN_MS = 800;
+const lastEmojiAt = new Map();
+
 export function registerHandlers(io, socket) {
   /** Registra um evento validado no socket corrente. */
   const on = (event, schema, fn) => socket.on(event, wrap(socket, schema, fn));
@@ -145,6 +152,26 @@ export function registerHandlers(io, socket) {
     await playerSessionRepository.update(context.session.id, { status: "READY" });
     await roundService.broadcastState(context.room.code);
     return { status: "READY" };
+  });
+
+  /**
+   * Reacao em emoji: efemera, nunca gravada no banco. Visivel para toda a
+   * sala (colegas, professor e tela publica) — nao carrega o nome do
+   * aluno no payload, so o emoji, para nao expor identidade na tela
+   * publica (mesma regra de privacidade do resto da tela, spec 4.3).
+   *
+   * O cooldown falha em silencio (`sent: false`, sem lancar erro): e so um
+   * limite tecnico contra spam de rede, nao algo que o aluno precise ver
+   * como aviso/erro na tela.
+   */
+  on("sendEmoji", socketEmojiSchema, async (client, data) => {
+    const context = requirePlayer(client);
+    const now = Date.now();
+    const last = lastEmojiAt.get(context.session.id) ?? 0;
+    if (now - last < EMOJI_COOLDOWN_MS) return { sent: false };
+    lastEmojiAt.set(context.session.id, now);
+    realtime.toRoom(context.room.code, "emojiReceived", { emoji: data.emoji });
+    return { sent: true };
   });
 
   const submitAnswer = async (client, data) => {

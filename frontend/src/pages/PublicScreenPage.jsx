@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import useRoomSocket from "../hooks/useRoomSocket.js";
 import { useCountdown, useServerClock } from "../hooks/useServerClock.js";
 import useAudio from "../hooks/useAudio.js";
+import useEmojiBursts from "../hooks/useEmojiBursts.js";
 import GameTitle from "../components/public/GameTitle.jsx";
 import ThemeDisplay from "../components/public/ThemeDisplay.jsx";
 import LetterAnimation from "../components/public/LetterAnimation.jsx";
@@ -13,6 +14,7 @@ import Ranking from "../components/public/Ranking.jsx";
 import Field from "../components/common/Field.jsx";
 import api from "../services/api.js";
 import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
+import EmojiBursts from "../components/common/EmojiBursts.jsx";
 
 /**
  * Tela publica para TV/projetor (spec 22).
@@ -25,6 +27,7 @@ export function PublicScreenPage() {
   const audio = useAudio();
   const { sync, now } = useServerClock();
   const [collabProgress, setCollabProgress] = useState(null);
+  const emojiBursts = useEmojiBursts();
 
   const handlers = useMemo(
     () => ({
@@ -41,8 +44,9 @@ export function PublicScreenPage() {
       collaborativeCorrectionStarted: (payload) => setCollabProgress(payload),
       collaborativeCorrectionProgress: (payload) => setCollabProgress(payload),
       collaborativeCorrectionFinished: () => setCollabProgress(null),
+      emojiReceived: (payload) => emojiBursts.push(payload.emoji),
     }),
-    [audio, sync],
+    [audio, sync, emojiBursts],
   );
 
   const { connected, state } = useRoomSocket({
@@ -92,9 +96,14 @@ export function PublicScreenPage() {
   }, [view?.serverTime, sync]);
 
   const round = view?.round ?? null;
-  // A partida so "comeca" de fato quando a primeira rodada e criada (o
-  // backend vira game.status para ACTIVE nesse momento). Antes disso, o QR
-  // Code grande e o unico motivo da tela existir: ninguem entrou ainda.
+  // O QR Code grande e o motivo da tela existir enquanto o professor ainda
+  // esta esperando os alunos entrarem: sem rodada, ou com a rodada criada
+  // mas a letra ainda oculta (CREATED/READY — o professor pode estar so
+  // sorteando a letra com a sala ainda enchendo). So encolhe quando a
+  // rodada de fato comeca a revelar a letra (STARTING em diante) — nao
+  // basta o jogo ter saido de CREATED, que acontece assim que a primeira
+  // rodada e criada, bem antes de alguem entrar.
+  const waitingForPlayers = !round || round.status === "CREATED" || round.status === "READY";
   const gameStarted = Boolean(view?.game?.status) && view.game.status !== "CREATED";
   const playing = round?.status === "PLAYING";
   // Ranking so na tela publica no momento certo (spec de drama): logo apos
@@ -151,7 +160,7 @@ export function PublicScreenPage() {
       <GameTitle name={view?.game?.name ?? "Partida"} roomCode={code} />
 
       <main className="screen__main">
-        {!gameStarted ? (
+        {waitingForPlayers ? (
           <div className="screen__lobby">
             {qrCode?.dataUrl ? (
               <img
@@ -206,7 +215,7 @@ export function PublicScreenPage() {
         {showRanking ? <Ranking entries={view?.ranking ?? []} /> : null}
         <div className="spread small muted">
           <span className="row screen__join">
-            {gameStarted && qrCode?.dataUrl ? (
+            {!waitingForPlayers && qrCode?.dataUrl ? (
               <img className="screen__qr" src={qrCode.dataUrl} alt={`QR Code de entrada da sala ${code}`} />
             ) : null}
             <span>Acesse: /join/{code}</span>
@@ -219,6 +228,8 @@ export function PublicScreenPage() {
           </span>
         </div>
       </footer>
+
+      <EmojiBursts items={emojiBursts.items} />
     </div>
   );
 }

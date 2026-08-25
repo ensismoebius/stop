@@ -3,6 +3,7 @@ import api from "../services/api.js";
 import { useAuth } from "../state/AuthContext.jsx";
 import useRoomSocket from "../hooks/useRoomSocket.js";
 import { useCountdown, useServerClock } from "../hooks/useServerClock.js";
+import useEmojiBursts from "../hooks/useEmojiBursts.js";
 import TeacherLoginPage from "./TeacherLoginPage.jsx";
 import RoomControl from "../components/teacher/RoomControl.jsx";
 import RoundControl from "../components/teacher/RoundControl.jsx";
@@ -12,13 +13,16 @@ import GroupedCorrectionPanel from "../components/teacher/GroupedCorrectionPanel
 import RankingPanel from "../components/teacher/RankingPanel.jsx";
 import StatisticsPanel from "../components/teacher/StatisticsPanel.jsx";
 import ConfigPanel from "../components/teacher/ConfigPanel.jsx";
+import CategorySetsPanel from "../components/teacher/CategorySetsPanel.jsx";
 import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
+import EmojiBursts from "../components/common/EmojiBursts.jsx";
 import Alert from "../components/common/Alert.jsx";
 
 const TABS = [
   { key: "control", label: "Controle da partida" },
   { key: "correction", label: "Correção" },
   { key: "config", label: "Configuração" },
+  { key: "categories", label: "Categorias" },
 ];
 
 const GAME_KEY = "stop:teacher:game";
@@ -26,6 +30,7 @@ const GAME_KEY = "stop:teacher:game";
 export function TeacherDashboardPage() {
   const { token, authenticated, checking, teacher, logout } = useAuth();
   const { sync, now } = useServerClock();
+  const emojiBursts = useEmojiBursts();
 
   // O painel do professor nunca fica em tela cheia (o professor precisa
   // alternar entre janelas/abas livremente) — sai se algo deixou o
@@ -204,8 +209,9 @@ export function TeacherDashboardPage() {
         setTab("control");
         reloadGame();
       },
+      emojiReceived: (payload) => emojiBursts.push(payload.emoji),
     }),
-    [loadGrid, reloadGame, sync],
+    [loadGrid, reloadGame, sync, emojiBursts],
   );
 
   const { connected, state } = useRoomSocket({
@@ -326,6 +332,18 @@ export function TeacherDashboardPage() {
       setGrid(null);
       setGroupedGrid(null);
       setTab("control");
+      await reloadGame();
+    });
+
+  const deleteRound = (roundId) =>
+    guard(async () => {
+      await api.deleteRound(token, game.id, roundId);
+      const [stats, hist] = await Promise.all([
+        api.gameStatistics(token, game.id),
+        api.gameHistory(token, game.id),
+      ]);
+      setStatistics(stats);
+      setHistory(hist);
       await reloadGame();
     });
 
@@ -523,7 +541,6 @@ export function TeacherDashboardPage() {
           <ConfigPanel
             classes={classes}
             students={students}
-            categorySets={categorySets}
             selectedClassId={selectedClassId}
             onSelectClass={setSelectedClassId}
             onCreateClass={(payload) =>
@@ -569,6 +586,15 @@ export function TeacherDashboardPage() {
                 setStudents(await api.listStudents(token, selectedClassId));
               })
             }
+          />
+          <StatisticsPanel statistics={statistics} history={history} onDeleteRound={deleteRound} busy={busy} />
+        </div>
+      ) : null}
+
+      {tab === "categories" ? (
+        <div className="panel">
+          <CategorySetsPanel
+            categorySets={categorySets}
             onCreateCategorySet={(payload) =>
               guard(async () => {
                 await api.createCategorySet(token, payload);
@@ -606,9 +632,10 @@ export function TeacherDashboardPage() {
               })
             }
           />
-          <StatisticsPanel statistics={statistics} history={history} />
         </div>
       ) : null}
+
+      <EmojiBursts items={emojiBursts.items} />
     </div>
   );
 }

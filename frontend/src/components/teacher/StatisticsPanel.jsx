@@ -1,5 +1,5 @@
 /** Estatisticas da partida (spec 43). */
-export function StatisticsPanel({ statistics, history }) {
+export function StatisticsPanel({ statistics, history, onDeleteRound, busy }) {
   if (!statistics) {
     return (
       <section className="card">
@@ -121,6 +121,7 @@ export function StatisticsPanel({ statistics, history }) {
                   <th scope="col">Letra</th>
                   <th scope="col">Encerramento</th>
                   <th scope="col">STOP de</th>
+                  <th scope="col" />
                 </tr>
               </thead>
               <tbody>
@@ -131,6 +132,26 @@ export function StatisticsPanel({ statistics, history }) {
                     <td>{round.letter || "—"}</td>
                     <td>{round.stopReason ?? round.status}</td>
                     <td>{round.firstStopper ?? "—"}</td>
+                    <td>
+                      {onDeleteRound && (round.status === "SCORED" || round.status === "FINISHED") ? (
+                        <button
+                          type="button"
+                          className="btn btn--ghost small"
+                          disabled={busy}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Remover a rodada ${round.roundNumber} (${round.themeName}) do histórico? Os pontos que ela gerou serão descontados do ranking.`,
+                              )
+                            ) {
+                              onDeleteRound(round.id);
+                            }
+                          }}
+                        >
+                          Remover
+                        </button>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>

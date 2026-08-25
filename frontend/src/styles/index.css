@@ -443,6 +443,61 @@ tbody tr:hover {
   background: var(--green);
 }
 
+/* Reacoes em emoji (Kahoot-like): camada flutuante por cima de tudo, sem
+   interceptar cliques, e o botao de envio no aluno. */
+.emoji-bursts {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.emoji-bursts__item {
+  position: absolute;
+  bottom: -10%;
+  font-size: 2.4rem;
+  line-height: 1;
+  animation: emoji-float 2.2s ease-out forwards;
+}
+
+@keyframes emoji-float {
+  0% {
+    transform: translateY(0) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    transform: translateY(-10vh) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-90vh) scale(1.1);
+    opacity: 0;
+  }
+}
+
+.emoji-picker {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.emoji-picker__btn {
+  border: none;
+  background: var(--bg-card);
+  border-radius: 999px;
+  width: 2.6rem;
+  height: 2.6rem;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 0 var(--border-soft);
+}
+
+.emoji-picker__btn:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

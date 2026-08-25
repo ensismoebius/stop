@@ -306,6 +306,40 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     expect(ack.data.canAnswer).toBe(true);
   });
 
+  it("reacao em emoji chega para colegas, professor e tela publica (nova feature)", async () => {
+    const teacher = await joinTeacher();
+    const screen = await joinScreen();
+    const players = await joinPlayers();
+
+    const onTeacher = waitFor(teacher.client, "emojiReceived");
+    const onScreen = waitFor(screen, "emojiReceived");
+    const onOtherPlayer = waitFor(players[1].client, "emojiReceived");
+
+    const ack = await emit(players[0].client, "sendEmoji", { emoji: "🔥" });
+    expect(ack.ok).toBe(true);
+
+    expect((await onTeacher).emoji).toBe("🔥");
+    expect((await onScreen).emoji).toBe("🔥");
+    // Nunca identifica quem mandou (spec 4.3: sem dados privados na sala).
+    expect((await onOtherPlayer).playerSessionId).toBeUndefined();
+
+    // Emoji fora do conjunto fixo e rejeitado.
+    const invalido = await emit(players[0].client, "sendEmoji", { emoji: "🍕" });
+    expect(invalido.ok).toBe(false);
+    expect(invalido.error.code).toBe("BAD_PAYLOAD");
+
+    // Cooldown: reenviar rapido demais falha em silencio, sem erro (o
+    // aluno nao deve ver nenhum aviso por causa disso).
+    const rapido = await emit(players[0].client, "sendEmoji", { emoji: "👍" });
+    expect(rapido.ok).toBe(true);
+    expect(rapido.data.sent).toBe(false);
+
+    // So aluno pode reagir, nunca o professor ou a tela publica.
+    const doProfessor = await emit(teacher.client, "sendEmoji", { emoji: "👍" });
+    expect(doProfessor.ok).toBe(false);
+    expect(doProfessor.error.code).toBe("FORBIDDEN");
+  });
+
   it("a tela publica recebe estado sem dados privados", async () => {
     await joinPlayers();
     const screen = await joinScreen();

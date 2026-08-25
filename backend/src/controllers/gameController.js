@@ -39,6 +39,11 @@ export const gameController = {
   }),
 
   finish: asyncHandler(async (req, res) => res.json(await gameService.finish(Number(req.params.id)))),
+
+  removeRound: asyncHandler(async (req, res) => {
+    await gameService.removeRound(Number(req.params.id), Number(req.params.roundId));
+    res.status(204).end();
+  }),
 };
 
 export default gameController;

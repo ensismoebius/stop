@@ -142,6 +142,13 @@ export const socketReviewSchema = z.object({
   decision: z.enum(["VALID", "INVALID"]),
 });
 
+/** Conjunto fixo: rapido de tocar, facil de moderar, sem texto livre. */
+export const EMOJI_REACTIONS = ["😂", "😮", "👍", "🔥", "❤️"];
+
+export const socketEmojiSchema = z.object({
+  emoji: z.enum(EMOJI_REACTIONS),
+});
+
 export const socketTelemetrySchema = z.object({
   roundId: id.optional(),
   type: trimmed(40),

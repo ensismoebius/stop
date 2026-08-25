@@ -223,6 +223,54 @@ describe("API REST (spec 30 e 34)", () => {
     expect(lista.body).toHaveLength(3);
   });
 
+  it("remove uma rodada do histórico e reverte a pontuação (nova feature)", async () => {
+    await request(app)
+      .post(`/api/rooms/${scenario.room.code}/join`)
+      .send({ registrationNumber: scenario.students[0].registrationNumber });
+
+    const round = await auth(request(app).post("/api/rounds")).send({
+      gameId: scenario.game.id,
+      categorySetId: scenario.categorySet.id,
+      durationSeconds: 60,
+    });
+    await auth(request(app).post(`/api/rounds/${round.body.id}/letter`));
+    await auth(request(app).post(`/api/rounds/${round.body.id}/start`));
+    await waitForRoundStatus(round.body.id, "PLAYING");
+    await auth(request(app).post(`/api/rounds/${round.body.id}/stop`));
+
+    // Rodada ainda nao concluida (nem SCORED nem FINISHED) nunca pode ser
+    // removida (spec de segurança).
+    const bloqueada = await auth(
+      request(app).delete(`/api/games/${scenario.game.id}/rounds/${round.body.id}`),
+    );
+    expect(bloqueada.status).toBe(409);
+
+    const grid = await auth(request(app).get(`/api/rounds/${round.body.id}/correction`));
+    const answerId = grid.body.players[0].answers[0].id;
+    // Simula uma resposta valida preenchida (o preenchimento em si e feito
+    // via socket, fora do escopo REST testado aqui).
+    await prisma.answer.update({
+      where: { id: answerId },
+      data: { value: "Xadrez", normalizedValue: "XADREZ" },
+    });
+    await auth(request(app).patch(`/api/answers/${answerId}`)).send({ reviewState: "VALID" });
+    await auth(request(app).post(`/api/rounds/${round.body.id}/score`));
+
+    const before = await auth(request(app).get(`/api/games/${scenario.game.id}/scores`));
+    expect(before.body.ranking[0].total).toBe(10);
+
+    const removida = await auth(
+      request(app).delete(`/api/games/${scenario.game.id}/rounds/${round.body.id}`),
+    );
+    expect(removida.status).toBe(204);
+
+    const after = await auth(request(app).get(`/api/games/${scenario.game.id}/scores`));
+    expect(after.body.ranking[0].total).toBe(0);
+
+    const history = await auth(request(app).get(`/api/games/${scenario.game.id}/history`));
+    expect(history.body.rounds.map((item) => item.id)).not.toContain(round.body.id);
+  });
+
   it("bloqueia a remoção de turma e aluno com histórico de partidas (spec 44)", async () => {
     // O aluno entra na sala: isso cria a PlayerSession que liga o aluno,
     // via a partida, ao histórico daquela turma.
