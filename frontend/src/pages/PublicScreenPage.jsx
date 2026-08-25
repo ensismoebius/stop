@@ -34,11 +34,13 @@ export function PublicScreenPage() {
       onState: (state) => sync(state?.serverTime),
       // O som do sorteio agora acompanha a animacao (tique a cada giro e
       // fanfarra so quando ela realmente para), nao o instante em que o
-      // evento de rede chega — por isso nao ha mais um "LETTER" aqui.
+      // evento de rede chega — por isso nao ha mais um "LETTER" aqui. O
+      // ranking segue o mesmo principio: quem toca os tiques e a fanfarra
+      // agora e o proprio <Ranking>, no ritmo da revelacao dramatica, nao
+      // o instante em que o evento de rede chega.
       roundStarted: () => audio.play("START"),
       roundStopped: () => audio.play("STOPPED"),
       roundTimedOut: () => audio.play("STOPPED"),
-      rankingUpdated: () => audio.play("RANKING"),
       // Correcao colaborativa (spec 36): so o progresso agregado, nunca
       // respostas individuais na tela publica.
       collaborativeCorrectionStarted: (payload) => setCollabProgress(payload),
@@ -153,6 +155,17 @@ export function PublicScreenPage() {
     );
   }
 
+  // No momento do ranking a tela e so o ranking (spec de drama): nada de
+  // titulo, tema, QR Code ou rodape competindo por atencao com a virada.
+  if (showRanking) {
+    return (
+      <div className="screen screen--ranking">
+        <Ranking entries={view?.ranking ?? []} audio={audio} />
+        <EmojiBursts items={emojiBursts.items} />
+      </div>
+    );
+  }
+
   return (
     <div className="screen">
       <GameTitle name={view?.game?.name ?? "Partida"} roomCode={code} />
@@ -210,7 +223,6 @@ export function PublicScreenPage() {
       </main>
 
       <footer className="screen__bottom">
-        {showRanking ? <Ranking entries={view?.ranking ?? []} /> : null}
         <div className="spread small muted">
           <span className="row screen__join">
             {!waitingForPlayers && qrCode?.dataUrl ? (
