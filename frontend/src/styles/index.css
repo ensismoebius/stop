@@ -1,0 +1,451 @@
+/* ---------------------------------------------------------------------------
+   STOP — base visual
+   Paleta de cores primarias solidas e saturadas, ao estilo de jogos de
+   quiz para sala de aula: blocos de cor cheios, sombra "3D" de profundidade
+   em vez de brilho difuso, tipografia bem pesada. Nenhum estado depende
+   apenas da cor (spec 39).
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* Fundo: roxo vivo solido, nao preto/azul-marinho apagado. */
+  --bg: #4a1ea8;
+  --bg-elevated: #5c22c9;
+  --bg-card: #ffffff;
+  --border: #2c0f6e;
+  --border-soft: rgba(0, 0, 0, 0.12);
+
+  /* Texto sobre fundo roxo */
+  --text: #ffffff;
+  --text-muted: #d9c8ff;
+
+  /* Texto sobre cartao branco */
+  --ink: #1b1130;
+  --ink-muted: #5c5470;
+
+  /* Cores primarias solidas — sem gradiente, sem glow */
+  --red: #ff2d55;
+  --red-dark: #c8123a;
+  --blue: #1368ce;
+  --blue-dark: #0d4b9c;
+  --yellow: #ffb400;
+  --yellow-dark: #cc8f00;
+  --green: #26c485;
+  --green-dark: #1a9464;
+  --teal: #00c2b8;
+  --teal-dark: #009690;
+  --purple: #8b3dff;
+  --purple-dark: #6420d1;
+  --pink: #ff4fa3;
+  --pink-dark: #d12d7d;
+  --orange: #ff8a1e;
+  --orange-dark: #d16700;
+
+  /* Rotacao de cores usada em categorias, avatares e faixas */
+  --hue-1: var(--red);
+  --hue-1-dark: var(--red-dark);
+  --hue-2: var(--blue);
+  --hue-2-dark: var(--blue-dark);
+  --hue-3: var(--yellow);
+  --hue-3-dark: var(--yellow-dark);
+  --hue-4: var(--green);
+  --hue-4-dark: var(--green-dark);
+  --hue-5: var(--teal);
+  --hue-5-dark: var(--teal-dark);
+  --hue-6: var(--pink);
+  --hue-6-dark: var(--pink-dark);
+  --hue-7: var(--orange);
+  --hue-7-dark: var(--orange-dark);
+  --hue-8: var(--purple);
+  --hue-8-dark: var(--purple-dark);
+
+  /* Papeis semanticos */
+  --accent: var(--purple);
+  --accent-dark: var(--purple-dark);
+  --success: var(--green);
+  --success-dark: var(--green-dark);
+  --warning: var(--yellow);
+  --warning-dark: var(--yellow-dark);
+  --danger: var(--red);
+  --danger-dark: var(--red-dark);
+  --stop: var(--red);
+  --stop-dark: var(--red-dark);
+
+  --radius: 18px;
+  --radius-sm: 14px;
+  --font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --touch: 50px; /* area minima de toque confortavel */
+  /* Sombra "3D": um degrau solido embaixo do elemento, nao um brilho. */
+  --press: 5px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0 0 0.5rem;
+  line-height: 1.15;
+  font-weight: 900;
+}
+
+p {
+  margin: 0 0 0.75rem;
+}
+
+a {
+  color: var(--yellow);
+  font-weight: 700;
+}
+
+/* Foco sempre visivel: navegacao por teclado no painel (spec 39). */
+:focus-visible {
+  outline: 4px solid var(--yellow);
+  outline-offset: 2px;
+}
+
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.container {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.spread {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+/* Cartao: superficie branca solida flutuando sobre o fundo roxo, com
+   sombra "3D" plana (nao borrada) e uma faixa de cor solida no topo. */
+.card {
+  position: relative;
+  background: var(--bg-card);
+  color: var(--ink);
+  border: none;
+  border-radius: var(--radius);
+  padding: 1.1rem;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.22);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 8px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--purple);
+}
+
+.card h2 {
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--purple-dark);
+}
+
+.card .muted {
+  color: var(--ink-muted);
+}
+
+/* Botoes -------------------------------------------------------------- */
+/* Estilo "pressionavel": preenchimento solido + degrau escuro embaixo.
+   No clique, o botao desce e o degrau some — feedback tatil, nao sutil. */
+
+.btn {
+  min-height: var(--touch);
+  padding: 0.7rem 1.2rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: #e9e3ff;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 var(--press) 0 #b9a9e8;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(var(--press));
+  box-shadow: 0 0 0 transparent;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: saturate(0.5);
+  box-shadow: 0 var(--press) 0 rgba(0, 0, 0, 0.15);
+}
+
+.btn--primary {
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 var(--press) 0 var(--blue-dark);
+}
+
+.btn--success {
+  background: var(--green);
+  color: #05281a;
+  box-shadow: 0 var(--press) 0 var(--green-dark);
+}
+
+.btn--danger {
+  background: var(--red);
+  color: #fff;
+  box-shadow: 0 var(--press) 0 var(--red-dark);
+}
+
+.btn--warning {
+  background: var(--yellow);
+  color: #2b1a00;
+  box-shadow: 0 var(--press) 0 var(--yellow-dark);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--ink-muted);
+  box-shadow: 0 0 0 2px var(--border-soft) inset;
+}
+
+.btn--ghost:active:not(:disabled) {
+  transform: none;
+}
+
+.btn--ghost:hover:not(:disabled) {
+  color: var(--ink);
+  box-shadow: 0 0 0 2px var(--purple) inset;
+}
+
+.btn--block {
+  width: 100%;
+}
+
+/* Formularios --------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field label {
+  font-size: 0.8rem;
+  color: var(--purple);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+
+.input {
+  min-height: var(--touch);
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 3px solid #e4def7;
+  background: #fbfaff;
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 600;
+  width: 100%;
+}
+
+.input:focus {
+  border-color: var(--purple);
+  outline: none;
+}
+
+.input::placeholder {
+  color: #a89bce;
+  font-weight: 400;
+}
+
+select.input {
+  appearance: none;
+}
+
+textarea.input {
+  min-height: 96px;
+  font-family: inherit;
+}
+
+/* Mensagens ----------------------------------------------------------- */
+
+.alert {
+  border-radius: var(--radius-sm);
+  padding: 0.8rem 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.alert--error {
+  background: var(--red);
+}
+
+.alert--success {
+  background: var(--green);
+  color: #05281a;
+}
+
+.alert--warning {
+  background: var(--yellow);
+  color: #2b1a00;
+}
+
+/* Selos de estado. Nunca dependem apenas da cor (spec 39). */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.badge--playing {
+  background: var(--green);
+  color: #05281a;
+}
+
+.badge--eliminated {
+  background: var(--red);
+}
+
+.badge--submitted {
+  background: var(--blue);
+}
+
+.badge--waiting {
+  background: #8a7ec2;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+th,
+td {
+  padding: 0.6rem 0.65rem;
+  border-bottom: 2px solid #efeaff;
+  text-align: left;
+}
+
+th {
+  color: var(--purple);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 900;
+}
+
+tbody tr:hover {
+  background: #f6f3ff;
+}
+
+.center {
+  text-align: center;
+}
+
+/* Acessibilidade: texto so para leitores de tela. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.connection::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.connection--on::before {
+  background: var(--green);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,208 @@
+import logger from "../lib/logger.js";
+import { AppError } from "../lib/errors.js";
+import { parseSocketPayload } from "../middleware/validate.js";
+import {
+  socketAnswerSchema,
+  socketFullscreenSchema,
+  socketJoinRoomSchema,
+  socketRoundSchema,
+  socketTelemetrySchema,
+  socketIdentifySchema,
+} from "../validators/schemas.js";
+import { authenticateJoin } from "./socketAuth.js";
+import * as realtime from "./realtime.js";
+import answerService from "../services/answerService.js";
+import roundService from "../services/roundService.js";
+import roomService from "../services/roomService.js";
+import viewService from "../services/viewService.js";
+import playerSessionRepository from "../repositories/playerSessionRepository.js";
+import telemetryRepository from "../repositories/telemetryRepository.js";
+
+function toErrorPayload(error) {
+  if (error instanceof AppError) {
+    return { code: error.code, message: error.message, details: error.details ?? null };
+  }
+  logger.error("Erro em handler de socket", error);
+  return { code: "INTERNAL_ERROR", message: "Erro interno do servidor" };
+}
+
+/**
+ * Envolve um handler: valida o payload, responde pelo ack e emite `error`
+ * ao cliente em caso de falha. Nunca derruba a conexao.
+ */
+function wrap(socket, schema, fn) {
+  return async (payload, ack) => {
+    const parsed = schema ? parseSocketPayload(schema, payload) : { ok: true, data: payload };
+    if (!parsed.ok) {
+      const error = { code: "BAD_PAYLOAD", message: "Dados inválidos", details: parsed.issues };
+      socket.emit("error", error);
+      if (typeof ack === "function") ack({ ok: false, error });
+      return;
+    }
+    try {
+      const result = await fn(socket, parsed.data);
+      if (typeof ack === "function") ack({ ok: true, data: result ?? null });
+    } catch (error) {
+      const payloadError = toErrorPayload(error);
+      socket.emit("error", payloadError);
+      if (typeof ack === "function") ack({ ok: false, error: payloadError });
+    }
+  };
+}
+
+function requireContext(socket) {
+  if (!socket.data.context) {
+    throw new AppError("Entre em uma sala antes de executar esta ação", {
+      status: 403,
+      code: "NOT_IN_ROOM",
+    });
+  }
+  return socket.data.context;
+}
+
+function requirePlayer(socket) {
+  const context = requireContext(socket);
+  if (context.role !== "player" || !context.session) {
+    throw new AppError("Ação permitida apenas para alunos", { status: 403, code: "FORBIDDEN" });
+  }
+  return context;
+}
+
+export function registerHandlers(io, socket) {
+  /** Registra um evento validado no socket corrente. */
+  const on = (event, schema, fn) => socket.on(event, wrap(socket, schema, fn));
+
+  on("joinRoom", socketJoinRoomSchema, async (client, data) => {
+      const context = await authenticateJoin(data);
+      const code = context.room.code;
+
+      client.data.context = context;
+      await client.join(realtime.rooms.all(code));
+
+      if (context.role === "player") {
+        await client.join(realtime.rooms.players(code));
+        await client.join(realtime.rooms.player(context.session.id));
+        await playerSessionRepository.markConnected(context.session.id, client.id);
+
+        const state = await viewService.playerState(context.session.id);
+        client.emit("roomState", state);
+        realtime.toTeachers(code, "playerJoined", {
+          playerSessionId: context.session.id,
+          name: context.session.student.name,
+          registrationNumber: context.session.student.registrationNumber,
+        });
+        await roundService.broadcastState(code);
+        return state;
+      }
+
+      if (context.role === "teacher") {
+        await client.join(realtime.rooms.teachers(code));
+        const state = await viewService.teacherState(code);
+        client.emit("roomState", state);
+        return state;
+      }
+
+      await client.join(realtime.rooms.screens(code));
+      const state = await viewService.publicState(code);
+      client.emit("roomState", state);
+      return state;
+  });
+
+  /** Consulta de matricula antes da confirmacao (spec 6). */
+  on("identifyStudent", socketIdentifySchema, async (_client, data) =>
+    roomService.identify(data.roomCode, data.registrationNumber),
+  );
+
+  on("ready", null, async (client) => {
+    const context = requirePlayer(client);
+    await playerSessionRepository.update(context.session.id, { status: "READY" });
+    await roundService.broadcastState(context.room.code);
+    return { status: "READY" };
+  });
+
+  const submitAnswer = async (client, data) => {
+    const context = requirePlayer(client);
+    const result = await answerService.submit({
+      roundId: data.roundId,
+      playerSessionId: context.session.id,
+      roundCategoryId: data.roundCategoryId,
+      value: data.value,
+    });
+    return {
+      roundCategoryId: data.roundCategoryId,
+      value: result.answer.value,
+      filled: result.filled,
+      total: result.total,
+      canStop: result.canStop,
+    };
+  };
+
+  on("submitAnswer", socketAnswerSchema, submitAnswer);
+  on("updateAnswer", socketAnswerSchema, submitAnswer);
+
+  /** STOP do aluno: a decisao final e do servidor (spec 12 e 13). */
+  on("requestStop", socketRoundSchema, async (client, data) => {
+    const context = requirePlayer(client);
+    const round = await roundService.requestStop({
+      roundId: data.roundId,
+      playerSessionId: context.session.id,
+    });
+    return { roundId: round.id, status: round.status, firstStopper: true };
+  });
+
+  /** Saida do fullscreen durante PLAYING elimina o aluno (spec 24). */
+  on("fullscreenExited", socketFullscreenSchema, async (client, data) => {
+    const context = requirePlayer(client);
+    const result = await roundService.eliminate({
+      roundId: data.roundId,
+      playerSessionId: context.session.id,
+      reason: data.reason ?? "FULLSCREEN_EXIT",
+    });
+    return result ?? { ignored: true };
+  });
+
+  /** Eventos de foco/visibilidade sao apenas telemetria (spec 25). */
+  on("telemetry", socketTelemetrySchema, async (client, data) => {
+    const context = requireContext(client);
+    await telemetryRepository.record({
+      type: data.type,
+      roomId: context.room.id,
+      roundId: data.roundId ?? null,
+      playerSessionId: context.session?.id ?? null,
+      payload: data.payload ?? null,
+    });
+    return { recorded: true };
+  });
+
+  /** Reconexao: o cliente pede o estado autoritativo (spec 45). */
+  on("requestState", null, async (client) => {
+    const context = requireContext(client);
+    if (context.role === "player") return viewService.playerState(context.session.id);
+    if (context.role === "teacher") return viewService.teacherState(context.room.code);
+    return viewService.publicState(context.room.code);
+  });
+
+  socket.on("disconnect", async (reason) => {
+    const context = socket.data.context;
+    if (!context || context.role !== "player") return;
+    try {
+      // Desconexao momentanea nao elimina o aluno (spec 45).
+      await playerSessionRepository.markDisconnected(context.session.id);
+      await telemetryRepository.record({
+        type: "PLAYER_DISCONNECTED",
+        roomId: context.room.id,
+        playerSessionId: context.session.id,
+        payload: { reason },
+      });
+      realtime.toTeachers(context.room.code, "playerLeft", {
+        playerSessionId: context.session.id,
+        reason,
+      });
+      await roundService.broadcastState(context.room.code);
+    } catch (error) {
+      logger.warn("Falha ao tratar desconexao", error?.message ?? error);
+    }
+  });
+}
+
+export default registerHandlers;

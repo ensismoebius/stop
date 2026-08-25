@@ -1,0 +1,55 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: stop-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-stoproot}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-stop}
+      MYSQL_USER: ${MYSQL_USER:-stop}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-stop}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-stoproot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: stop-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_URL: mysql://${MYSQL_USER:-stop}:${MYSQL_PASSWORD:-stop}@mysql:3306/${MYSQL_DATABASE:-stop}
+      SESSION_SECRET: ${SESSION_SECRET:-change-me}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-professor@stop.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-stop-admin}
+      DEFAULT_ROUND_DURATION: ${DEFAULT_ROUND_DURATION:-120}
+    # Escuta em 0.0.0.0 para permitir acesso pelos celulares da sala (spec 37).
+    ports:
+      - "3000:3000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: stop-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  mysql-data:

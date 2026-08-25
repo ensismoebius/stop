@@ -1,0 +1,459 @@
+/* ---------------------------------------------------------------------------
+   Tela do aluno — mobile-first (spec 8, 9, 10, 11 e 40)
+   Prioridade visual: letra, cronometro, categorias, progresso, STOP.
+   Blocos de cor solida e botoes "pressionaveis", ao estilo de um jogo de
+   quiz para sala de aula — nao um formulario corporativo.
+   --------------------------------------------------------------------------- */
+
+.student {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.student__header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-elevated);
+  border-bottom: 6px solid var(--border);
+  padding: 0.75rem 1rem 0.6rem;
+}
+
+.student__headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.letter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.letter__label {
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+/* A letra vive dentro de um "dado" solido — bloco de cor cheio, nao texto
+   com gradiente. Reforca a sensacao de peca de jogo. */
+.letter__value {
+  display: grid;
+  place-items: center;
+  width: 4.4rem;
+  height: 4.4rem;
+  border-radius: 16px;
+  background: var(--yellow);
+  color: #2b1a00;
+  font-size: 2.6rem;
+  font-weight: 900;
+  box-shadow: 0 6px 0 var(--yellow-dark);
+}
+
+.letter__value--waiting {
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3) inset;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.timer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+}
+
+.timer__value {
+  display: inline-block;
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  background: var(--green);
+  color: #05281a;
+  font-size: 1.6rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer--urgent .timer__value {
+  background: var(--red);
+  color: #fff;
+  animation: pulse 0.7s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+.progress {
+  margin-top: 0.7rem;
+}
+
+.progress__label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+}
+
+.progress__track {
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  background: var(--green);
+  transition: width 0.25s ease;
+}
+
+.student__avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+.student__body {
+  flex: 1;
+  padding: 0.85rem 1rem 8.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* Lista de categorias: todas acessiveis na mesma tela (spec 9). */
+.categories {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+/* Cada categoria e um bloco de cor solida cheio — como uma peca de jogo,
+   nao um cartao escuro com um risco colorido do lado. */
+.category {
+  position: relative;
+  width: 100%;
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--tone, var(--purple));
+  color: #fff;
+  text-align: left;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 5px 0 var(--tone-dark, var(--purple-dark));
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.category:active {
+  transform: translateY(5px);
+  box-shadow: none;
+}
+
+.categories li:nth-child(8n + 1) .category { --tone: var(--hue-1); --tone-dark: var(--hue-1-dark); }
+.categories li:nth-child(8n + 2) .category { --tone: var(--hue-2); --tone-dark: var(--hue-2-dark); }
+.categories li:nth-child(8n + 3) .category { --tone: var(--hue-3); --tone-dark: var(--hue-3-dark); }
+.categories li:nth-child(8n + 4) .category { --tone: var(--hue-4); --tone-dark: var(--hue-4-dark); }
+.categories li:nth-child(8n + 5) .category { --tone: var(--hue-5); --tone-dark: var(--hue-5-dark); }
+.categories li:nth-child(8n + 6) .category { --tone: var(--hue-6); --tone-dark: var(--hue-6-dark); }
+.categories li:nth-child(8n + 7) .category { --tone: var(--hue-7); --tone-dark: var(--hue-7-dark); }
+.categories li:nth-child(8n + 8) .category { --tone: var(--hue-8); --tone-dark: var(--hue-8-dark); }
+
+/* Categorias em tom de amarelo (--hue-3) usam texto escuro para contraste. */
+.categories li:nth-child(8n + 3) .category { color: #2b1a00; }
+
+.category__name {
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+}
+
+.category__answer {
+  display: block;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.95rem;
+  margin-top: 0.15rem;
+  overflow-wrap: anywhere;
+  opacity: 0.95;
+}
+
+.category--empty .category__answer {
+  opacity: 0.75;
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* Preenchida: selo de confirmacao branco solido — nao depende so da cor
+   do bloco (spec 39). */
+.category__check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.category--filled .category__check {
+  background: #fff;
+  color: var(--green-dark);
+}
+
+.category--current {
+  outline: 4px solid #fff;
+  outline-offset: -4px;
+}
+
+/* Editor da resposta ---------------------------------------------------- */
+
+.editor {
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  box-shadow: 0 6px 0 var(--purple-dark);
+}
+
+.editor__title {
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--purple);
+  font-weight: 900;
+}
+
+.editor__input {
+  min-height: 58px;
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.editor__hint {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.editor__hint--warn {
+  color: var(--orange-dark);
+  font-weight: 800;
+}
+
+/* Botao STOP fixo no rodape (spec 11). */
+.stopbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(74, 30, 168, 0), var(--bg) 45%);
+  z-index: 20;
+}
+
+.stop-button {
+  width: 100%;
+  min-height: 74px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--red);
+  color: #fff;
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  box-shadow: 0 8px 0 var(--red-dark);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.stop-button:active:not(:disabled) {
+  transform: translateY(8px);
+  box-shadow: none;
+}
+
+.stop-button:disabled {
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.55);
+  cursor: not-allowed;
+  letter-spacing: 0.1em;
+  box-shadow: 0 8px 0 rgba(0, 0, 0, 0.18);
+}
+
+.stop-button__hint {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  opacity: 0.95;
+  margin-top: 0.2rem;
+}
+
+.notice {
+  border-radius: var(--radius);
+  padding: 1.1rem;
+  background: #fff;
+  color: var(--ink);
+  text-align: center;
+  box-shadow: 0 6px 0 var(--purple-dark);
+}
+
+.notice--eliminated {
+  background: var(--red);
+  color: #fff;
+  white-space: pre-line;
+  box-shadow: 0 6px 0 var(--red-dark);
+}
+
+.notice__title {
+  font-size: 1.25rem;
+  font-weight: 900;
+  margin-bottom: 0.4rem;
+  color: var(--purple);
+}
+
+.notice--eliminated .notice__title {
+  color: #fff;
+}
+
+.join {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 100dvh;
+  justify-content: center;
+}
+
+.join__code {
+  display: inline-block;
+  padding: 0.3rem 0.9rem;
+  border-radius: 10px;
+  background: var(--yellow);
+  color: #2b1a00;
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.confirm {
+  text-align: center;
+  padding: 1.25rem;
+}
+
+.avatar-picker {
+  align-items: center;
+  text-align: center;
+}
+
+.avatar-picker__preview {
+  width: 6rem;
+  height: 6rem;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--yellow);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 0 var(--yellow-dark);
+}
+
+.avatar-picker__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-picker__placeholder {
+  font-size: 2.4rem;
+  font-weight: 900;
+  color: #2b1a00;
+}
+
+.avatar-picker__file-input {
+  display: none;
+}
+
+.avatar-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.avatar-picker__option {
+  padding: 0;
+  border: 3px solid transparent;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--bg-card);
+  aspect-ratio: 1;
+  cursor: pointer;
+}
+
+.avatar-picker__option img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-picker__option--selected {
+  border-color: var(--blue);
+}
+
+.confirm__name {
+  display: inline-block;
+  margin: 0.5rem 0 0.25rem;
+  padding: 0.3rem 1rem;
+  border-radius: 10px;
+  background: var(--green);
+  color: #05281a;
+  font-size: 1.7rem;
+  font-weight: 900;
+}
+
+@media (min-width: 720px) {
+  .student__body {
+    max-width: 640px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .stopbar {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+}

@@ -1,0 +1,333 @@
+/* ---------------------------------------------------------------------------
+   Tela publica — TV/projetor (spec 22 e 38)
+   Legibilidade a distancia; nenhum dado privado do aluno. Fundo solido
+   vivo e pecas de jogo em bloco de cor cheia — o mesmo vocabulario visual
+   da tela do aluno, so que gigante.
+   --------------------------------------------------------------------------- */
+
+.screen {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 1rem;
+  padding: 2vh 3vw;
+  background: var(--bg);
+}
+
+.screen__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.screen__title {
+  font-size: clamp(1.6rem, 3.2vw, 3rem);
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: var(--yellow);
+}
+
+.screen__room {
+  font-size: clamp(1rem, 1.8vw, 1.6rem);
+  color: var(--text-muted);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.screen__main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2vh;
+  text-align: center;
+  min-height: 0;
+}
+
+.screen__theme {
+  display: inline-block;
+  padding: 0.3rem 1rem;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-size: clamp(1rem, 3.4vh, 2rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* O sorteio da letra: o grande momento de show da tela publica — gira
+   acelerado, desacelera como caca-niquel e "bate" com brilho e confete. */
+.screen__letterWrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+/* A letra: mesmo "dado" solido da tela do aluno, so que enorme. */
+.screen__letter {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: clamp(9rem, 34vh, 20rem);
+  height: clamp(9rem, 34vh, 20rem);
+  border-radius: 32px;
+  background: var(--yellow);
+  color: #2b1a00;
+  font-size: clamp(5rem, 22vh, 13rem);
+  font-weight: 900;
+  box-shadow: 0 12px 0 var(--yellow-dark);
+}
+
+/* Girando: tremida rapida + pulso, como um dado rolando sem parar. */
+.screen__letter--spin {
+  animation: letter-spin 0.18s linear infinite;
+}
+
+@keyframes letter-spin {
+  0% {
+    transform: scale(1) rotate(-3deg);
+  }
+  50% {
+    transform: scale(1.05) rotate(3deg);
+  }
+  100% {
+    transform: scale(1) rotate(-3deg);
+  }
+}
+
+/* Bateu na letra final: estouro com giro completo e "boing" no final. */
+.screen__letter--reveal {
+  animation: letter-reveal 0.65s cubic-bezier(0.2, 1.4, 0.3, 1);
+}
+
+@keyframes letter-reveal {
+  0% {
+    transform: scale(0.6) rotate(0deg);
+  }
+  55% {
+    transform: scale(1.35) rotate(14deg);
+  }
+  75% {
+    transform: scale(0.92) rotate(-6deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+/* Estouro de luz atras da letra no instante da revelacao. */
+.screen__burst {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: clamp(9rem, 34vh, 20rem);
+  height: clamp(9rem, 34vh, 20rem);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--yellow) 0%, rgba(255, 184, 0, 0.5) 45%, transparent 72%);
+  transform: translate(-50%, -50%) scale(0.3);
+  opacity: 0;
+  animation: burst 0.7s ease-out;
+}
+
+@keyframes burst {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* Confete: pecinhas voando do centro para fora em angulos distintos. */
+.screen__confetti {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin: -0.35rem;
+  border-radius: 3px;
+  background: var(--color);
+  opacity: 0;
+  animation: confetti-burst 0.85s ease-out both;
+  animation-delay: var(--delay);
+}
+
+@keyframes confetti-burst {
+  0% {
+    transform: rotate(var(--angle)) translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(var(--angle)) translateY(calc(-1 * var(--distance))) rotate(260deg);
+    opacity: 0;
+  }
+}
+
+/* Lobby: antes da partida comecar, o QR Code grande e a peca principal —
+   e o unico motivo de alguem estar olhando para a tela nesse momento. */
+.screen__lobby {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.4vh;
+}
+
+/* Selector combinado (.screen__qr.screen__qr--big) para vencer a regra de
+   tamanho pequeno de .screen__qr independente da ordem no arquivo. */
+.screen__qr.screen__qr--big {
+  width: clamp(11rem, 40vh, 24rem);
+  height: clamp(11rem, 40vh, 24rem);
+  border-radius: 24px;
+  background: #fff;
+  padding: 1rem;
+  box-shadow: 0 12px 0 rgba(0, 0, 0, 0.25);
+}
+
+.screen__joincode {
+  font-size: clamp(1.6rem, 5.5vh, 3.2rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--yellow);
+}
+
+.screen__hint {
+  font-size: clamp(0.9rem, 2vh, 1.3rem);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.screen__clock {
+  display: inline-block;
+  padding: 0.2rem 1.3rem;
+  border-radius: 999px;
+  background: var(--green);
+  color: #05281a;
+  font-size: clamp(2rem, 10vh, 5.5rem);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.screen__clock--urgent {
+  background: var(--red);
+  color: #fff;
+  animation: pulse 0.7s ease-in-out infinite;
+}
+
+.screen__status {
+  font-size: clamp(1.1rem, 4.2vh, 2.4rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.screen__players {
+  font-size: clamp(1.1rem, 2.2vw, 2rem);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.screen__bottom {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.screen__join {
+  gap: 0.6rem;
+}
+
+.screen__qr {
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 6px;
+  background: #fff;
+  padding: 3px;
+}
+
+.ranking {
+  background: #fff;
+  color: var(--ink);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25);
+}
+
+.ranking__title {
+  font-size: clamp(1rem, 1.8vw, 1.6rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 900;
+  color: var(--purple);
+  margin-bottom: 0.5rem;
+}
+
+.ranking__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.ranking__item {
+  display: grid;
+  grid-template-columns: 3ch 1fr auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  font-size: clamp(1rem, 3.2vh, 1.8rem);
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.ranking__position {
+  color: var(--ink-muted);
+}
+
+.ranking__name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranking__avatar {
+  flex: none;
+  width: clamp(1.4rem, 3.5vh, 2.1rem);
+  height: clamp(1.4rem, 3.5vh, 2.1rem);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Medalhas do podio, por colocacao (empates recebem a mesma cor). */
+.ranking__item--p1 .ranking__position,
+.ranking__item--p1 .ranking__total {
+  color: var(--yellow-dark);
+}
+
+.ranking__item--p2 .ranking__position,
+.ranking__item--p2 .ranking__total {
+  color: #7a7a99;
+}
+
+.ranking__item--p3 .ranking__position,
+.ranking__item--p3 .ranking__total {
+  color: var(--orange-dark);
+}
+
+@media (min-width: 1000px) {
+  .screen__bottom {
+    grid-template-columns: 1fr;
+  }
+}

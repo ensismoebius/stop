@@ -1,0 +1,324 @@
+// STOP - schema Prisma / MySQL
+// Referencia: specifications.md secoes 28 e 29.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// Estados do jogador dentro da sala/rodada (spec 7)
+enum PlayerStatus {
+  WAITING
+  READY
+  PLAYING
+  SUBMITTED
+  ELIMINATED
+  FINISHED
+}
+
+/// Maquina de estados da rodada (spec 32)
+enum RoundStatus {
+  CREATED
+  READY
+  STARTING
+  PLAYING
+  STOPPED
+  CORRECTION
+  SCORED
+  FINISHED
+}
+
+enum GameStatus {
+  CREATED
+  ACTIVE
+  FINISHED
+}
+
+enum RoomStatus {
+  OPEN
+  LOCKED
+  CLOSED
+}
+
+/// Resultado da correcao manual do professor (spec 18)
+enum ReviewState {
+  PENDING
+  VALID
+  INVALID
+  BLANK
+  DUPLICATE
+}
+
+/// Professor / administrador (spec 35)
+model Teacher {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("TEACHER")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  games Game[]
+}
+
+model Class {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enrollments Enrollment[]
+  games       Game[]
+}
+
+model Student {
+  id                 Int      @id @default(autoincrement())
+  registrationNumber String   @unique
+  name               String
+  /// Foto (data URL) ou caminho de um avatar pre-pronto (/avatars/*.svg).
+  /// Escolhido pelo proprio aluno ao entrar na sala.
+  avatarUrl          String?  @db.Text
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  enrollments Enrollment[]
+  sessions    PlayerSession[]
+  scores      Score[]
+
+  @@index([registrationNumber])
+}
+
+/// Um aluno pode cursar mais de uma turma ao mesmo tempo (ex.: import do
+/// QrGrades, onde "disciplina" vira turma e um aluno cursa varias).
+model Enrollment {
+  id        Int      @id @default(autoincrement())
+  studentId Int
+  classId   Int
+  createdAt DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, classId])
+  @@index([studentId])
+  @@index([classId])
+}
+
+model Game {
+  id         Int        @id @default(autoincrement())
+  name       String
+  classId    Int
+  teacherId  Int
+  status     GameStatus @default(CREATED)
+  createdAt  DateTime   @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  rooms  Room[]
+  rounds Round[]
+  scores Score[]
+
+  @@index([classId])
+  @@index([teacherId])
+}
+
+model Room {
+  id        Int        @id @default(autoincrement())
+  gameId    Int
+  code      String     @unique
+  status    RoomStatus @default(OPEN)
+  createdAt DateTime   @default(now())
+
+  game     Game            @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  sessions PlayerSession[]
+
+  @@index([gameId])
+}
+
+model PlayerSession {
+  id             Int          @id @default(autoincrement())
+  roomId         Int
+  studentId      Int
+  token          String       @unique
+  status         PlayerStatus @default(WAITING)
+  socketId       String?
+  connectedAt    DateTime?
+  disconnectedAt DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  room    Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  answers      Answer[]
+  participants RoundParticipant[]
+  stoppedRounds Round[] @relation("FirstStopper")
+
+  @@unique([roomId, studentId])
+  @@index([roomId])
+  @@index([studentId])
+}
+
+model CategorySet {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?  @db.Text
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  categories Category[]
+  rounds     Round[]
+}
+
+model Category {
+  id            Int      @id @default(autoincrement())
+  categorySetId Int
+  name          String
+  description   String?  @db.Text
+  required      Boolean  @default(true)
+  order         Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  categorySet     CategorySet     @relation(fields: [categorySetId], references: [id], onDelete: Cascade)
+  roundCategories RoundCategory[]
+
+  @@index([categorySetId])
+}
+
+model Round {
+  id              Int         @id @default(autoincrement())
+  gameId          Int
+  roundNumber     Int
+  categorySetId   Int?
+  themeName       String
+  letter          String      @db.VarChar(4)
+  durationSeconds Int         @default(120)
+  status          RoundStatus @default(CREATED)
+  startedAt       DateTime?
+  endsAt          DateTime?
+  stoppedAt       DateTime?
+  scoredAt        DateTime?
+  stopReason      String?
+  firstStopperId  Int?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  game         Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  categorySet  CategorySet?   @relation(fields: [categorySetId], references: [id], onDelete: SetNull)
+  firstStopper PlayerSession? @relation("FirstStopper", fields: [firstStopperId], references: [id], onDelete: SetNull)
+
+  categories   RoundCategory[]
+  answers      Answer[]
+  participants RoundParticipant[]
+
+  @@unique([gameId, roundNumber])
+  @@index([gameId])
+}
+
+/// Copia imutavel das categorias no momento da criacao da rodada (spec 17)
+model RoundCategory {
+  id          Int     @id @default(autoincrement())
+  roundId     Int
+  categoryId  Int?
+  name        String
+  description String? @db.Text
+  required    Boolean @default(true)
+  order       Int     @default(0)
+
+  round    Round     @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  answers Answer[]
+
+  @@unique([roundId, order])
+  @@index([roundId])
+}
+
+/// Estado do jogador em uma rodada especifica. Eliminacoes valem apenas
+/// para a rodada corrente (spec 26 e 27).
+model RoundParticipant {
+  id              Int          @id @default(autoincrement())
+  roundId         Int
+  playerSessionId Int
+  status          PlayerStatus @default(PLAYING)
+  eliminatedAt    DateTime?
+  eliminationReason String?
+  submittedAt     DateTime?
+  roundScore      Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  round         Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  playerSession PlayerSession @relation(fields: [playerSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, playerSessionId])
+  @@index([roundId])
+  @@index([playerSessionId])
+}
+
+model Answer {
+  id              Int         @id @default(autoincrement())
+  roundId         Int
+  playerSessionId Int
+  roundCategoryId Int
+  value           String      @db.VarChar(255)
+  normalizedValue String      @db.VarChar(255)
+  reviewState     ReviewState @default(PENDING)
+  isValid         Boolean?
+  score           Int         @default(0)
+  submittedAt     DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  round         Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  playerSession PlayerSession @relation(fields: [playerSessionId], references: [id], onDelete: Cascade)
+  roundCategory RoundCategory @relation(fields: [roundCategoryId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, playerSessionId, roundCategoryId])
+  @@index([roundId])
+  @@index([playerSessionId])
+  @@index([roundCategoryId])
+  @@index([roundId, roundCategoryId])
+}
+
+model Score {
+  id        Int      @id @default(autoincrement())
+  gameId    Int
+  studentId Int
+  total     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  game    Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, studentId])
+  @@index([gameId])
+}
+
+/// Telemetria (spec 25 e 43). Nao usada como prova de saida da aplicacao.
+model TelemetryEvent {
+  id              Int      @id @default(autoincrement())
+  type            String
+  roomId          Int?
+  roundId         Int?
+  playerSessionId Int?
+  payload         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([roundId])
+  @@index([playerSessionId])
+  @@index([type])
+}

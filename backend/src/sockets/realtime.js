@@ -1,0 +1,51 @@
+import logger from "../lib/logger.js";
+
+/**
+ * Ponte entre as regras de negocio e o Socket.IO.
+ *
+ * Os servicos nao conhecem o objeto `io`: apenas publicam eventos por
+ * destino. Isso mantem as regras testaveis sem servidor de sockets.
+ */
+let io = null;
+
+export const rooms = {
+  all: (code) => `room:${code}`,
+  players: (code) => `room:${code}:players`,
+  teachers: (code) => `room:${code}:teachers`,
+  screens: (code) => `room:${code}:screen`,
+  player: (playerSessionId) => `player:${playerSessionId}`,
+};
+
+export function setIo(instance) {
+  io = instance;
+}
+
+export function getIo() {
+  return io;
+}
+
+function emit(target, event, payload) {
+  if (!io) {
+    logger.debug(`Socket.IO indisponivel; evento ${event} descartado`);
+    return;
+  }
+  io.to(target).emit(event, payload);
+}
+
+/** Todos os clientes conectados a sala (alunos, professor e tela publica). */
+export const toRoom = (code, event, payload) => emit(rooms.all(code), event, payload);
+
+/** Somente os alunos. */
+export const toPlayers = (code, event, payload) => emit(rooms.players(code), event, payload);
+
+/** Somente o painel do professor. */
+export const toTeachers = (code, event, payload) => emit(rooms.teachers(code), event, payload);
+
+/** Somente a tela publica (TV/projetor). */
+export const toScreens = (code, event, payload) => emit(rooms.screens(code), event, payload);
+
+/** Um aluno especifico, em todas as abas/dispositivos daquela sessao. */
+export const toPlayer = (playerSessionId, event, payload) =>
+  emit(rooms.player(playerSessionId), event, payload);
+
+export default { setIo, getIo, toRoom, toPlayers, toTeachers, toScreens, toPlayer, rooms };
