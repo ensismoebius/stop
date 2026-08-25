@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
-const LIFETIME_MS = 2200;
+// Deve bater com a duracao da animacao "emoji-float" em index.css.
+const LIFETIME_MS = 4000;
 let nextId = 0;
 
 /**

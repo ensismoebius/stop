@@ -458,7 +458,7 @@ tbody tr:hover {
   bottom: -10%;
   font-size: 2.4rem;
   line-height: 1;
-  animation: emoji-float 2.2s ease-out forwards;
+  animation: emoji-float 4s ease-out forwards;
 }
 
 @keyframes emoji-float {
@@ -466,12 +466,18 @@ tbody tr:hover {
     transform: translateY(0) scale(0.6);
     opacity: 0;
   }
-  15% {
-    transform: translateY(-10vh) scale(1);
+  10% {
+    transform: translateY(-8vh) scale(1);
+    opacity: 1;
+  }
+  /* Fica totalmente visivel por boa parte do percurso; so comeca a
+     desaparecer perto do final, em vez de desbotar o trajeto inteiro. */
+  75% {
+    transform: translateY(-70vh) scale(1.05);
     opacity: 1;
   }
   100% {
-    transform: translateY(-90vh) scale(1.1);
+    transform: translateY(-95vh) scale(1.1);
     opacity: 0;
   }
 }
