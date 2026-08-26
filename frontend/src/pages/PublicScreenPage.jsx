@@ -17,50 +17,39 @@ import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
 import EmojiBursts from "../components/common/EmojiBursts.jsx";
 import StopSplash from "../components/common/StopSplash.jsx";
 
-/**
- * Estado da tela pública: socket + fallback REST + QR code + derivação de
- * fase (lobby/playing/ranking) e contador — extraído da página porque é
- * toda a "aquisição de dados", nao o "como desenhar", e a página já tinha
- * ficado longa demais so com isso.
- */
-function useScreenState(code) {
-  const audio = useAudio();
-  const { sync, now } = useServerClock();
-  const [collabProgress, setCollabProgress] = useState(null);
-  const emojiBursts = useEmojiBursts();
-  const [stopSplash, setStopSplash] = useState(false);
+/** Handlers de socket da tela pública: só efeitos locais (som/progresso) — o estado em si chega via REST/fallback. */
+function buildScreenHandlers({ sync, audio, setStopSplash, setCollabProgress, emojiBursts }) {
+  return {
+    onState: (state) => sync(state?.serverTime),
+    // O som do sorteio agora acompanha a animacao (tique a cada giro e
+    // fanfarra so quando ela realmente para), nao o instante em que o
+    // evento de rede chega — por isso nao ha mais um "LETTER" aqui. O
+    // ranking segue o mesmo principio: quem toca os tiques e a fanfarra
+    // agora e o proprio <Ranking>, no ritmo da revelacao dramatica, nao
+    // o instante em que o evento de rede chega.
+    roundStarted: () => audio.play("START"),
+    roundStopped: () => {
+      audio.play("STOPPED");
+      audio.playVoice();
+      setStopSplash(true);
+    },
+    roundTimedOut: () => {
+      audio.play("STOPPED");
+      audio.playVoice();
+      setStopSplash(true);
+    },
+    // Correcao colaborativa (spec 36): so o progresso agregado, nunca
+    // respostas individuais na tela publica.
+    collaborativeCorrectionStarted: (payload) => setCollabProgress(payload),
+    collaborativeCorrectionProgress: (payload) => setCollabProgress(payload),
+    collaborativeCorrectionFinished: () => setCollabProgress(null),
+    emojiReceived: (payload) => emojiBursts.push(payload.emoji),
+  };
+}
 
-  const handlers = useMemo(
-    () => ({
-      onState: (state) => sync(state?.serverTime),
-      // O som do sorteio agora acompanha a animacao (tique a cada giro e
-      // fanfarra so quando ela realmente para), nao o instante em que o
-      // evento de rede chega — por isso nao ha mais um "LETTER" aqui. O
-      // ranking segue o mesmo principio: quem toca os tiques e a fanfarra
-      // agora e o proprio <Ranking>, no ritmo da revelacao dramatica, nao
-      // o instante em que o evento de rede chega.
-      roundStarted: () => audio.play("START"),
-      roundStopped: () => { audio.play("STOPPED"); audio.playVoice(); setStopSplash(true); },
-      roundTimedOut: () => { audio.play("STOPPED"); audio.playVoice(); setStopSplash(true); },
-      // Correcao colaborativa (spec 36): so o progresso agregado, nunca
-      // respostas individuais na tela publica.
-      collaborativeCorrectionStarted: (payload) => setCollabProgress(payload),
-      collaborativeCorrectionProgress: (payload) => setCollabProgress(payload),
-      collaborativeCorrectionFinished: () => setCollabProgress(null),
-      emojiReceived: (payload) => emojiBursts.push(payload.emoji),
-    }),
-    [audio, sync, emojiBursts],
-  );
-
-  const { connected, state } = useRoomSocket({
-    roomCode: code,
-    role: "screen",
-    handlers,
-    enabled: Boolean(code),
-  });
-
-  // Estado inicial por REST: a TV mostra a partida mesmo antes de o
-  // WebSocket completar o handshake (e depois de uma queda de rede).
+// Estado inicial por REST: a TV mostra a partida mesmo antes de o
+// WebSocket completar o handshake (e depois de uma queda de rede).
+function useScreenFallback(code) {
   const [fallback, setFallback] = useState(null);
   useEffect(() => {
     if (!code) return undefined;
@@ -79,10 +68,13 @@ function useScreenState(code) {
       clearInterval(timer);
     };
   }, [code]);
+  return fallback;
+}
 
-  // QR Code de entrada (spec 36): a tela publica e o lugar natural para
-  // exibi-lo — os alunos escaneiam de longe, sem depender do painel do
-  // professor estar aberto.
+// QR Code de entrada (spec 36): a tela publica e o lugar natural para
+// exibi-lo — os alunos escaneiam de longe, sem depender do painel do
+// professor estar aberto.
+function useScreenQrCode(code) {
   const [qrCode, setQrCode] = useState(null);
   useEffect(() => {
     if (!code) return;
@@ -91,7 +83,47 @@ function useScreenState(code) {
       .then(setQrCode)
       .catch(() => setQrCode(null));
   }, [code]);
+  return qrCode;
+}
 
+// Efeito sonoro nos ultimos segundos (spec 22).
+function useScreenBeep(playing, seconds, audio) {
+  const [lastBeep, setLastBeep] = useState(null);
+  useEffect(() => {
+    if (!playing || seconds === null || seconds > 10 || seconds <= 0) return;
+    if (lastBeep === seconds) return;
+    setLastBeep(seconds);
+    audio.play("FINAL_SECONDS");
+  }, [seconds, playing, audio, lastBeep]);
+}
+
+/**
+ * Estado da tela pública: socket + fallback REST + QR code + derivação de
+ * fase (lobby/playing/ranking) e contador — extraído da página porque é
+ * toda a "aquisição de dados", nao o "como desenhar", e a página já tinha
+ * ficado longa demais so com isso.
+ */
+function useScreenState(code) {
+  const audio = useAudio();
+  const { sync, now } = useServerClock();
+  const [collabProgress, setCollabProgress] = useState(null);
+  const emojiBursts = useEmojiBursts();
+  const [stopSplash, setStopSplash] = useState(false);
+
+  const handlers = useMemo(
+    () => buildScreenHandlers({ sync, audio, setStopSplash, setCollabProgress, emojiBursts }),
+    [audio, sync, emojiBursts],
+  );
+
+  const { connected, state } = useRoomSocket({
+    roomCode: code,
+    role: "screen",
+    handlers,
+    enabled: Boolean(code),
+  });
+
+  const fallback = useScreenFallback(code);
+  const qrCode = useScreenQrCode(code);
   const view = state ?? fallback;
 
   useEffect(() => {
@@ -115,14 +147,7 @@ function useScreenState(code) {
   const showRanking = round?.status === "SCORED" || view?.game?.status === "FINISHED";
   const seconds = useCountdown(playing ? round?.endsAt : null, now);
 
-  // Efeito sonoro nos ultimos segundos (spec 22).
-  const [lastBeep, setLastBeep] = useState(null);
-  useEffect(() => {
-    if (!playing || seconds === null || seconds > 10 || seconds <= 0) return;
-    if (lastBeep === seconds) return;
-    setLastBeep(seconds);
-    audio.play("FINAL_SECONDS");
-  }, [seconds, playing, audio, lastBeep]);
+  useScreenBeep(playing, seconds, audio);
 
   return {
     audio,

@@ -70,14 +70,38 @@ function AvatarStep({ avatarUrl, setAvatarUrl, loading, onContinue, onSkip }) {
 }
 
 /**
- * Entrada do aluno (spec 6).
- *
- * O aluno informa somente a matricula. O nome vem exclusivamente do banco
- * e serve para confirmacao: o cliente nunca envia o proprio nome como
- * mecanismo de identificacao.
+ * Confirma a entrada na sala, com avatar opcional. `skip` ignora o estado
+ * atual de avatarUrl (em vez de depender de um setAvatarUrl(null) anterior,
+ * que so aplicaria no proximo render — tarde demais para este mesmo clique).
  */
-export function JoinPage() {
-  const { code } = useParams();
+function useFinalizeJoin({ code, candidate, avatarUrl, navigate, save, setError, setLoading }) {
+  return useCallback(
+    async (skip = false) => {
+      setError(null);
+      setLoading(true);
+      try {
+        const chosen = skip ? null : avatarUrl;
+        if (chosen && chosen !== candidate.avatarUrl) {
+          await api.setAvatar(code, candidate.registrationNumber, chosen);
+        }
+        const session = await api.join(code, candidate.registrationNumber);
+        save({
+          ...session,
+          student: { ...session.student, avatarUrl: chosen ?? session.student.avatarUrl },
+        });
+        navigate("/play", { replace: true });
+      } catch (apiError) {
+        setError(apiError.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [code, candidate, avatarUrl, navigate, save, setError, setLoading],
+  );
+}
+
+/** Estado + ações de entrada: busca da sala, identificação por matrícula e finalização (com avatar opcional). */
+function useJoinFlow(code) {
   const navigate = useNavigate();
   const { save } = usePlayer();
 
@@ -122,34 +146,49 @@ export function JoinPage() {
     [code, registration],
   );
 
-  /**
-   * `skip` ignora o estado atual de avatarUrl (em vez de depender de um
-   * setAvatarUrl(null) anterior, que so aplicaria no proximo render — tarde
-   * demais para este mesmo clique).
-   */
-  const finalize = useCallback(
-    async (skip = false) => {
-      setError(null);
-      setLoading(true);
-      try {
-        const chosen = skip ? null : avatarUrl;
-        if (chosen && chosen !== candidate.avatarUrl) {
-          await api.setAvatar(code, candidate.registrationNumber, chosen);
-        }
-        const session = await api.join(code, candidate.registrationNumber);
-        save({
-          ...session,
-          student: { ...session.student, avatarUrl: chosen ?? session.student.avatarUrl },
-        });
-        navigate("/play", { replace: true });
-      } catch (apiError) {
-        setError(apiError.message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [code, candidate, avatarUrl, navigate, save],
-  );
+  const finalize = useFinalizeJoin({ code, candidate, avatarUrl, navigate, save, setError, setLoading });
+
+  return {
+    room,
+    registration,
+    setRegistration,
+    candidate,
+    setCandidate,
+    avatarStep,
+    setAvatarStep,
+    avatarUrl,
+    setAvatarUrl,
+    error,
+    loading,
+    identify,
+    finalize,
+  };
+}
+
+/**
+ * Entrada do aluno (spec 6).
+ *
+ * O aluno informa somente a matricula. O nome vem exclusivamente do banco
+ * e serve para confirmacao: o cliente nunca envia o proprio nome como
+ * mecanismo de identificacao.
+ */
+export function JoinPage() {
+  const { code } = useParams();
+  const {
+    room,
+    registration,
+    setRegistration,
+    candidate,
+    setCandidate,
+    avatarStep,
+    setAvatarStep,
+    avatarUrl,
+    setAvatarUrl,
+    error,
+    loading,
+    identify,
+    finalize,
+  } = useJoinFlow(code);
 
   return (
     <div className="join">

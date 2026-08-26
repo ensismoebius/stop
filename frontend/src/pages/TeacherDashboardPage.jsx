@@ -424,6 +424,59 @@ function buildAnswerReviewActions({ token, guard, round, setGrid, loadGrid }) {
   return { review, reviewGroup };
 }
 
+/** Envolve uma ação assíncrona com o indicador de ocupado e a mensagem de erro compartilhados pelo painel. */
+function useGuard(setBusy, setError) {
+  return useCallback(
+    async (task) => {
+      setBusy(true);
+      setError(null);
+      try {
+        return await task();
+      } catch (taskError) {
+        setError(taskError.message ?? "Falha na operação");
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [setBusy, setError],
+  );
+}
+
+/** Junta os quatro grupos de ações do painel em um único objeto para as abas consumirem. */
+function buildDashboardActions(deps) {
+  return {
+    ...buildGameLifecycleActions(deps),
+    ...buildRoundFlowActions(deps),
+    ...buildRoundResultActions(deps),
+    ...buildAnswerReviewActions(deps),
+  };
+}
+
+/**
+ * O painel do professor nunca fica em tela cheia (o professor precisa
+ * alternar entre janelas/abas livremente) — sai se algo deixou o navegador
+ * nesse estado antes de chegar aqui (ex.: tocou na home antes de navegar
+ * para /teacher, o que ja disparou o fullscreen automatico).
+ */
+function useExitFullscreenOnMount() {
+  useEffect(() => {
+    const active = document.fullscreenElement ?? document.webkitFullscreenElement;
+    if (!active) return;
+    const exit = document.exitFullscreen ?? document.webkitExitFullscreen;
+    exit?.call(document)?.catch?.(() => {});
+  }, []);
+}
+
+/** Carrega a grade de correção assim que a rodada entra em STOPPED/CORRECTION/SCORED e ainda não há grade. */
+function useGridAutoload(round, grid, loadGrid) {
+  useEffect(() => {
+    if (round && ["STOPPED", "CORRECTION", "SCORED"].includes(round.status) && !grid) {
+      loadGrid(round.id);
+    }
+  }, [round?.id, round?.status, grid, loadGrid]);
+}
+
 function DashboardHeader({ tab, setTab, room, connected, teacher, logout }) {
   return (
     <header className="topbar">
@@ -485,22 +538,10 @@ function QuickActions({ game, round, busy, actions }) {
 }
 
 /** Aba "Controle da partida": ações rápidas, RoundControl, RoomControl, monitor de jogadores e ranking ao vivo. */
-function ControlTab({
-  game,
-  room,
-  round,
-  seconds,
-  busy,
-  qrCode,
-  view,
-  categorySets,
-  usedLetters,
-  collabProgress,
-  classes,
-  games,
-  actions,
-  setTab,
-}) {
+function ControlTab({ catalog, gameState, realtime, busy, actions, setTab }) {
+  const { game, room, qrCode, usedLetters } = gameState;
+  const { round, seconds, view, collabProgress } = realtime;
+  const { classes, games, categorySets } = catalog;
   return (
     <div className="panel panel--control">
       <div className="stack">
@@ -554,7 +595,8 @@ function ControlTab({
 }
 
 /** Aba "Correção": alterna entre grade agregada por resposta e grade por aluno, mais pontuar/ranking. */
-function CorrectionTab({ round, busy, grid, groupedGrid, correctionView, setCorrectionView, view, actions }) {
+function CorrectionTab({ round, busy, grids, view, actions }) {
+  const { grid, groupedGrid, correctionView, setCorrectionView } = grids;
   return (
     <div className="panel">
       <div className="row small">
@@ -593,20 +635,9 @@ function CorrectionTab({ round, busy, grid, groupedGrid, correctionView, setCorr
 }
 
 /** Aba "Configuração": turmas/alunos (ConfigPanel) e estatísticas/histórico da partida atual. */
-function ConfigTab({
-  classes,
-  students,
-  selectedClassId,
-  setSelectedClassId,
-  token,
-  guard,
-  loadBasics,
-  setStudents,
-  statistics,
-  history,
-  deleteRound,
-  busy,
-}) {
+function ConfigTab({ catalog, token, guard, stats, deleteRound, busy }) {
+  const { classes, students, selectedClassId, setSelectedClassId, loadBasics, setStudents } = catalog;
+  const { statistics, history } = stats;
   return (
     <div className="panel">
       <ConfigPanel
@@ -711,24 +742,13 @@ function CategoriesTab({ categorySets, token, guard, loadBasics }) {
 }
 
 /** Aba "Relatórios": busca filtrada de resultados e desempenho por categoria. */
-function ReportsTab({
-  classes,
-  allStudents,
-  games,
-  reportResults,
-  setReportResults,
-  categoryStats,
-  setCategoryStats,
-  token,
-  guard,
-  busy,
-}) {
+function ReportsTab({ catalog, reportResults, setReportResults, categoryStats, setCategoryStats, token, guard, busy }) {
   return (
     <div className="panel">
       <ReportsPanel
-        classes={classes}
-        students={allStudents}
-        games={games}
+        classes={catalog.classes}
+        students={catalog.allStudents}
+        games={catalog.games}
         results={reportResults}
         categoryStats={categoryStats}
         busy={busy}
@@ -751,168 +771,45 @@ export function TeacherDashboardPage() {
   const { token, authenticated, checking, teacher, logout } = useAuth();
   const { sync, now } = useServerClock();
   const emojiBursts = useEmojiBursts();
-
-  // O painel do professor nunca fica em tela cheia (o professor precisa
-  // alternar entre janelas/abas livremente) — sai se algo deixou o
-  // navegador nesse estado antes de chegar aqui (ex.: tocou na home antes
-  // de navegar para /teacher, o que ja disparou o fullscreen automatico).
-  useEffect(() => {
-    const active = document.fullscreenElement ?? document.webkitFullscreenElement;
-    if (!active) return;
-    const exit = document.exitFullscreen ?? document.webkitExitFullscreen;
-    exit?.call(document)?.catch?.(() => {});
-  }, []);
+  useExitFullscreenOnMount();
 
   const [tab, setTab] = useState("control");
   const [reportResults, setReportResults] = useState([]);
   const [categoryStats, setCategoryStats] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-
-  const guard = useCallback(async (task) => {
-    setBusy(true);
-    setError(null);
-    try {
-      return await task();
-    } catch (taskError) {
-      setError(taskError.message ?? "Falha na operação");
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const guard = useGuard(setBusy, setError);
 
   const catalog = useDashboardCatalog(token, tab, setError);
-  const { game, setGame, room, setRoom, qrCode, usedLetters, setUsedLetters, reloadGame } = useDashboardGame(token);
-  const { grid, setGrid, groupedGrid, setGroupedGrid, correctionView, setCorrectionView, loadGrid } =
-    useDashboardGrids(token);
+  const gameState = useDashboardGame(token);
+  const grids = useDashboardGrids(token);
+  const realtime = useDashboardRealtime({ token, sync, now, emojiBursts, setError, setTab, ...gameState, ...grids });
+  const stats = useDashboardStats({ token, game: gameState.game, tab, roundStatus: realtime.round?.status, setError });
+  useGridAutoload(realtime.round, grids.grid, grids.loadGrid);
 
-  const { connected, view, round, seconds, collabProgress, setCollabProgress } = useDashboardRealtime({
-    token,
-    room,
-    sync,
-    now,
-    emojiBursts,
-    reloadGame,
-    setError,
-    setTab,
-    loadGrid,
-    setGrid,
-    setGroupedGrid,
-  });
-
-  const { statistics, setStatistics, history, setHistory } = useDashboardStats({
-    token,
-    game,
-    tab,
-    roundStatus: round?.status,
-    setError,
-  });
-
-  useEffect(() => {
-    if (round && ["STOPPED", "CORRECTION", "SCORED"].includes(round.status) && !grid) {
-      loadGrid(round.id);
-    }
-  }, [round?.id, round?.status, grid, loadGrid]);
-
-  const actions = {
-    ...buildGameLifecycleActions({
-      token,
-      guard,
-      game,
-      setGame,
-      setRoom,
-      loadBasics: catalog.loadBasics,
-      reloadGame,
-      setGrid,
-      setGroupedGrid,
-    }),
-    ...buildRoundFlowActions({
-      token,
-      guard,
-      game,
-      round,
-      usedLetters,
-      setUsedLetters,
-      setGrid,
-      setGroupedGrid,
-      setCollabProgress,
-      setTab,
-      reloadGame,
-    }),
-    ...buildRoundResultActions({
-      token,
-      guard,
-      game,
-      round,
-      setGrid,
-      setGroupedGrid,
-      setTab,
-      reloadGame,
-      setStatistics,
-      setHistory,
-    }),
-    ...buildAnswerReviewActions({ token, guard, round, setGrid, loadGrid }),
-  };
+  const actions = buildDashboardActions({ token, guard, setTab, loadBasics: catalog.loadBasics, ...gameState, ...grids, ...realtime, ...stats });
 
   if (checking) return <div className="container">Carregando...</div>;
   if (!authenticated) return <TeacherLoginPage />;
 
   return (
     <div className="teacher">
-      <DashboardHeader tab={tab} setTab={setTab} room={room} connected={connected} teacher={teacher} logout={logout} />
+      <DashboardHeader tab={tab} setTab={setTab} room={gameState.room} connected={realtime.connected} teacher={teacher} logout={logout} />
 
       <div className="container">
         <Alert kind="error">{error}</Alert>
       </div>
 
       {tab === "control" ? (
-        <ControlTab
-          game={game}
-          room={room}
-          round={round}
-          seconds={seconds}
-          busy={busy}
-          qrCode={qrCode}
-          view={view}
-          categorySets={catalog.categorySets}
-          usedLetters={usedLetters}
-          collabProgress={collabProgress}
-          classes={catalog.classes}
-          games={catalog.games}
-          actions={actions}
-          setTab={setTab}
-        />
+        <ControlTab catalog={catalog} gameState={gameState} realtime={realtime} busy={busy} actions={actions} setTab={setTab} />
       ) : null}
 
       {tab === "correction" ? (
-        <CorrectionTab
-          round={round}
-          busy={busy}
-          grid={grid}
-          groupedGrid={groupedGrid}
-          correctionView={correctionView}
-          setCorrectionView={setCorrectionView}
-          view={view}
-          actions={actions}
-        />
+        <CorrectionTab round={realtime.round} busy={busy} grids={grids} view={realtime.view} actions={actions} />
       ) : null}
 
       {tab === "config" ? (
-        <ConfigTab
-          classes={catalog.classes}
-          students={catalog.students}
-          selectedClassId={catalog.selectedClassId}
-          setSelectedClassId={catalog.setSelectedClassId}
-          token={token}
-          guard={guard}
-          loadBasics={catalog.loadBasics}
-          setStudents={catalog.setStudents}
-          statistics={statistics}
-          history={history}
-          deleteRound={actions.deleteRound}
-          busy={busy}
-        />
+        <ConfigTab catalog={catalog} token={token} guard={guard} stats={stats} deleteRound={actions.deleteRound} busy={busy} />
       ) : null}
 
       {tab === "categories" ? (
@@ -921,9 +818,7 @@ export function TeacherDashboardPage() {
 
       {tab === "reports" ? (
         <ReportsTab
-          classes={catalog.classes}
-          allStudents={catalog.allStudents}
-          games={catalog.games}
+          catalog={catalog}
           reportResults={reportResults}
           setReportResults={setReportResults}
           categoryStats={categoryStats}

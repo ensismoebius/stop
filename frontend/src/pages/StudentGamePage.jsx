@@ -466,25 +466,13 @@ function StudentTopBar({ state, player, connected }) {
 }
 
 /** Avisos/estado da rodada acima do editor de respostas: feedback, eliminação, fullscreen, correção colaborativa, status. */
-function StudentStatusArea({
-  state,
-  player,
-  connected,
-  feedback,
-  eliminated,
-  phase,
-  fullscreen,
-  enterGame,
-  reviews,
-  completedReviewIds,
-  handleDecideReview,
-  reviewBusy,
-  message,
-}) {
+function StudentStatusArea({ connection, player, feedback, eliminated, phase, fullscreenFlow, reviews, completedReviewIds, reviewActions, message }) {
   const { round, playing, revealSeconds } = phase;
+  const { fullscreen, enterGame } = fullscreenFlow;
+  const { handleDecideReview, reviewBusy } = reviewActions;
   return (
     <>
-      <StudentTopBar state={state} player={player} connected={connected} />
+      <StudentTopBar state={connection.state} player={player} connected={connection.connected} />
 
       {feedback ? <Alert kind={feedback.kind}>{feedback.message}</Alert> : null}
 
@@ -542,8 +530,9 @@ function StudentStatusArea({
 }
 
 /** Editor da categoria atual (spec 48) + lista de categorias, visível só depois que a rodada de fato começa. */
-function StudentAnswerArea({ currentCategory, answers, phase, handleChange, commit, setCurrentId, currentId, selectCategory }) {
+function StudentAnswerArea({ currentCategory, answers, phase, answerActions, setCurrentId, currentId }) {
   const { round, playing, roundHasStarted, categories } = phase;
+  const { handleChange, commit, selectCategory } = answerActions;
   return (
     <>
       {currentCategory ? (
@@ -619,13 +608,8 @@ function StudentFooterControls({ sendEmoji, audio, leaveRoom }) {
   );
 }
 
-/**
- * Student game page: displays categories, answer inputs, the STOP
- * button, and handles all round lifecycle events via WebSocket.
- *
- * @returns {JSX.Element}
- */
-export function StudentGamePage() {
+/** Estado local + conexão + fase da rodada — a metade "de onde vêm os dados" da fiação da tela do aluno. */
+function useStudentConnectionState() {
   const { player, clear } = usePlayer();
   const navigate = useNavigate();
   const audio = useAudio();
@@ -661,6 +645,35 @@ export function StudentGamePage() {
   });
   const connection = useStudentConnection(player, handlers, applyState);
   const phase = useStudentRoundPhase(connection.state, now, audio, eliminated);
+
+  return {
+    player,
+    clear,
+    navigate,
+    audio,
+    emojiBursts,
+    answers,
+    setAnswers,
+    currentId,
+    setCurrentId,
+    feedback,
+    setFeedback,
+    eliminated,
+    ranking,
+    reviews,
+    completedReviewIds,
+    setCompletedReviewIds,
+    stopSplash,
+    setStopSplash,
+    connection,
+    phase,
+  };
+}
+
+/** Ações da tela do aluno — tela cheia, respostas, STOP e correção colaborativa — a metade "o que dá pra fazer com os dados". */
+function useStudentActionState(base) {
+  const { clear, navigate, audio, connection, phase, answers, setAnswers, currentId, setCurrentId, setFeedback, setCompletedReviewIds } = base;
+
   const fullscreenFlow = useStudentFullscreenFlow({
     clear,
     navigate,
@@ -691,10 +704,30 @@ export function StudentGamePage() {
   });
   const reviewActions = useStudentReviewActions({ socketRef: connection.socketRef, setCompletedReviewIds, setFeedback });
 
+  return { fullscreenFlow, answerActions, stop, reviewActions };
+}
+
+/** Junta as duas metades da fiação de hooks da tela do aluno para a página só cuidar do JSX. */
+function useStudentGameState() {
+  const base = useStudentConnectionState();
+  const { fullscreenFlow, answerActions, stop, reviewActions } = useStudentActionState(base);
+  return { ...base, fullscreenFlow, answerActions, stop, reviewActions };
+}
+
+/**
+ * Student game page: displays categories, answer inputs, the STOP
+ * button, and handles all round lifecycle events via WebSocket.
+ *
+ * @returns {JSX.Element}
+ */
+export function StudentGamePage() {
+  const game = useStudentGameState();
+  const { player, phase, answerActions, stop, reviewActions, fullscreenFlow } = game;
+
   if (!player) return null;
 
   const message = phase.round ? STATUS_MESSAGE[phase.round.status] : null;
-  const currentCategory = phase.categories.find((category) => category.id === currentId) ?? null;
+  const currentCategory = phase.categories.find((category) => category.id === game.currentId) ?? null;
 
   return (
     <div className="student">
@@ -708,35 +741,30 @@ export function StudentGamePage() {
 
       <main className="student__body">
         <StudentStatusArea
-          state={connection.state}
+          connection={game.connection}
           player={player}
-          connected={connection.connected}
-          feedback={feedback}
-          eliminated={eliminated}
+          feedback={game.feedback}
+          eliminated={game.eliminated}
           phase={phase}
-          fullscreen={fullscreenFlow.fullscreen}
-          enterGame={fullscreenFlow.enterGame}
-          reviews={reviews}
-          completedReviewIds={completedReviewIds}
-          handleDecideReview={reviewActions.handleDecideReview}
-          reviewBusy={reviewActions.reviewBusy}
+          fullscreenFlow={fullscreenFlow}
+          reviews={game.reviews}
+          completedReviewIds={game.completedReviewIds}
+          reviewActions={reviewActions}
           message={message}
         />
 
         <StudentAnswerArea
           currentCategory={currentCategory}
-          answers={answers}
+          answers={game.answers}
           phase={phase}
-          handleChange={answerActions.handleChange}
-          commit={answerActions.commit}
-          setCurrentId={setCurrentId}
-          currentId={currentId}
-          selectCategory={answerActions.selectCategory}
+          answerActions={answerActions}
+          setCurrentId={game.setCurrentId}
+          currentId={game.currentId}
         />
 
-        <StudentRankingList ranking={ranking} round={phase.round} />
+        <StudentRankingList ranking={game.ranking} round={phase.round} />
 
-        <StudentFooterControls sendEmoji={reviewActions.sendEmoji} audio={audio} leaveRoom={fullscreenFlow.leaveRoom} />
+        <StudentFooterControls sendEmoji={reviewActions.sendEmoji} audio={game.audio} leaveRoom={fullscreenFlow.leaveRoom} />
       </main>
 
       <div className="stopbar">
@@ -748,9 +776,9 @@ export function StudentGamePage() {
         />
       </div>
 
-      <EmojiBursts items={emojiBursts.items} />
+      <EmojiBursts items={game.emojiBursts.items} />
 
-      {stopSplash ? <StopSplash onDone={() => setStopSplash(false)} /> : null}
+      {game.stopSplash ? <StopSplash onDone={() => game.setStopSplash(false)} /> : null}
     </div>
   );
 }
