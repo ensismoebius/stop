@@ -24,5 +24,12 @@ export default defineConfig({
       ...testEnv,
       ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
     },
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html", "json-summary"],
+      include: ["src/**/*.js"],
+      exclude: ["src/lib/prisma.js", "**/generated/**"],
+      all: true,
+    },
   },
 });
