@@ -29,58 +29,15 @@ const TABS = [
 
 const GAME_KEY = "stop:teacher:game";
 
-export function TeacherDashboardPage() {
-  const { token, authenticated, checking, teacher, logout } = useAuth();
-  const { sync, now } = useServerClock();
-  const emojiBursts = useEmojiBursts();
-
-  // O painel do professor nunca fica em tela cheia (o professor precisa
-  // alternar entre janelas/abas livremente) — sai se algo deixou o
-  // navegador nesse estado antes de chegar aqui (ex.: tocou na home antes
-  // de navegar para /teacher, o que ja disparou o fullscreen automatico).
-  useEffect(() => {
-    const active = document.fullscreenElement ?? document.webkitFullscreenElement;
-    if (!active) return;
-    const exit = document.exitFullscreen ?? document.webkitExitFullscreen;
-    exit?.call(document)?.catch?.(() => {});
-  }, []);
-
-  const [tab, setTab] = useState("control");
+/** Cadastros básicos (turmas/partidas/conjuntos de categorias/alunos da turma selecionada) e a lista completa de alunos usada pelo filtro de relatórios. */
+function useDashboardCatalog(token, tab, setError) {
   const [classes, setClasses] = useState([]);
   const [games, setGames] = useState([]);
-  const [game, setGame] = useState(null);
-  const [room, setRoom] = useState(null);
-  const [qrCode, setQrCode] = useState(null);
   const [categorySets, setCategorySets] = useState([]);
   const [students, setStudents] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState(null);
-  const [usedLetters, setUsedLetters] = useState([]);
-  const [grid, setGrid] = useState(null);
-  const [groupedGrid, setGroupedGrid] = useState(null);
-  const [correctionView, setCorrectionView] = useState("grouped");
-  const [collabProgress, setCollabProgress] = useState(null);
-  const [statistics, setStatistics] = useState(null);
-  const [history, setHistory] = useState(null);
   const [allStudents, setAllStudents] = useState([]);
-  const [reportResults, setReportResults] = useState([]);
-  const [categoryStats, setCategoryStats] = useState(null);
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
 
-  const guard = useCallback(async (task) => {
-    setBusy(true);
-    setError(null);
-    try {
-      return await task();
-    } catch (taskError) {
-      setError(taskError.message ?? "Falha na operação");
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  // Cadastros basicos ---------------------------------------------------
   const loadBasics = useCallback(async () => {
     if (!token) return;
     const [classList, gameList, sets] = await Promise.all([
@@ -96,7 +53,7 @@ export function TeacherDashboardPage() {
   useEffect(() => {
     if (!token) return;
     loadBasics().catch((loadError) => setError(loadError.message));
-  }, [token, loadBasics]);
+  }, [token, loadBasics, setError]);
 
   useEffect(() => {
     if (!token || !selectedClassId) {
@@ -107,14 +64,34 @@ export function TeacherDashboardPage() {
       .listStudents(token, selectedClassId)
       .then(setStudents)
       .catch((listError) => setError(listError.message));
-  }, [token, selectedClassId]);
+  }, [token, selectedClassId, setError]);
 
   // Lista completa de alunos (todas as turmas) para o filtro de relatórios —
   // carregada só quando a aba é aberta, não no load inicial do dashboard.
   useEffect(() => {
     if (!token || tab !== "reports") return;
     api.listStudents(token).then(setAllStudents).catch((listError) => setError(listError.message));
-  }, [token, tab]);
+  }, [token, tab, setError]);
+
+  return {
+    classes,
+    games,
+    categorySets,
+    students,
+    setStudents,
+    selectedClassId,
+    setSelectedClassId,
+    allStudents,
+    loadBasics,
+  };
+}
+
+/** Partida/sala/QR-code/histórico de letras selecionados, restaurados entre recargas de página via localStorage. */
+function useDashboardGame(token) {
+  const [game, setGame] = useState(null);
+  const [room, setRoom] = useState(null);
+  const [qrCode, setQrCode] = useState(null);
+  const [usedLetters, setUsedLetters] = useState([]);
 
   // Restaura a partida selecionada entre recargas de pagina.
   useEffect(() => {
@@ -165,7 +142,15 @@ export function TeacherDashboardPage() {
     setUsedLetters(letters.usedLetters ?? []);
   }, [token, game?.id]);
 
-  // Estado em tempo real ------------------------------------------------
+  return { game, setGame, room, setRoom, qrCode, usedLetters, setUsedLetters, reloadGame };
+}
+
+/** Grades de correção (flat + agregada) da rodada atual, mais a aba usada para exibi-las. */
+function useDashboardGrids(token) {
+  const [grid, setGrid] = useState(null);
+  const [groupedGrid, setGroupedGrid] = useState(null);
+  const [correctionView, setCorrectionView] = useState("grouped");
+
   const loadGrid = useCallback(
     async (roundId) => {
       if (!token || !roundId) return;
@@ -183,6 +168,49 @@ export function TeacherDashboardPage() {
     },
     [token],
   );
+
+  return { grid, setGrid, groupedGrid, setGroupedGrid, correctionView, setCorrectionView, loadGrid };
+}
+
+/** Socket do professor para a sala atual (thin wrapper só para manter `useDashboardRealtime` curto). */
+function useDashboardSocket({ token, room, handlers }) {
+  return useRoomSocket({
+    roomCode: room?.code,
+    role: "teacher",
+    adminToken: token,
+    handlers,
+    enabled: Boolean(room?.code && token),
+  });
+}
+
+/** Estado por REST (fallback antes do handshake) + derivação de `round`/contador a partir do estado ao vivo. */
+function useDashboardView({ token, room, state, sync, now }) {
+  // Estado inicial por REST: o painel fica utilizavel imediatamente apos um
+  // reload, sem esperar o handshake do WebSocket.
+  const [fallback, setFallback] = useState(null);
+  useEffect(() => {
+    if (!token || !room?.code) return;
+    api
+      .teacherState(token, room.code)
+      .then(setFallback)
+      .catch(() => setFallback(null));
+  }, [token, room?.code]);
+
+  const view = state ?? fallback;
+
+  useEffect(() => {
+    if (view?.serverTime) sync(view.serverTime);
+  }, [view?.serverTime, sync]);
+
+  const round = view?.round ?? null;
+  const seconds = useCountdown(round?.status === "PLAYING" ? round?.endsAt : null, now);
+
+  return { view, round, seconds };
+}
+
+/** Estado em tempo real da rodada atual: socket, progresso da correção colaborativa e derivação de fase/contador. */
+function useDashboardRealtime({ token, room, sync, now, emojiBursts, reloadGame, setError, setTab, loadGrid, setGrid, setGroupedGrid }) {
+  const [collabProgress, setCollabProgress] = useState(null);
 
   const handlers = useMemo(
     () => ({
@@ -223,55 +251,36 @@ export function TeacherDashboardPage() {
       },
       emojiReceived: (payload) => emojiBursts.push(payload.emoji),
     }),
-    [loadGrid, reloadGame, sync, emojiBursts],
+    [loadGrid, reloadGame, sync, emojiBursts, setTab, setError],
   );
 
-  const { connected, state } = useRoomSocket({
-    roomCode: room?.code,
-    role: "teacher",
-    adminToken: token,
-    handlers,
-    enabled: Boolean(room?.code && token),
-  });
+  const { connected, state } = useDashboardSocket({ token, room, handlers });
+  const { view, round, seconds } = useDashboardView({ token, room, state, sync, now });
 
-  // Estado inicial por REST: o painel fica utilizavel imediatamente apos um
-  // reload, sem esperar o handshake do WebSocket.
-  const [fallback, setFallback] = useState(null);
-  useEffect(() => {
-    if (!token || !room?.code) return;
-    api
-      .teacherState(token, room.code)
-      .then(setFallback)
-      .catch(() => setFallback(null));
-  }, [token, room?.code]);
+  return { connected, view, round, seconds, collabProgress, setCollabProgress };
+}
 
-  const view = state ?? fallback;
-
-  useEffect(() => {
-    if (view?.serverTime) sync(view.serverTime);
-  }, [view?.serverTime, sync]);
-
-  const round = view?.round ?? null;
-  const seconds = useCountdown(round?.status === "PLAYING" ? round?.endsAt : null, now);
-
-  useEffect(() => {
-    if (round && ["STOPPED", "CORRECTION", "SCORED"].includes(round.status) && !grid) {
-      loadGrid(round.id);
-    }
-  }, [round?.id, round?.status, grid, loadGrid]);
+/** Estatísticas/histórico da partida atual — recarregados na aba "Configuração" ou assim que uma rodada é pontuada. */
+function useDashboardStats({ token, game, tab, roundStatus, setError }) {
+  const [statistics, setStatistics] = useState(null);
+  const [history, setHistory] = useState(null);
 
   useEffect(() => {
     if (!token || !game) return;
-    if (tab !== "config" && round?.status !== "SCORED") return;
+    if (tab !== "config" && roundStatus !== "SCORED") return;
     Promise.all([api.gameStatistics(token, game.id), api.gameHistory(token, game.id)])
       .then(([stats, hist]) => {
         setStatistics(stats);
         setHistory(hist);
       })
       .catch((statsError) => setError(statsError.message));
-  }, [token, game?.id, round?.status, tab]);
+  }, [token, game?.id, roundStatus, tab, setError]);
 
-  // Acoes ---------------------------------------------------------------
+  return { statistics, setStatistics, history, setHistory };
+}
+
+/** Ações de partida/sala: criar, selecionar, abrir sala, encerrar. Sempre por `guard`, exceto `selectGame` (ver nota). */
+function buildGameLifecycleActions({ token, guard, game, setGame, setRoom, loadBasics, reloadGame, setGrid, setGroupedGrid }) {
   const createGame = (payload) =>
     guard(async () => {
       const created = await api.createGame(token, payload);
@@ -280,6 +289,17 @@ export function TeacherDashboardPage() {
       await loadBasics();
     });
 
+  // Este handler nunca foi passado por `guard` (sem busy/erro) — preservado
+  // assim para nao mudar o comportamento existente ao extrair a acao.
+  const selectGame = async (selected) => {
+    if (!selected) {
+      setGame(null);
+      window.localStorage.removeItem(GAME_KEY);
+      return;
+    }
+    setGame(await api.getGame(token, selected.id));
+  };
+
   const createRoom = () =>
     guard(async () => {
       const created = await api.createRoom(token, game.id);
@@ -287,6 +307,22 @@ export function TeacherDashboardPage() {
       await reloadGame();
     });
 
+  /** Encerra a partida e volta para a selecao/criacao de outra. */
+  const finishGame = () =>
+    guard(async () => {
+      await api.finishGame(token, game.id);
+      setGame(null);
+      setGrid(null);
+      setGroupedGrid(null);
+      window.localStorage.removeItem(GAME_KEY);
+      await loadBasics();
+    });
+
+  return { createGame, selectGame, createRoom, finishGame };
+}
+
+/** Ações de fluxo da rodada: criar, sortear letra, iniciar/encerrar/cancelar, fechar correção colaborativa. */
+function buildRoundFlowActions({ token, guard, game, round, usedLetters, setUsedLetters, setGrid, setGroupedGrid, setCollabProgress, setTab, reloadGame }) {
   const createRound = (payload) =>
     guard(async () => {
       await api.createRound(token, { ...payload, gameId: game.id });
@@ -321,17 +357,11 @@ export function TeacherDashboardPage() {
       await reloadGame();
     });
 
-  /** Encerra a partida e volta para a selecao/criacao de outra. */
-  const finishGame = () =>
-    guard(async () => {
-      await api.finishGame(token, game.id);
-      setGame(null);
-      setGrid(null);
-      setGroupedGrid(null);
-      window.localStorage.removeItem(GAME_KEY);
-      await loadBasics();
-    });
+  return { createRound, drawLetter, startRound, stopRound, finishCollaborativeCorrection, cancelRound };
+}
 
+/** Ações de resultado: pontuar, avançar para a próxima rodada, apagar uma rodada do histórico. */
+function buildRoundResultActions({ token, guard, game, round, setGrid, setGroupedGrid, setTab, reloadGame, setStatistics, setHistory }) {
   const scoreRound = () =>
     guard(async () => {
       await api.scoreRound(token, round.id);
@@ -360,6 +390,11 @@ export function TeacherDashboardPage() {
       await reloadGame();
     });
 
+  return { scoreRound, nextRound, deleteRound };
+}
+
+/** Ações de correção: marcar uma resposta, ou um grupo agregado inteiro de uma vez (spec 18). */
+function buildAnswerReviewActions({ token, guard, round, setGrid, loadGrid }) {
   const review = (answerId, reviewState) =>
     guard(async () => {
       await api.reviewAnswer(token, answerId, reviewState);
@@ -377,7 +412,6 @@ export function TeacherDashboardPage() {
       });
     });
 
-  /** Marca todas as respostas de um grupo agregado de uma vez (spec 18). */
   const reviewGroup = (answerIds, reviewState) =>
     guard(async () => {
       await api.reviewAnswers(
@@ -387,288 +421,517 @@ export function TeacherDashboardPage() {
       await loadGrid(round.id);
     });
 
+  return { review, reviewGroup };
+}
+
+function DashboardHeader({ tab, setTab, room, connected, teacher, logout }) {
+  return (
+    <header className="topbar">
+      <span className="topbar__brand">STOP · PROFESSOR</span>
+      <nav className="tabs" role="tablist" aria-label="Seções do painel">
+        {TABS.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            role="tab"
+            className="tab"
+            aria-selected={tab === item.key}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      <div className="row small">
+        {room ? <ConnectionBadge connected={connected} /> : null}
+        <span className="muted">{teacher?.name}</span>
+        <button type="button" className="btn btn--ghost" onClick={logout}>
+          Sair
+        </button>
+      </div>
+    </header>
+  );
+}
+
+/**
+ * Barra de acoes rapidas: "finalizar rodada" e "finalizar partida" sempre
+ * alcancaveis na aba de controle, sem depender da fase atual do RoundControl
+ * nem de rolar ate o card da sala.
+ */
+function QuickActions({ game, round, busy, actions }) {
+  if (!game) return null;
+  return (
+    <div className="card row spread">
+      <span className="small muted">Ações rápidas</span>
+      <div className="row">
+        {round && round.status === "PLAYING" ? (
+          <button type="button" className="btn btn--danger" disabled={busy} onClick={actions.stopRound}>
+            Finalizar rodada
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm("Encerrar esta partida e começar outra?")) actions.finishGame();
+          }}
+        >
+          Finalizar partida
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Aba "Controle da partida": ações rápidas, RoundControl, RoomControl, monitor de jogadores e ranking ao vivo. */
+function ControlTab({
+  game,
+  room,
+  round,
+  seconds,
+  busy,
+  qrCode,
+  view,
+  categorySets,
+  usedLetters,
+  collabProgress,
+  classes,
+  games,
+  actions,
+  setTab,
+}) {
+  return (
+    <div className="panel panel--control">
+      <div className="stack">
+        <QuickActions game={game} round={round} busy={busy} actions={actions} />
+        {/*
+          RoundControl vem antes da sala: e o painel de acao (criar/
+          sortear/iniciar/encerrar rodada) que o professor usa a cada
+          rodada. RoomControl (QR code, codigo da sala) e configuracao
+          feita uma vez so — deixa-la depois evita empurrar o botao de
+          acao para fora da tela em telas menores.
+        */}
+        {room ? (
+          <RoundControl
+            round={round}
+            categorySets={categorySets}
+            usedLetters={usedLetters}
+            seconds={seconds}
+            busy={busy}
+            disabled={!room}
+            onCreateRound={actions.createRound}
+            onDrawLetter={actions.drawLetter}
+            onStart={actions.startRound}
+            onStop={actions.stopRound}
+            onCancel={actions.cancelRound}
+            collabProgress={collabProgress}
+            onFinishCollaborativeCorrection={actions.finishCollaborativeCorrection}
+            onScore={actions.scoreRound}
+            onNextRound={actions.nextRound}
+            onGoToCorrection={() => setTab("correction")}
+          />
+        ) : null}
+        <RoomControl
+          classes={classes}
+          games={games}
+          game={game}
+          room={room}
+          qrCode={qrCode}
+          busy={busy}
+          onCreateGame={actions.createGame}
+          onSelectGame={actions.selectGame}
+          onCreateRoom={actions.createRoom}
+        />
+      </div>
+
+      <div className="stack">
+        <PlayerMonitor players={view?.players ?? []} requiredCount={view?.requiredCount ?? 0} />
+        <RankingPanel ranking={view?.ranking ?? []} />
+      </div>
+    </div>
+  );
+}
+
+/** Aba "Correção": alterna entre grade agregada por resposta e grade por aluno, mais pontuar/ranking. */
+function CorrectionTab({ round, busy, grid, groupedGrid, correctionView, setCorrectionView, view, actions }) {
+  return (
+    <div className="panel">
+      <div className="row small">
+        <button
+          type="button"
+          className="tab"
+          role="tab"
+          aria-selected={correctionView === "grouped"}
+          onClick={() => setCorrectionView("grouped")}
+        >
+          Agregada por resposta
+        </button>
+        <button
+          type="button"
+          className="tab"
+          role="tab"
+          aria-selected={correctionView === "grid"}
+          onClick={() => setCorrectionView("grid")}
+        >
+          Grade por aluno
+        </button>
+      </div>
+      {correctionView === "grouped" ? (
+        <GroupedCorrectionPanel grid={groupedGrid} onReviewGroup={actions.reviewGroup} busy={busy} />
+      ) : (
+        <CorrectionPanel grid={grid} onReview={actions.review} busy={busy} />
+      )}
+      {round?.status === "CORRECTION" || round?.status === "STOPPED" ? (
+        <button type="button" className="btn btn--success" disabled={busy} onClick={actions.scoreRound}>
+          Pontuar rodada e atualizar ranking
+        </button>
+      ) : null}
+      <RankingPanel ranking={view?.ranking ?? []} />
+    </div>
+  );
+}
+
+/** Aba "Configuração": turmas/alunos (ConfigPanel) e estatísticas/histórico da partida atual. */
+function ConfigTab({
+  classes,
+  students,
+  selectedClassId,
+  setSelectedClassId,
+  token,
+  guard,
+  loadBasics,
+  setStudents,
+  statistics,
+  history,
+  deleteRound,
+  busy,
+}) {
+  return (
+    <div className="panel">
+      <ConfigPanel
+        classes={classes}
+        students={students}
+        selectedClassId={selectedClassId}
+        onSelectClass={setSelectedClassId}
+        onCreateClass={(payload) =>
+          guard(async () => {
+            await api.createClass(token, payload);
+            await loadBasics();
+          })
+        }
+        onUpdateClass={(id, payload) =>
+          guard(async () => {
+            await api.updateClass(token, id, payload);
+            await loadBasics();
+          })
+        }
+        onDeleteClass={(id) =>
+          guard(async () => {
+            await api.deleteClass(token, id);
+            if (id === selectedClassId) setSelectedClassId(null);
+            await loadBasics();
+          })
+        }
+        onCreateStudent={(payload) =>
+          guard(async () => {
+            await api.createStudent(token, payload);
+            setStudents(await api.listStudents(token, selectedClassId));
+          })
+        }
+        onUpdateStudent={(id, payload) =>
+          guard(async () => {
+            await api.updateStudent(token, id, payload);
+            setStudents(await api.listStudents(token, selectedClassId));
+          })
+        }
+        onBulkStudents={(payload) =>
+          guard(async () => {
+            await api.bulkStudents(token, payload);
+            setStudents(await api.listStudents(token, selectedClassId));
+          })
+        }
+        onDeleteStudent={(id) =>
+          guard(async () => {
+            await api.deleteStudent(token, id);
+            setStudents(await api.listStudents(token, selectedClassId));
+          })
+        }
+      />
+      <StatisticsPanel statistics={statistics} history={history} onDeleteRound={deleteRound} busy={busy} />
+    </div>
+  );
+}
+
+/** Aba "Categorias": CRUD de conjuntos de categorias/categorias. */
+function CategoriesTab({ categorySets, token, guard, loadBasics }) {
+  return (
+    <div className="panel">
+      <CategorySetsPanel
+        categorySets={categorySets}
+        onCreateCategorySet={(payload) =>
+          guard(async () => {
+            await api.createCategorySet(token, payload);
+            await loadBasics();
+          })
+        }
+        onUpdateCategorySet={(id, payload) =>
+          guard(async () => {
+            await api.updateCategorySet(token, id, payload);
+            await loadBasics();
+          })
+        }
+        onDeleteCategorySet={(id) =>
+          guard(async () => {
+            await api.deleteCategorySet(token, id);
+            await loadBasics();
+          })
+        }
+        onCreateCategory={(payload) =>
+          guard(async () => {
+            await api.createCategory(token, payload);
+            await loadBasics();
+          })
+        }
+        onUpdateCategory={(id, payload) =>
+          guard(async () => {
+            await api.updateCategory(token, id, payload);
+            await loadBasics();
+          })
+        }
+        onDeleteCategory={(id) =>
+          guard(async () => {
+            await api.deleteCategory(token, id);
+            await loadBasics();
+          })
+        }
+      />
+    </div>
+  );
+}
+
+/** Aba "Relatórios": busca filtrada de resultados e desempenho por categoria. */
+function ReportsTab({
+  classes,
+  allStudents,
+  games,
+  reportResults,
+  setReportResults,
+  categoryStats,
+  setCategoryStats,
+  token,
+  guard,
+  busy,
+}) {
+  return (
+    <div className="panel">
+      <ReportsPanel
+        classes={classes}
+        students={allStudents}
+        games={games}
+        results={reportResults}
+        categoryStats={categoryStats}
+        busy={busy}
+        onSearch={(filters) =>
+          guard(async () => {
+            setReportResults(await api.searchReports(token, filters));
+          })
+        }
+        onCategoryStats={(filters) =>
+          guard(async () => {
+            setCategoryStats(await api.categoryStats(token, filters));
+          })
+        }
+      />
+    </div>
+  );
+}
+
+export function TeacherDashboardPage() {
+  const { token, authenticated, checking, teacher, logout } = useAuth();
+  const { sync, now } = useServerClock();
+  const emojiBursts = useEmojiBursts();
+
+  // O painel do professor nunca fica em tela cheia (o professor precisa
+  // alternar entre janelas/abas livremente) — sai se algo deixou o
+  // navegador nesse estado antes de chegar aqui (ex.: tocou na home antes
+  // de navegar para /teacher, o que ja disparou o fullscreen automatico).
+  useEffect(() => {
+    const active = document.fullscreenElement ?? document.webkitFullscreenElement;
+    if (!active) return;
+    const exit = document.exitFullscreen ?? document.webkitExitFullscreen;
+    exit?.call(document)?.catch?.(() => {});
+  }, []);
+
+  const [tab, setTab] = useState("control");
+  const [reportResults, setReportResults] = useState([]);
+  const [categoryStats, setCategoryStats] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const guard = useCallback(async (task) => {
+    setBusy(true);
+    setError(null);
+    try {
+      return await task();
+    } catch (taskError) {
+      setError(taskError.message ?? "Falha na operação");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const catalog = useDashboardCatalog(token, tab, setError);
+  const { game, setGame, room, setRoom, qrCode, usedLetters, setUsedLetters, reloadGame } = useDashboardGame(token);
+  const { grid, setGrid, groupedGrid, setGroupedGrid, correctionView, setCorrectionView, loadGrid } =
+    useDashboardGrids(token);
+
+  const { connected, view, round, seconds, collabProgress, setCollabProgress } = useDashboardRealtime({
+    token,
+    room,
+    sync,
+    now,
+    emojiBursts,
+    reloadGame,
+    setError,
+    setTab,
+    loadGrid,
+    setGrid,
+    setGroupedGrid,
+  });
+
+  const { statistics, setStatistics, history, setHistory } = useDashboardStats({
+    token,
+    game,
+    tab,
+    roundStatus: round?.status,
+    setError,
+  });
+
+  useEffect(() => {
+    if (round && ["STOPPED", "CORRECTION", "SCORED"].includes(round.status) && !grid) {
+      loadGrid(round.id);
+    }
+  }, [round?.id, round?.status, grid, loadGrid]);
+
+  const actions = {
+    ...buildGameLifecycleActions({
+      token,
+      guard,
+      game,
+      setGame,
+      setRoom,
+      loadBasics: catalog.loadBasics,
+      reloadGame,
+      setGrid,
+      setGroupedGrid,
+    }),
+    ...buildRoundFlowActions({
+      token,
+      guard,
+      game,
+      round,
+      usedLetters,
+      setUsedLetters,
+      setGrid,
+      setGroupedGrid,
+      setCollabProgress,
+      setTab,
+      reloadGame,
+    }),
+    ...buildRoundResultActions({
+      token,
+      guard,
+      game,
+      round,
+      setGrid,
+      setGroupedGrid,
+      setTab,
+      reloadGame,
+      setStatistics,
+      setHistory,
+    }),
+    ...buildAnswerReviewActions({ token, guard, round, setGrid, loadGrid }),
+  };
+
   if (checking) return <div className="container">Carregando...</div>;
   if (!authenticated) return <TeacherLoginPage />;
 
   return (
     <div className="teacher">
-      <header className="topbar">
-        <span className="topbar__brand">STOP · PROFESSOR</span>
-        <nav className="tabs" role="tablist" aria-label="Seções do painel">
-          {TABS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="tab"
-              className="tab"
-              aria-selected={tab === item.key}
-              onClick={() => setTab(item.key)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <div className="row small">
-          {room ? <ConnectionBadge connected={connected} /> : null}
-          <span className="muted">{teacher?.name}</span>
-          <button type="button" className="btn btn--ghost" onClick={logout}>
-            Sair
-          </button>
-        </div>
-      </header>
+      <DashboardHeader tab={tab} setTab={setTab} room={room} connected={connected} teacher={teacher} logout={logout} />
 
       <div className="container">
         <Alert kind="error">{error}</Alert>
       </div>
 
       {tab === "control" ? (
-        <div className="panel panel--control">
-          <div className="stack">
-            {/*
-              Barra de acoes rapidas: "finalizar rodada" e "finalizar
-              partida" sempre alcancaveis nesta aba, sem depender da fase
-              atual do RoundControl nem de rolar ate o card da sala.
-            */}
-            {game ? (
-              <div className="card row spread">
-                <span className="small muted">Ações rápidas</span>
-                <div className="row">
-                  {round && round.status === "PLAYING" ? (
-                    <button
-                      type="button"
-                      className="btn btn--danger"
-                      disabled={busy}
-                      onClick={stopRound}
-                    >
-                      Finalizar rodada
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn btn--ghost"
-                    disabled={busy}
-                    onClick={() => {
-                      if (window.confirm("Encerrar esta partida e começar outra?")) finishGame();
-                    }}
-                  >
-                    Finalizar partida
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            {/*
-              RoundControl vem antes da sala: e o painel de acao (criar/
-              sortear/iniciar/encerrar rodada) que o professor usa a cada
-              rodada. RoomControl (QR code, codigo da sala) e configuracao
-              feita uma vez so — deixa-la depois evita empurrar o botao de
-              acao para fora da tela em telas menores.
-            */}
-            {room ? (
-              <RoundControl
-                round={round}
-                categorySets={categorySets}
-                usedLetters={usedLetters}
-                seconds={seconds}
-                busy={busy}
-                disabled={!room}
-                onCreateRound={createRound}
-                onDrawLetter={drawLetter}
-                onStart={startRound}
-                onStop={stopRound}
-                onCancel={cancelRound}
-                collabProgress={collabProgress}
-                onFinishCollaborativeCorrection={finishCollaborativeCorrection}
-                onScore={scoreRound}
-                onNextRound={nextRound}
-                onGoToCorrection={() => setTab("correction")}
-              />
-            ) : null}
-            <RoomControl
-              classes={classes}
-              games={games}
-              game={game}
-              room={room}
-              qrCode={qrCode}
-              busy={busy}
-              onCreateGame={createGame}
-              onSelectGame={async (selected) => {
-                if (!selected) {
-                  setGame(null);
-                  window.localStorage.removeItem(GAME_KEY);
-                  return;
-                }
-                setGame(await api.getGame(token, selected.id));
-              }}
-              onCreateRoom={createRoom}
-            />
-          </div>
-
-          <div className="stack">
-            <PlayerMonitor
-              players={view?.players ?? []}
-              requiredCount={view?.requiredCount ?? 0}
-            />
-            <RankingPanel ranking={view?.ranking ?? []} />
-          </div>
-        </div>
+        <ControlTab
+          game={game}
+          room={room}
+          round={round}
+          seconds={seconds}
+          busy={busy}
+          qrCode={qrCode}
+          view={view}
+          categorySets={catalog.categorySets}
+          usedLetters={usedLetters}
+          collabProgress={collabProgress}
+          classes={catalog.classes}
+          games={catalog.games}
+          actions={actions}
+          setTab={setTab}
+        />
       ) : null}
 
       {tab === "correction" ? (
-        <div className="panel">
-          <div className="row small">
-            <button
-              type="button"
-              className="tab"
-              role="tab"
-              aria-selected={correctionView === "grouped"}
-              onClick={() => setCorrectionView("grouped")}
-            >
-              Agregada por resposta
-            </button>
-            <button
-              type="button"
-              className="tab"
-              role="tab"
-              aria-selected={correctionView === "grid"}
-              onClick={() => setCorrectionView("grid")}
-            >
-              Grade por aluno
-            </button>
-          </div>
-          {correctionView === "grouped" ? (
-            <GroupedCorrectionPanel grid={groupedGrid} onReviewGroup={reviewGroup} busy={busy} />
-          ) : (
-            <CorrectionPanel grid={grid} onReview={review} busy={busy} />
-          )}
-          {round?.status === "CORRECTION" || round?.status === "STOPPED" ? (
-            <button type="button" className="btn btn--success" disabled={busy} onClick={scoreRound}>
-              Pontuar rodada e atualizar ranking
-            </button>
-          ) : null}
-          <RankingPanel ranking={view?.ranking ?? []} />
-        </div>
+        <CorrectionTab
+          round={round}
+          busy={busy}
+          grid={grid}
+          groupedGrid={groupedGrid}
+          correctionView={correctionView}
+          setCorrectionView={setCorrectionView}
+          view={view}
+          actions={actions}
+        />
       ) : null}
 
       {tab === "config" ? (
-        <div className="panel">
-          <ConfigPanel
-            classes={classes}
-            students={students}
-            selectedClassId={selectedClassId}
-            onSelectClass={setSelectedClassId}
-            onCreateClass={(payload) =>
-              guard(async () => {
-                await api.createClass(token, payload);
-                await loadBasics();
-              })
-            }
-            onUpdateClass={(id, payload) =>
-              guard(async () => {
-                await api.updateClass(token, id, payload);
-                await loadBasics();
-              })
-            }
-            onDeleteClass={(id) =>
-              guard(async () => {
-                await api.deleteClass(token, id);
-                if (id === selectedClassId) setSelectedClassId(null);
-                await loadBasics();
-              })
-            }
-            onCreateStudent={(payload) =>
-              guard(async () => {
-                await api.createStudent(token, payload);
-                setStudents(await api.listStudents(token, selectedClassId));
-              })
-            }
-            onUpdateStudent={(id, payload) =>
-              guard(async () => {
-                await api.updateStudent(token, id, payload);
-                setStudents(await api.listStudents(token, selectedClassId));
-              })
-            }
-            onBulkStudents={(payload) =>
-              guard(async () => {
-                await api.bulkStudents(token, payload);
-                setStudents(await api.listStudents(token, selectedClassId));
-              })
-            }
-            onDeleteStudent={(id) =>
-              guard(async () => {
-                await api.deleteStudent(token, id);
-                setStudents(await api.listStudents(token, selectedClassId));
-              })
-            }
-          />
-          <StatisticsPanel statistics={statistics} history={history} onDeleteRound={deleteRound} busy={busy} />
-        </div>
+        <ConfigTab
+          classes={catalog.classes}
+          students={catalog.students}
+          selectedClassId={catalog.selectedClassId}
+          setSelectedClassId={catalog.setSelectedClassId}
+          token={token}
+          guard={guard}
+          loadBasics={catalog.loadBasics}
+          setStudents={catalog.setStudents}
+          statistics={statistics}
+          history={history}
+          deleteRound={actions.deleteRound}
+          busy={busy}
+        />
       ) : null}
 
       {tab === "categories" ? (
-        <div className="panel">
-          <CategorySetsPanel
-            categorySets={categorySets}
-            onCreateCategorySet={(payload) =>
-              guard(async () => {
-                await api.createCategorySet(token, payload);
-                await loadBasics();
-              })
-            }
-            onUpdateCategorySet={(id, payload) =>
-              guard(async () => {
-                await api.updateCategorySet(token, id, payload);
-                await loadBasics();
-              })
-            }
-            onDeleteCategorySet={(id) =>
-              guard(async () => {
-                await api.deleteCategorySet(token, id);
-                await loadBasics();
-              })
-            }
-            onCreateCategory={(payload) =>
-              guard(async () => {
-                await api.createCategory(token, payload);
-                await loadBasics();
-              })
-            }
-            onUpdateCategory={(id, payload) =>
-              guard(async () => {
-                await api.updateCategory(token, id, payload);
-                await loadBasics();
-              })
-            }
-            onDeleteCategory={(id) =>
-              guard(async () => {
-                await api.deleteCategory(token, id);
-                await loadBasics();
-              })
-            }
-          />
-        </div>
+        <CategoriesTab categorySets={catalog.categorySets} token={token} guard={guard} loadBasics={catalog.loadBasics} />
       ) : null}
 
       {tab === "reports" ? (
-        <div className="panel">
-          <ReportsPanel
-            classes={classes}
-            students={allStudents}
-            games={games}
-            results={reportResults}
-            categoryStats={categoryStats}
-            busy={busy}
-            onSearch={(filters) =>
-              guard(async () => {
-                setReportResults(await api.searchReports(token, filters));
-              })
-            }
-            onCategoryStats={(filters) =>
-              guard(async () => {
-                setCategoryStats(await api.categoryStats(token, filters));
-              })
-            }
-          />
-        </div>
+        <ReportsTab
+          classes={catalog.classes}
+          allStudents={catalog.allStudents}
+          games={catalog.games}
+          reportResults={reportResults}
+          setReportResults={setReportResults}
+          categoryStats={categoryStats}
+          setCategoryStats={setCategoryStats}
+          token={token}
+          guard={guard}
+          busy={busy}
+        />
       ) : null}
 
       <EmojiBursts items={emojiBursts.items} />

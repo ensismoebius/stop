@@ -32,40 +32,9 @@ const STATUS_MESSAGE = {
   FINISHED: { title: "Rodada encerrada", text: "Aguarde o professor iniciar a próxima." },
 };
 
-/**
- * Student game page: displays categories, answer inputs, the STOP
- * button, and handles all round lifecycle events via WebSocket.
- *
- * @returns {JSX.Element}
- */
-export function StudentGamePage() {
-  const { player, clear } = usePlayer();
-  const navigate = useNavigate();
-  const audio = useAudio();
-  const { sync, now } = useServerClock();
-  const emojiBursts = useEmojiBursts();
-
-  const [answers, setAnswers] = useState({});
-  const [currentId, setCurrentId] = useState(null);
-  const [feedback, setFeedback] = useState(null);
-  const [eliminated, setEliminated] = useState(null);
-  const [ranking, setRanking] = useState([]);
-  const [entered, setEntered] = useState(false);
-  const [reviews, setReviews] = useState([]);
-  const [completedReviewIds, setCompletedReviewIds] = useState(() => new Set());
-  const [reviewBusy, setReviewBusy] = useState(false);
-  const [stopSplash, setStopSplash] = useState(false);
-
-  const timersRef = useRef({});
-  const socketRef = useRef(null);
-  const answersRef = useRef(answers);
-  answersRef.current = answers;
-
-  useEffect(() => {
-    if (!player?.playerToken) navigate("/", { replace: true });
-  }, [player, navigate]);
-
-  const applyState = useCallback(
+/** Aplica um `roomState` recebido do servidor (via socket ou REST) ao estado local de respostas/eliminação/revisões. */
+function useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds }) {
+  return useCallback(
     (state) => {
       if (!state) return;
       sync(state.serverTime);
@@ -82,83 +51,145 @@ export function StudentGamePage() {
         );
       }
     },
-    [sync],
+    [sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds],
   );
+}
 
-  const handlers = useMemo(
+/** Handlers de ciclo de vida da rodada: som e reset de estado local a cada fase nova. */
+function buildLifecycleHandlers({
+  applyState,
+  audio,
+  setAnswers,
+  setCurrentId,
+  setEliminated,
+  setFeedback,
+  setReviews,
+  setCompletedReviewIds,
+  setStopSplash,
+}) {
+  return {
+    onState: (state) => applyState(state),
+    onError: (payload) => setFeedback({ kind: "error", message: payload.message }),
+    letterSelected: () => audio.play("LETTER"),
+    syncCountdownRequested: () => audio.play("LETTER"),
+    roundCreated: () => {
+      setAnswers({});
+      setCurrentId(null);
+      setEliminated(null);
+      setFeedback(null);
+      setReviews([]);
+      setCompletedReviewIds(new Set());
+    },
+    roundStarted: () => {
+      audio.play("START");
+      setAnswers({});
+      setCurrentId(null);
+      setEliminated(null);
+      setFeedback(null);
+    },
+    roundStopped: (payload) => {
+      audio.play("STOPPED");
+      audio.playVoice();
+      setStopSplash(true);
+      setFeedback({
+        kind: "warning",
+        message: payload.firstStopperName
+          ? `STOP! ${payload.firstStopperName} encerrou a rodada.`
+          : "STOP! A rodada foi encerrada.",
+      });
+    },
+    roundTimedOut: () => {
+      audio.play("STOPPED");
+      audio.playVoice();
+      setStopSplash(true);
+      setFeedback({ kind: "warning", message: "O tempo acabou. A rodada foi encerrada." });
+    },
+    roundCancelled: (payload) => {
+      setAnswers({});
+      setCurrentId(null);
+      setEliminated(null);
+      setFeedback({
+        kind: "warning",
+        message: payload?.message ?? "O professor cancelou esta rodada.",
+      });
+    },
+  };
+}
+
+/** Handlers de correção colaborativa, eliminação, ranking e reações — não dependem da fase da rodada. */
+function buildMiscHandlers({ setReviews, setCompletedReviewIds, audio, setEliminated, setRanking, emojiBursts }) {
+  return {
+    // Correcao colaborativa (spec 9-16): respostas anonimas de colegas,
+    // atribuidas so a este aluno.
+    reviewAssigned: (payload) => {
+      setReviews(payload.reviews ?? []);
+      setCompletedReviewIds(new Set());
+    },
+    reviewCompleted: (payload) => {
+      setCompletedReviewIds((current) => new Set(current).add(payload.reviewId));
+    },
+    playerEliminated: (payload) => {
+      audio.play("ELIMINATED");
+      setEliminated(payload);
+    },
+    rankingUpdated: (payload) => {
+      audio.play("RANKING");
+      setRanking(payload.ranking ?? []);
+    },
+    // Reacoes em emoji (Kahoot-like): visivel para todo mundo na sala,
+    // inclusive quem mandou — puramente visual, sem estado persistido.
+    emojiReceived: (payload) => emojiBursts.push(payload.emoji),
+  };
+}
+
+/** Handlers dos eventos de socket da rodada (spec 45): cuidam so de efeitos locais — o estado autoritativo chega via `onState`/`applyState`. */
+function useStudentHandlers({
+  applyState,
+  audio,
+  emojiBursts,
+  setAnswers,
+  setCurrentId,
+  setEliminated,
+  setFeedback,
+  setReviews,
+  setCompletedReviewIds,
+  setRanking,
+  setStopSplash,
+}) {
+  return useMemo(
     () => ({
-      // `onState` roda a cada `roomState` — no ingresso e em toda mudanca
-      // relevante empurrada pelo servidor (spec 45). Os handlers nomeados
-      // abaixo cuidam apenas de efeitos locais: som e mensagens.
-      onState: (state) => applyState(state),
-      onError: (payload) => setFeedback({ kind: "error", message: payload.message }),
-      letterSelected: () => audio.play("LETTER"),
-      syncCountdownRequested: () => audio.play("LETTER"),
-      roundCreated: () => {
-        setAnswers({});
-        setCurrentId(null);
-        setEliminated(null);
-        setFeedback(null);
-        setReviews([]);
-        setCompletedReviewIds(new Set());
-      },
-      roundStarted: () => {
-        audio.play("START");
-        setAnswers({});
-        setCurrentId(null);
-        setEliminated(null);
-        setFeedback(null);
-      },
-      // Correcao colaborativa (spec 9-16): respostas anonimas de colegas,
-      // atribuidas so a este aluno.
-      reviewAssigned: (payload) => {
-        setReviews(payload.reviews ?? []);
-        setCompletedReviewIds(new Set());
-      },
-      reviewCompleted: (payload) => {
-        setCompletedReviewIds((current) => new Set(current).add(payload.reviewId));
-      },
-      roundStopped: (payload) => {
-        audio.play("STOPPED");
-        audio.playVoice();
-        setStopSplash(true);
-        setFeedback({
-          kind: "warning",
-          message: payload.firstStopperName
-            ? `STOP! ${payload.firstStopperName} encerrou a rodada.`
-            : "STOP! A rodada foi encerrada.",
-        });
-      },
-      roundTimedOut: () => {
-        audio.play("STOPPED");
-        audio.playVoice();
-        setStopSplash(true);
-        setFeedback({ kind: "warning", message: "O tempo acabou. A rodada foi encerrada." });
-      },
-      playerEliminated: (payload) => {
-        audio.play("ELIMINATED");
-        setEliminated(payload);
-      },
-      rankingUpdated: (payload) => {
-        audio.play("RANKING");
-        setRanking(payload.ranking ?? []);
-      },
-      roundCancelled: (payload) => {
-        setAnswers({});
-        setCurrentId(null);
-        setEliminated(null);
-        setFeedback({
-          kind: "warning",
-          message: payload?.message ?? "O professor cancelou esta rodada.",
-        });
-      },
-      // Reacoes em emoji (Kahoot-like): visivel para todo mundo na sala,
-      // inclusive quem mandou — puramente visual, sem estado persistido.
-      emojiReceived: (payload) => emojiBursts.push(payload.emoji),
+      ...buildLifecycleHandlers({
+        applyState,
+        audio,
+        setAnswers,
+        setCurrentId,
+        setEliminated,
+        setFeedback,
+        setReviews,
+        setCompletedReviewIds,
+        setStopSplash,
+      }),
+      ...buildMiscHandlers({ setReviews, setCompletedReviewIds, audio, setEliminated, setRanking, emojiBursts }),
     }),
-    [applyState, audio, emojiBursts],
+    [
+      applyState,
+      audio,
+      emojiBursts,
+      setAnswers,
+      setCurrentId,
+      setEliminated,
+      setFeedback,
+      setReviews,
+      setCompletedReviewIds,
+      setRanking,
+      setStopSplash,
+    ],
   );
+}
 
+/** Conexão de socket do aluno + fallback REST inicial + `refresh` sob demanda (spec 45). */
+function useStudentConnection(player, handlers, applyState) {
+  const socketRef = useRef(null);
   const { socket, connected, state, setState } = useRoomSocket({
     roomCode: player?.room?.code,
     role: "player",
@@ -196,6 +227,11 @@ export function StudentGamePage() {
       .catch(() => {});
   }, [state, player?.room?.code, player?.playerToken, setState, applyState]);
 
+  return { socket, connected, state, socketRef, refresh };
+}
+
+/** Deriva fase/categorias/contadores da rodada atual e toca o beep dos últimos segundos. */
+function useStudentRoundPhase(state, now, audio, eliminated) {
   const round = state?.round ?? null;
   const categories = round?.categories ?? [];
   const playing = round?.status === "PLAYING" && state?.roundStatus === "PLAYING" && !eliminated;
@@ -204,10 +240,7 @@ export function StudentGamePage() {
   // Contagem regressiva sincronizada antes da letra/categorias aparecerem
   // (spec 54) — mesmo mecanismo de relogio do servidor usado no `seconds`
   // acima, so que apontando para `revealAt` em vez de `endsAt`.
-  const revealSeconds = useCountdown(
-    round?.status === "STARTING" ? round?.revealAt : null,
-    now,
-  );
+  const revealSeconds = useCountdown(round?.status === "STARTING" ? round?.revealAt : null, now);
 
   // Aviso sonoro nos ultimos segundos (spec 22 e 23).
   const lastBeepRef = useRef(null);
@@ -218,11 +251,17 @@ export function StudentGamePage() {
     audio.play("FINAL_SECONDS");
   }, [seconds, playing, audio]);
 
-  // ------------------------------------------------------------------
-  // Tela cheia (spec 24): sair durante a rodada elimina o aluno, e sair da
-  // tela cheia ou trocar de app a qualquer momento devolve o aluno para a
-  // tela de entrada — o dispositivo precisa ficar travado no jogo.
-  // ------------------------------------------------------------------
+  return { round, categories, playing, roundHasStarted, seconds, revealSeconds };
+}
+
+/**
+ * Tela cheia (spec 24): sair durante a rodada elimina o aluno, e sair da
+ * tela cheia ou trocar de app a qualquer momento devolve o aluno para a
+ * tela de entrada — o dispositivo precisa ficar travado no jogo.
+ */
+function useStudentFullscreenFlow({ clear, navigate, round, state, socketRef, socket, audio }) {
+  const [entered, setEntered] = useState(false);
+
   const leaveRoom = useCallback(() => {
     clear();
     navigate("/", { replace: true });
@@ -236,7 +275,7 @@ export function StudentGamePage() {
     if (socketInstance && round && round.status === "PLAYING" && state?.roundStatus === "PLAYING") {
       emitAck(socketInstance, "fullscreenExited", { roundId: round.id });
     }
-  }, [round, state?.roundStatus]);
+  }, [round, state?.roundStatus, socketRef]);
 
   const fullscreen = useFullscreen({ onExit: handleFullscreenExit });
 
@@ -248,7 +287,7 @@ export function StudentGamePage() {
     // ve WAITING ate a rodada comecar, mesmo com o aluno ja na tela do jogo.
     const socketInstance = socketRef.current;
     if (socketInstance) emitAck(socketInstance, "ready", {});
-  }, [audio, fullscreen]);
+  }, [audio, fullscreen, socketRef]);
 
   // Sem botao "Entrar na partida": o primeiro toque/tecla do aluno nesta
   // tela ja conta como o gesto exigido pelo navegador para som e tela
@@ -283,9 +322,15 @@ export function StudentGamePage() {
     };
   }, [entered, socket, round?.id]);
 
-  // ------------------------------------------------------------------
-  // Respostas: estado local + sincronizacao controlada (spec 48).
-  // ------------------------------------------------------------------
+  return { leaveRoom, fullscreen, enterGame };
+}
+
+/** Respostas: estado local + sincronização controlada e debounce (spec 48). */
+function useStudentAnswers({ round, categories, answers, setAnswers, currentId, setCurrentId, socketRef, setFeedback, playing }) {
+  const timersRef = useRef({});
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
+
   const pushAnswer = useCallback(
     async (roundCategoryId) => {
       const socketInstance = socketRef.current;
@@ -300,19 +345,16 @@ export function StudentGamePage() {
         setFeedback({ kind: "error", message: response.error?.message ?? "Falha ao salvar" });
       }
     },
-    [round],
+    [round, socketRef, setFeedback],
   );
 
   const handleChange = useCallback(
     (roundCategoryId, value) => {
       setAnswers((current) => ({ ...current, [roundCategoryId]: value }));
       clearTimeout(timersRef.current[roundCategoryId]);
-      timersRef.current[roundCategoryId] = setTimeout(
-        () => pushAnswer(roundCategoryId),
-        SYNC_DELAY,
-      );
+      timersRef.current[roundCategoryId] = setTimeout(() => pushAnswer(roundCategoryId), SYNC_DELAY);
     },
-    [pushAnswer],
+    [pushAnswer, setAnswers],
   );
 
   const commit = useCallback(
@@ -329,22 +371,28 @@ export function StudentGamePage() {
       if (currentId && currentId !== roundCategoryId) commit(currentId);
       setCurrentId(roundCategoryId);
     },
-    [currentId, commit],
+    [currentId, commit, setCurrentId],
   );
 
-  useEffect(() => () => {
-    for (const timer of Object.values(timersRef.current)) clearTimeout(timer);
-  }, []);
+  useEffect(
+    () => () => {
+      for (const timer of Object.values(timersRef.current)) clearTimeout(timer);
+    },
+    [],
+  );
 
   const requiredCategories = categories.filter((category) => category.required);
-  const filledCount = categories.filter((category) =>
-    (answers[category.id] ?? "").trim().length > 0,
-  ).length;
+  const filledCount = categories.filter((category) => (answers[category.id] ?? "").trim().length > 0).length;
   const canStop =
     playing &&
     requiredCategories.length > 0 &&
     requiredCategories.every((category) => (answers[category.id] ?? "").trim().length > 0);
 
+  return { commit, handleChange, selectCategory, filledCount, canStop };
+}
+
+/** Pedido de STOP: garante que tudo foi sincronizado antes de reivindicar (spec). */
+function useStudentStop({ round, categories, commit, refresh, setFeedback, socketRef }) {
   const [stopping, setStopping] = useState(false);
   const handleStop = useCallback(async () => {
     const socketInstance = socketRef.current;
@@ -363,7 +411,14 @@ export function StudentGamePage() {
     } finally {
       setStopping(false);
     }
-  }, [round, categories, commit, refresh, stopping]);
+  }, [round, categories, commit, refresh, stopping, socketRef, setFeedback]);
+
+  return { handleStop, stopping };
+}
+
+/** Decisão de correção colaborativa (spec 9-16) e envio de reações em emoji. */
+function useStudentReviewActions({ socketRef, setCompletedReviewIds, setFeedback }) {
+  const [reviewBusy, setReviewBusy] = useState(false);
 
   const handleDecideReview = useCallback(
     async (reviewId, decision) => {
@@ -381,166 +436,315 @@ export function StudentGamePage() {
         setReviewBusy(false);
       }
     },
-    [],
+    [socketRef, setCompletedReviewIds, setFeedback],
   );
 
-  const sendEmoji = useCallback((emoji) => {
-    const socketInstance = socketRef.current;
-    if (socketInstance) emitAck(socketInstance, "sendEmoji", { emoji });
-  }, []);
+  const sendEmoji = useCallback(
+    (emoji) => {
+      const socketInstance = socketRef.current;
+      if (socketInstance) emitAck(socketInstance, "sendEmoji", { emoji });
+    },
+    [socketRef],
+  );
+
+  return { handleDecideReview, sendEmoji, reviewBusy };
+}
+
+/** Avatar/nome do aluno + badge de conexão. */
+function StudentTopBar({ state, player, connected }) {
+  return (
+    <div className="spread small muted">
+      <span className="row">
+        {state?.student?.avatarUrl ?? player.student?.avatarUrl ? (
+          <img className="student__avatar" src={state?.student?.avatarUrl ?? player.student?.avatarUrl} alt="" />
+        ) : null}
+        {state?.student?.name} · sala {player.room?.code}
+      </span>
+      <ConnectionBadge connected={connected} />
+    </div>
+  );
+}
+
+/** Avisos/estado da rodada acima do editor de respostas: feedback, eliminação, fullscreen, correção colaborativa, status. */
+function StudentStatusArea({
+  state,
+  player,
+  connected,
+  feedback,
+  eliminated,
+  phase,
+  fullscreen,
+  enterGame,
+  reviews,
+  completedReviewIds,
+  handleDecideReview,
+  reviewBusy,
+  message,
+}) {
+  const { round, playing, revealSeconds } = phase;
+  return (
+    <>
+      <StudentTopBar state={state} player={player} connected={connected} />
+
+      {feedback ? <Alert kind={feedback.kind}>{feedback.message}</Alert> : null}
+
+      {eliminated ? (
+        <div className="notice notice--eliminated" role="alert">
+          <div className="notice__title">Você foi eliminado desta rodada</div>
+          {eliminated.message ??
+            "Você saiu da tela cheia.\n\nVocê poderá participar da próxima rodada."}
+        </div>
+      ) : null}
+
+      {playing && !fullscreen.isFullscreen && fullscreen.supported ? (
+        <Alert kind="warning">
+          Você não está em tela cheia. Volte para o modo tela cheia para continuar jogando.
+          <button type="button" className="btn btn--block" onClick={enterGame}>
+            Voltar à tela cheia
+          </button>
+        </Alert>
+      ) : null}
+
+      {!playing && round?.status === "COLLABORATIVE_CORRECTION" ? (
+        <CollaborativeCorrection
+          reviews={reviews}
+          completedIds={completedReviewIds}
+          onDecide={handleDecideReview}
+          deciding={reviewBusy}
+          letter={round?.letter}
+        />
+      ) : null}
+
+      {!playing && round?.status !== "COLLABORATIVE_CORRECTION" && message ? (
+        <div className="notice">
+          <div className="notice__title">{message.title}</div>
+          <p className="muted">{message.text}</p>
+          {round?.status === "STARTING" ? (
+            <span className="letter__value" aria-live="polite">
+              {round?.letter
+                ? round.letter
+                : revealSeconds !== null && revealSeconds > 0
+                  ? revealSeconds
+                  : "—"}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!round ? (
+        <div className="notice">
+          <div className="notice__title">Aguardando jogadores</div>
+          <p className="muted">Assim que o professor iniciar a rodada, ela aparecerá aqui.</p>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** Editor da categoria atual (spec 48) + lista de categorias, visível só depois que a rodada de fato começa. */
+function StudentAnswerArea({ currentCategory, answers, phase, handleChange, commit, setCurrentId, currentId, selectCategory }) {
+  const { round, playing, roundHasStarted, categories } = phase;
+  return (
+    <>
+      {currentCategory ? (
+        <AnswerEditor
+          category={currentCategory}
+          value={answers[currentCategory.id] ?? ""}
+          letter={round?.letter}
+          disabled={!playing}
+          onChange={handleChange}
+          onCommit={commit}
+          onClose={() => {
+            commit(currentCategory.id);
+            setCurrentId(null);
+          }}
+        />
+      ) : null}
+
+      {/* As categorias so aparecem quando a rodada de fato comeca a valer
+          (spec): antes disso (CREATED/READY/STARTING) nao ha nada a
+          responder ainda, entao mostrar a lista so antecipa/spoila o
+          conteudo sem utilidade. */}
+      {roundHasStarted && categories.length > 0 ? (
+        <CategoryList
+          categories={categories}
+          answers={answers}
+          currentId={currentId}
+          disabled={!playing}
+          onSelect={selectCategory}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Ranking, visível só ao fim de rodada/partida (nunca durante o jogo). */
+function StudentRankingList({ ranking, round }) {
+  if (!(ranking.length > 0 && (round?.status === "SCORED" || round?.status === "FINISHED" || !round))) {
+    return null;
+  }
+  return (
+    <section className="card">
+      <h2>Ranking</h2>
+      <ol className="ranking__list">
+        {ranking.slice(0, 10).map((entry) => (
+          <li
+            key={entry.studentId}
+            className={`ranking__item${entry.position <= 3 ? ` ranking__item--p${entry.position}` : ""}`}
+          >
+            <span className="ranking__position">{MEDAL_BY_POSITION[entry.position] ?? entry.position}</span>
+            <span className="ranking__name">{entry.name}</span>
+            <span className="ranking__total">{entry.total}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** Emoji picker + botões de som/sair, no rodapé do corpo da página. */
+function StudentFooterControls({ sendEmoji, audio, leaveRoom }) {
+  return (
+    <>
+      <EmojiPicker onSend={sendEmoji} />
+      <div className="row small">
+        <button type="button" className="btn btn--ghost" onClick={audio.toggle}>
+          {audio.enabled ? "🔊 Som ligado" : "🔇 Som desligado"}
+        </button>
+        <button type="button" className="btn btn--ghost" onClick={leaveRoom}>
+          Sair
+        </button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Student game page: displays categories, answer inputs, the STOP
+ * button, and handles all round lifecycle events via WebSocket.
+ *
+ * @returns {JSX.Element}
+ */
+export function StudentGamePage() {
+  const { player, clear } = usePlayer();
+  const navigate = useNavigate();
+  const audio = useAudio();
+  const { sync, now } = useServerClock();
+  const emojiBursts = useEmojiBursts();
+
+  const [answers, setAnswers] = useState({});
+  const [currentId, setCurrentId] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+  const [eliminated, setEliminated] = useState(null);
+  const [ranking, setRanking] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [completedReviewIds, setCompletedReviewIds] = useState(() => new Set());
+  const [stopSplash, setStopSplash] = useState(false);
+
+  useEffect(() => {
+    if (!player?.playerToken) navigate("/", { replace: true });
+  }, [player, navigate]);
+
+  const applyState = useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds });
+  const handlers = useStudentHandlers({
+    applyState,
+    audio,
+    emojiBursts,
+    setAnswers,
+    setCurrentId,
+    setEliminated,
+    setFeedback,
+    setReviews,
+    setCompletedReviewIds,
+    setRanking,
+    setStopSplash,
+  });
+  const connection = useStudentConnection(player, handlers, applyState);
+  const phase = useStudentRoundPhase(connection.state, now, audio, eliminated);
+  const fullscreenFlow = useStudentFullscreenFlow({
+    clear,
+    navigate,
+    round: phase.round,
+    state: connection.state,
+    socketRef: connection.socketRef,
+    socket: connection.socket,
+    audio,
+  });
+  const answerActions = useStudentAnswers({
+    round: phase.round,
+    categories: phase.categories,
+    answers,
+    setAnswers,
+    currentId,
+    setCurrentId,
+    socketRef: connection.socketRef,
+    setFeedback,
+    playing: phase.playing,
+  });
+  const stop = useStudentStop({
+    round: phase.round,
+    categories: phase.categories,
+    commit: answerActions.commit,
+    refresh: connection.refresh,
+    setFeedback,
+    socketRef: connection.socketRef,
+  });
+  const reviewActions = useStudentReviewActions({ socketRef: connection.socketRef, setCompletedReviewIds, setFeedback });
 
   if (!player) return null;
 
-  const message = round ? STATUS_MESSAGE[round.status] : null;
-  const currentCategory = categories.find((category) => category.id === currentId) ?? null;
+  const message = phase.round ? STATUS_MESSAGE[phase.round.status] : null;
+  const currentCategory = phase.categories.find((category) => category.id === currentId) ?? null;
 
   return (
     <div className="student">
       <GameHeader
-        round={round}
-        seconds={seconds}
-        running={playing}
-        filled={filledCount}
-        total={categories.length}
+        round={phase.round}
+        seconds={phase.seconds}
+        running={phase.playing}
+        filled={answerActions.filledCount}
+        total={phase.categories.length}
       />
 
       <main className="student__body">
-        <div className="spread small muted">
-          <span className="row">
-            {state?.student?.avatarUrl ?? player.student?.avatarUrl ? (
-              <img
-                className="student__avatar"
-                src={state?.student?.avatarUrl ?? player.student?.avatarUrl}
-                alt=""
-              />
-            ) : null}
-            {state?.student?.name} · sala {player.room?.code}
-          </span>
-          <ConnectionBadge connected={connected} />
-        </div>
+        <StudentStatusArea
+          state={connection.state}
+          player={player}
+          connected={connection.connected}
+          feedback={feedback}
+          eliminated={eliminated}
+          phase={phase}
+          fullscreen={fullscreenFlow.fullscreen}
+          enterGame={fullscreenFlow.enterGame}
+          reviews={reviews}
+          completedReviewIds={completedReviewIds}
+          handleDecideReview={reviewActions.handleDecideReview}
+          reviewBusy={reviewActions.reviewBusy}
+          message={message}
+        />
 
-        {feedback ? <Alert kind={feedback.kind}>{feedback.message}</Alert> : null}
+        <StudentAnswerArea
+          currentCategory={currentCategory}
+          answers={answers}
+          phase={phase}
+          handleChange={answerActions.handleChange}
+          commit={answerActions.commit}
+          setCurrentId={setCurrentId}
+          currentId={currentId}
+          selectCategory={answerActions.selectCategory}
+        />
 
-        {eliminated ? (
-          <div className="notice notice--eliminated" role="alert">
-            <div className="notice__title">Você foi eliminado desta rodada</div>
-            {eliminated.message ??
-              "Você saiu da tela cheia.\n\nVocê poderá participar da próxima rodada."}
-          </div>
-        ) : null}
+        <StudentRankingList ranking={ranking} round={phase.round} />
 
-        {playing && !fullscreen.isFullscreen && fullscreen.supported ? (
-          <Alert kind="warning">
-            Você não está em tela cheia. Volte para o modo tela cheia para continuar jogando.
-            <button type="button" className="btn btn--block" onClick={enterGame}>
-              Voltar à tela cheia
-            </button>
-          </Alert>
-        ) : null}
-
-        {!playing && round?.status === "COLLABORATIVE_CORRECTION" ? (
-          <CollaborativeCorrection
-            reviews={reviews}
-            completedIds={completedReviewIds}
-            onDecide={handleDecideReview}
-            deciding={reviewBusy}
-            letter={round?.letter}
-          />
-        ) : null}
-
-        {!playing && round?.status !== "COLLABORATIVE_CORRECTION" && message ? (
-          <div className="notice">
-            <div className="notice__title">{message.title}</div>
-            <p className="muted">{message.text}</p>
-            {round?.status === "STARTING" ? (
-              <span className="letter__value" aria-live="polite">
-                {round?.letter
-                  ? round.letter
-                  : revealSeconds !== null && revealSeconds > 0
-                    ? revealSeconds
-                    : "—"}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-
-        {!round ? (
-          <div className="notice">
-            <div className="notice__title">Aguardando jogadores</div>
-            <p className="muted">Assim que o professor iniciar a rodada, ela aparecerá aqui.</p>
-          </div>
-        ) : null}
-
-        {currentCategory ? (
-          <AnswerEditor
-            category={currentCategory}
-            value={answers[currentCategory.id] ?? ""}
-            letter={round?.letter}
-            disabled={!playing}
-            onChange={handleChange}
-            onCommit={commit}
-            onClose={() => {
-              commit(currentCategory.id);
-              setCurrentId(null);
-            }}
-          />
-        ) : null}
-
-        {/* As categorias so aparecem quando a rodada de fato comeca a valer
-            (spec): antes disso (CREATED/READY/STARTING) nao ha nada a
-            responder ainda, entao mostrar a lista so antecipa/spoila o
-            conteudo sem utilidade. */}
-        {roundHasStarted && categories.length > 0 ? (
-          <CategoryList
-            categories={categories}
-            answers={answers}
-            currentId={currentId}
-            disabled={!playing}
-            onSelect={selectCategory}
-          />
-        ) : null}
-
-        {ranking.length > 0 &&
-        (round?.status === "SCORED" || round?.status === "FINISHED" || !round) ? (
-          <section className="card">
-            <h2>Ranking</h2>
-            <ol className="ranking__list">
-              {ranking.slice(0, 10).map((entry) => (
-                <li
-                  key={entry.studentId}
-                  className={`ranking__item${
-                    entry.position <= 3 ? ` ranking__item--p${entry.position}` : ""
-                  }`}
-                >
-                  <span className="ranking__position">
-                    {MEDAL_BY_POSITION[entry.position] ?? entry.position}
-                  </span>
-                  <span className="ranking__name">{entry.name}</span>
-                  <span className="ranking__total">{entry.total}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        ) : null}
-
-        <EmojiPicker onSend={sendEmoji} />
-
-        <div className="row small">
-          <button type="button" className="btn btn--ghost" onClick={audio.toggle}>
-            {audio.enabled ? "🔊 Som ligado" : "🔇 Som desligado"}
-          </button>
-          <button type="button" className="btn btn--ghost" onClick={leaveRoom}>
-            Sair
-          </button>
-        </div>
+        <StudentFooterControls sendEmoji={reviewActions.sendEmoji} audio={audio} leaveRoom={fullscreenFlow.leaveRoom} />
       </main>
 
       <div className="stopbar">
         <StopButton
-          disabled={!canStop || stopping}
-          filled={filledCount}
-          total={categories.length}
-          onClick={handleStop}
+          disabled={!answerActions.canStop || stop.stopping}
+          filled={answerActions.filledCount}
+          total={phase.categories.length}
+          onClick={stop.handleStop}
         />
       </div>
 
