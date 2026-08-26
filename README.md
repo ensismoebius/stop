@@ -17,6 +17,36 @@ resolvidos no backend.
 
 ---
 
+## O que é o Stop (Adedanha)
+
+**Stop** — no Brasil também chamado de **Adedanha** (e variações como *Adedonha*, *Adedomí*
+e *Nomes e Coisas*) — é um jogo de papel e caneta que atravessa gerações em famílias, escolas
+e recreios de todo o país. O nome "Adedanha" vem da própria mecânica: cada categoria é
+anunciada em voz alta como "**A de** Nome", "**A de** Animal", "**A de** Cor" — e "adedanha"
+é o jeito informal de dizer "a de..." repetidas vezes.
+
+**Como se joga na tradição:**
+
+1. Cada jogador desenha uma tabela com uma coluna por categoria (Nome, Animal, Cor, Fruta,
+   Objeto, Lugar, e outras à escolha do grupo) e uma linha para a rodada.
+2. Sorteia-se uma letra — tradicionalmente abrindo uma página aleatória de um livro/lista
+   telefônica e apontando às cegas, hoje em dia com um app ou giro de garrafa.
+3. Todos escrevem, ao mesmo tempo, uma palavra começando com aquela letra para cada
+   categoria.
+4. O primeiro a preencher tudo grita **"STOP!"**, e todo mundo para de escrever na hora.
+5. Pontuação por categoria: **10 pontos** se a resposta for válida e ninguém mais escreveu
+   a mesma palavra, **5 pontos** se for válida mas repetida por outro jogador, **0 pontos**
+   se estiver em branco ou for inválida.
+
+Essa plataforma recria esse ritual exatamente como ele é jogado à mão — sorteio de letra,
+corrida contra o tempo, grito de STOP, correção coletiva e pontuação 10/5/0 — só que como um
+jogo multiplayer em tempo real, trocando as categorias tradicionais (Nome, Animal, Cor...)
+por conceitos de **React Native** (hooks, componentes, APIs nativas, bibliotecas...), e
+movendo o papel do "juiz" humano — cronômetro, ordem do STOP, validação das respostas — para
+o servidor, que arbitra tudo de forma justa e instantânea para a turma inteira.
+
+---
+
 ## Stack
 
 * **Backend:** Node.js + Express + Socket.IO
@@ -58,6 +88,17 @@ stop/
 ---
 
 ## Como executar
+
+**Caminho mais rápido** (tudo via Docker, sem instalar Node/MySQL localmente):
+
+```bash
+cp .env.example .env        # edite SESSION_SECRET, ADMIN_PASSWORD e credenciais do MySQL
+docker compose up -d --build
+# backend  http://localhost:3000
+# frontend http://localhost:8080
+```
+
+Os passos abaixo detalham a execução manual (útil para desenvolvimento, com hot-reload).
 
 ### Requisitos
 
