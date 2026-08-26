@@ -107,9 +107,7 @@ export function AvatarPicker({ value, onChange }) {
             onChange={handleFile}
           />
         </>
-      ) : (
-        <p className="small muted">A câmera precisa de HTTPS — escolha um avatar abaixo.</p>
-      )}
+      ) : null}
 
       {error ? <p className="small" style={{ color: "var(--red)" }}>{error}</p> : null}
 
