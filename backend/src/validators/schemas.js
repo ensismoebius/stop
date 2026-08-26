@@ -144,7 +144,7 @@ export const socketReviewSchema = z.object({
 });
 
 /** Conjunto fixo: rapido de tocar, facil de moderar, sem texto livre. */
-export const EMOJI_REACTIONS = ["😂", "😮", "👍", "🔥", "❤️"];
+export const EMOJI_REACTIONS = ["😂", "😮", "👍", "🔥", "❤️", "😈", "🎉"];
 
 export const socketEmojiSchema = z.object({
   emoji: z.enum(EMOJI_REACTIONS),

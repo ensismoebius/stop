@@ -1,4 +1,4 @@
-export const EMOJI_REACTIONS = ["😂", "😮", "👍", "🔥", "❤️"];
+export const EMOJI_REACTIONS = ["😂", "😮", "👍", "🔥", "❤️", "😈", "🎉"];
 
 /** Reacoes rapidas: conjunto fixo, sem digitacao (spec: facil de moderar). */
 export function EmojiPicker({ onSend }) {
