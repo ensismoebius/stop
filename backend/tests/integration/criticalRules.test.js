@@ -293,10 +293,18 @@ describe("testes criticos (spec 61)", () => {
     // simulando um fechamento de rodada "por dentro" enquanto um submit
     // esta parado na fila esperando a secao critica.
     let releaseHeld;
-    const held = gameLock.run(
-      lockKey(round.id),
-      () => new Promise((resolve) => (releaseHeld = resolve)),
-    );
+    let signalAcquired;
+    const acquired = new Promise((resolve) => (signalAcquired = resolve));
+    const held = gameLock.run(lockKey(round.id), () => {
+      signalAcquired();
+      return new Promise((resolve) => (releaseHeld = resolve));
+    });
+    // `asyncLock.run` faz `await previous` antes de chamar a task, entao a
+    // trava nunca e adquirida de forma sincrona. Sem esperar aqui, o
+    // `releaseHeld()` la embaixo podia rodar antes da atribuicao e quebrar
+    // o teste com "releaseHeld is not a function" — uma corrida do proprio
+    // teste, dependente da carga da maquina, nao um bug do produto.
+    await acquired;
 
     const submitPromise = answerService.submit({
       roundId: round.id,
