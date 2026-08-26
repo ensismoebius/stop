@@ -9,3 +9,4 @@ coverage/
 backend/prisma/dev.db
 backend/.env.test
 .code-intelligence/
+backend/backups/
