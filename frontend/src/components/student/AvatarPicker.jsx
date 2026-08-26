@@ -51,6 +51,13 @@ export function AvatarPicker({ value, onChange }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef(null);
+  // Em sala de aula o app roda por HTTP simples na rede local (o QR Code
+  // aponta para http://IP:PORTA — ver README), e nesse caso o atalho de
+  // camera do <input capture> e recusado pelo navegador do celular sem
+  // lancar nenhum erro: o botao simplesmente nao faz nada. Sem contexto
+  // seguro (HTTPS/localhost) nem tentamos — o aluno vai direto pros
+  // avatares prontos, em vez de tocar num botao morto.
+  const cameraAvailable = typeof window !== "undefined" && window.isSecureContext;
 
   const handleFile = useCallback(
     async (event) => {
@@ -81,22 +88,28 @@ export function AvatarPicker({ value, onChange }) {
         )}
       </div>
 
-      <button
-        type="button"
-        className="btn btn--ghost btn--block"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={busy}
-      >
-        {busy ? "Processando..." : "📷 Tirar foto"}
-      </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="user"
-        className="avatar-picker__file-input"
-        onChange={handleFile}
-      />
+      {cameraAvailable ? (
+        <>
+          <button
+            type="button"
+            className="btn btn--ghost btn--block"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy}
+          >
+            {busy ? "Processando..." : "📷 Tirar foto"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="user"
+            className="avatar-picker__file-input"
+            onChange={handleFile}
+          />
+        </>
+      ) : (
+        <p className="small muted">A câmera precisa de HTTPS — escolha um avatar abaixo.</p>
+      )}
 
       {error ? <p className="small" style={{ color: "var(--red)" }}>{error}</p> : null}
 
