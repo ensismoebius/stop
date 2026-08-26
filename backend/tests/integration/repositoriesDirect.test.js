@@ -89,10 +89,15 @@ describe("repositórios (métodos ainda não exercitados por nenhum serviço)", 
     expect(created.id).toBeTruthy();
     expect(created.categories).toEqual([]);
 
-    await roundRepository.createCategories(created.id, [{ name: "Categoria X", order: 0 }]);
+    // A segunda categoria não informa `order`: usa o índice como fallback.
+    await roundRepository.createCategories(created.id, [
+      { name: "Categoria X", order: 0 },
+      { name: "Categoria Y" },
+    ]);
     const categories = await roundRepository.listCategories(created.id);
-    expect(categories).toHaveLength(1);
+    expect(categories).toHaveLength(2);
     expect(categories[0].name).toBe("Categoria X");
+    expect(categories[1]).toMatchObject({ name: "Categoria Y", order: 1 });
 
     const last = await roundRepository.findLastByGame(scenario.game.id);
     expect(last.roundNumber).toBe(999);
@@ -158,6 +163,13 @@ describe("repositórios (métodos ainda não exercitados por nenhum serviço)", 
     await expect(
       telemetryRepository.record({ type: "TESTE_FK_INVALIDA", roundId: 999999999 }),
     ).resolves.toBeUndefined();
+  });
+
+  it("telemetryRepository.listByRound devolve os eventos gravados na rodada", async () => {
+    const round = await startedRound();
+    await telemetryRepository.record({ type: "EVENTO_TESTE", roundId: round.id });
+    const events = await telemetryRepository.listByRound(round.id);
+    expect(events.map((e) => e.type)).toContain("EVENTO_TESTE");
   });
 
   it("roomService.setStatus fecha a sala e emite o evento de mudança de status", async () => {

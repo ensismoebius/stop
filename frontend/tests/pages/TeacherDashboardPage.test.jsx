@@ -578,7 +578,7 @@ describe("TeacherDashboardPage", () => {
     expect(screen.queryByRole("button", { name: "Finalizar rodada" })).not.toBeInTheDocument();
 
     seedSocket({ connected: true, state: { round: { status: "PLAYING", id: 1 } } });
-    act(() => lastHandlers.onState({ round: { status: "PLAYING", id: 1 } }));
+    act(() => pushRoomState({ round: { status: "PLAYING", id: 1 } }));
   });
 
   it("creates a round, draws a letter, starts, and stops it", async () => {
@@ -593,7 +593,7 @@ describe("TeacherDashboardPage", () => {
     expect(api.createRound).toHaveBeenCalledWith("tok-1", { categorySetId: 1, durationSeconds: 60, gameId: 5 });
 
     seedSocket({ connected: true, state: { round: { id: 9, status: "CREATED" } } });
-    act(() => lastHandlers.onState({ round: { id: 9, status: "CREATED" } }));
+    act(() => pushRoomState({ round: { id: 9, status: "CREATED" } }));
 
     api.drawLetter.mockResolvedValue({ usedLetters: ["A"] });
     await user.click(screen.getByRole("button", { name: "rc-draw-letter" }));
@@ -613,7 +613,7 @@ describe("TeacherDashboardPage", () => {
     renderDashboard();
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
     seedSocket({ connected: true, state: { round: { id: 9, status: "CREATED" } } });
-    act(() => lastHandlers.onState({ round: { id: 9, status: "CREATED" } }));
+    act(() => pushRoomState({ round: { id: 9, status: "CREATED" } }));
 
     await user.click(screen.getByRole("button", { name: "rc-cancel" }));
     expect(api.cancelRound).toHaveBeenCalledWith("tok-1", 9);
@@ -629,7 +629,7 @@ describe("TeacherDashboardPage", () => {
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
     await screen.findByTestId("round-control");
 
-    act(() => lastHandlers.roundStopped({ roundId: 9 }));
+    await act(async () => { lastHandlers.roundStopped({ roundId: 9 }); });
     await waitFor(() => expect(api.correctionGrid).toHaveBeenCalledWith("tok-1", 9));
     expect(await screen.findByTestId("grouped-correction-panel")).toBeInTheDocument();
   });
@@ -644,7 +644,7 @@ describe("TeacherDashboardPage", () => {
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
     await screen.findByTestId("round-control");
 
-    act(() => lastHandlers.roundTimedOut({ roundId: 9 }));
+    await act(async () => { lastHandlers.roundTimedOut({ roundId: 9 }); });
     expect(await screen.findByTestId("grouped-correction-panel")).toBeInTheDocument();
   });
 
@@ -657,7 +657,7 @@ describe("TeacherDashboardPage", () => {
     renderDashboard();
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
     await screen.findByTestId("round-control");
-    act(() => lastHandlers.roundStopped({ roundId: 9 }));
+    await act(async () => { lastHandlers.roundStopped({ roundId: 9 }); });
     await waitFor(() => expect(api.correctionGrid).toHaveBeenCalled());
     expect(await screen.findByTestId("grouped-correction-panel")).toHaveTextContent("no-grid");
   });
@@ -673,7 +673,7 @@ describe("TeacherDashboardPage", () => {
     await screen.findByTestId("round-control");
 
     seedSocket({ connected: true, state: { round: { id: 11, status: "CORRECTION" } } });
-    act(() => lastHandlers.onState({ round: { id: 11, status: "CORRECTION" } }));
+    act(() => pushRoomState({ round: { id: 11, status: "CORRECTION" } }));
     await waitFor(() => expect(api.correctionGrid).toHaveBeenCalledWith("tok-1", 11));
   });
 
@@ -684,7 +684,7 @@ describe("TeacherDashboardPage", () => {
     renderDashboard();
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
     seedSocket({ connected: true, state: { round: { id: 9, status: "COLLABORATIVE_CORRECTION" } } });
-    act(() => lastHandlers.onState({ round: { id: 9, status: "COLLABORATIVE_CORRECTION" } }));
+    act(() => pushRoomState({ round: { id: 9, status: "COLLABORATIVE_CORRECTION" } }));
     act(() => lastHandlers.collaborativeCorrectionStarted({ completedAssignments: 1, totalAssignments: 3 }));
 
     await user.click(screen.getByRole("button", { name: "rc-finish-collab" }));
@@ -701,7 +701,7 @@ describe("TeacherDashboardPage", () => {
     const user = userEvent.setup();
     renderDashboard();
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
-    act(() => lastHandlers.correctionStarted({ roundId: 9 }));
+    await act(async () => { lastHandlers.correctionStarted({ roundId: 9 }); });
     await waitFor(() => expect(api.correctionGrid).toHaveBeenCalledWith("tok-1", 9));
   });
 
@@ -714,11 +714,11 @@ describe("TeacherDashboardPage", () => {
     renderDashboard();
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
 
-    act(() => lastHandlers.answerReviewed({ roundId: 9 }));
+    await act(async () => { lastHandlers.answerReviewed({ roundId: 9 }); });
     await waitFor(() => expect(api.correctionGrid).toHaveBeenCalledWith("tok-1", 9));
 
     api.correctionGrid.mockClear();
-    act(() => lastHandlers.answersReviewed({ roundId: 9 }));
+    await act(async () => { lastHandlers.answersReviewed({ roundId: 9 }); });
     await waitFor(() => expect(api.correctionGrid).toHaveBeenCalledWith("tok-1", 9));
   });
 
@@ -731,11 +731,11 @@ describe("TeacherDashboardPage", () => {
     api.getGame.mockClear();
     api.usedLetters.mockClear();
 
-    act(() => lastHandlers.letterSelected());
+    await act(async () => { lastHandlers.letterSelected(); });
     await waitFor(() => expect(api.getGame).toHaveBeenCalledWith("tok-1", 5));
 
     api.getGame.mockClear();
-    act(() => lastHandlers.scoreUpdated());
+    await act(async () => { lastHandlers.scoreUpdated(); });
     await waitFor(() => expect(api.getGame).toHaveBeenCalledWith("tok-1", 5));
   });
 
@@ -749,13 +749,13 @@ describe("TeacherDashboardPage", () => {
     expect(screen.getByTestId("grouped-correction-panel")).toBeInTheDocument();
 
     api.getGame.mockClear();
-    act(() => lastHandlers.nextRound());
+    await act(async () => { lastHandlers.nextRound(); });
     await waitFor(() => expect(api.getGame).toHaveBeenCalled());
     expect(await screen.findByTestId("room-control")).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Correção" }));
     api.getGame.mockClear();
-    act(() => lastHandlers.roundCancelled());
+    await act(async () => { lastHandlers.roundCancelled(); });
     await waitFor(() => expect(api.getGame).toHaveBeenCalled());
     expect(await screen.findByTestId("room-control")).toBeInTheDocument();
   });
@@ -802,7 +802,7 @@ describe("TeacherDashboardPage", () => {
     renderDashboard();
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
     seedSocket({ connected: true, state: { round: { id: 9, status: "CORRECTION" } } });
-    act(() => lastHandlers.onState({ round: { id: 9, status: "CORRECTION" } }));
+    act(() => pushRoomState({ round: { id: 9, status: "CORRECTION" } }));
 
     await user.click(screen.getByRole("button", { name: "rc-score" }));
     expect(api.scoreRound).toHaveBeenCalledWith("tok-1", 9);
@@ -855,9 +855,10 @@ describe("TeacherDashboardPage", () => {
     renderDashboard();
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
     seedSocket({ connected: true, state: { round: { id: 9, status: "STOPPED" } } });
-    act(() => lastHandlers.onState({ round: { id: 9, status: "STOPPED" } }));
+    act(() => pushRoomState({ round: { id: 9, status: "STOPPED" } }));
     await waitFor(() => expect(api.correctionGrid).toHaveBeenCalled());
 
+    await user.click(screen.getByRole("tab", { name: "Correção" }));
     await user.click(screen.getByRole("tab", { name: "Grade por aluno" }));
     await user.click(screen.getByRole("button", { name: "cp-review" }));
     expect(api.reviewAnswer).toHaveBeenCalledWith("tok-1", "a1", "VALID");
@@ -885,9 +886,10 @@ describe("TeacherDashboardPage", () => {
     renderDashboard();
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
     seedSocket({ connected: true, state: { round: { id: 9, status: "STOPPED" } } });
-    act(() => lastHandlers.onState({ round: { id: 9, status: "STOPPED" } }));
+    act(() => pushRoomState({ round: { id: 9, status: "STOPPED" } }));
     await waitFor(() => expect(api.correctionGrid).toHaveBeenCalled());
 
+    await user.click(screen.getByRole("tab", { name: "Correção" }));
     api.correctionGrid.mockClear();
     await user.click(screen.getByRole("button", { name: "gcp-review-group" }));
     expect(api.reviewAnswers).toHaveBeenCalledWith("tok-1", [
@@ -907,7 +909,7 @@ describe("TeacherDashboardPage", () => {
     expect(screen.queryByRole("button", { name: "Pontuar rodada e atualizar ranking" })).not.toBeInTheDocument();
 
     seedSocket({ connected: true, state: { round: { id: 9, status: "STOPPED" } } });
-    act(() => lastHandlers.onState({ round: { id: 9, status: "STOPPED" } }));
+    act(() => pushRoomState({ round: { id: 9, status: "STOPPED" } }));
     expect(screen.getByRole("button", { name: "Pontuar rodada e atualizar ranking" })).toBeInTheDocument();
   });
 
@@ -926,7 +928,7 @@ describe("TeacherDashboardPage", () => {
     await user.click(screen.getByRole("tab", { name: "Controle da partida" }));
     api.gameStatistics.mockClear();
     seedSocket({ connected: true, state: { round: { id: 9, status: "SCORED" } } });
-    act(() => lastHandlers.onState({ round: { id: 9, status: "SCORED" } }));
+    act(() => pushRoomState({ round: { id: 9, status: "SCORED" } }));
     await waitFor(() => expect(api.gameStatistics).toHaveBeenCalled());
   });
 
@@ -1096,5 +1098,119 @@ describe("TeacherDashboardPage", () => {
     await screen.findByTestId("room-control");
     // No exception, no exitFullscreen call possible since jsdom has none —
     // this just exercises the early-return branch.
+  });
+
+  it("falls back to webkitExitFullscreen when exitFullscreen is unavailable", async () => {
+    const webkitExitFullscreen = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document, "fullscreenElement", { value: {}, configurable: true });
+    Object.defineProperty(document, "webkitExitFullscreen", { value: webkitExitFullscreen, configurable: true });
+    try {
+      await loginSession();
+      renderDashboard();
+      await screen.findByTestId("room-control");
+      expect(webkitExitFullscreen).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(document, "fullscreenElement", { value: null, configurable: true });
+      delete document.webkitExitFullscreen;
+    }
+  });
+
+  it("defaults used letters to an empty list when the initial load omits the field", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    api.usedLetters.mockResolvedValue({});
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+    expect(await screen.findByTestId("round-control")).toHaveTextContent("round-control:no-round:enabled:0");
+  });
+
+  it("bails out of reloadGame when no game is selected yet (socket event fired without one)", async () => {
+    await loginSession();
+    renderDashboard();
+    await screen.findByTestId("room-control");
+    api.getGame.mockClear();
+    await act(async () => {
+      lastHandlers.letterSelected();
+    });
+    expect(api.getGame).not.toHaveBeenCalled();
+  });
+
+  it("defaults used letters to an empty list when reloadGame's response omits the field", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+    await screen.findByTestId("round-control");
+
+    api.usedLetters.mockResolvedValue({});
+    await user.click(screen.getByRole("button", { name: "rc-create-round" }));
+    await waitFor(() => expect(screen.getByTestId("round-control")).toHaveTextContent(":0"));
+  });
+
+  it("bails out of loadGrid when the triggering payload carries no roundId", async () => {
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    const user = userEvent.setup();
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+    api.correctionGrid.mockClear();
+
+    await act(async () => {
+      lastHandlers.correctionStarted({});
+    });
+    expect(api.correctionGrid).not.toHaveBeenCalled();
+  });
+
+  it("syncs the clock whenever the view carries a serverTime", async () => {
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    const user = userEvent.setup();
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+    act(() => pushRoomState({ round: { id: 9, status: "CREATED" }, serverTime: "2026-01-01T00:00:00Z" }));
+    expect(await screen.findByTestId("round-control")).toHaveTextContent("CREATED");
+  });
+
+  it("keeps the previous used letters when drawLetter's response omits the field", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    api.usedLetters.mockResolvedValue({ usedLetters: ["A"] });
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+    await screen.findByTestId("round-control");
+    expect(screen.getByTestId("round-control")).toHaveTextContent(":1");
+
+    api.drawLetter.mockResolvedValue({});
+    await user.click(screen.getByRole("button", { name: "rc-draw-letter" }));
+    await waitFor(() => expect(api.drawLetter).toHaveBeenCalled());
+    // Falls back to the pre-existing `usedLetters` (still length 1), not [].
+    expect(screen.getByTestId("round-control")).toHaveTextContent(":1");
+  });
+
+  it("leaves other players' answers untouched when reviewing one answer", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    api.correctionGrid.mockResolvedValue({
+      players: [
+        { answers: [{ id: "a1", reviewState: "PENDING" }] },
+        { answers: [{ id: "a2", reviewState: "PENDING" }] },
+      ],
+    });
+    api.groupedCorrectionGrid.mockResolvedValue({ categories: [] });
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+    act(() => pushRoomState({ round: { id: 9, status: "STOPPED" } }));
+    await waitFor(() => expect(api.correctionGrid).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("tab", { name: "Correção" }));
+    await user.click(screen.getByRole("tab", { name: "Grade por aluno" }));
+    await user.click(screen.getByRole("button", { name: "cp-review" }));
+    // The stub reviews "a1" only — a2's row is mapped over unchanged.
+    expect(api.reviewAnswer).toHaveBeenCalledWith("tok-1", "a1", "VALID");
+    expect(screen.getByTestId("correction-panel")).toHaveTextContent("has-grid");
   });
 });

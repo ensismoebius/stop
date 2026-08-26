@@ -1,4 +1,5 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import roundRepository from "../../src/repositories/roundRepository.js";
 import {
   createScenario,
   prisma,
@@ -14,6 +15,7 @@ import roomService from "../../src/services/roomService.js";
 import answerService from "../../src/services/answerService.js";
 import studentService from "../../src/services/studentService.js";
 import viewService from "../../src/services/viewService.js";
+import authService from "../../src/services/authService.js";
 import { getRoundOrFail } from "../../src/services/round/shared.js";
 import { missingRequiredCategories, openCorrection, groupedCorrectionGrid } from "../../src/services/round/correction.js";
 import { startCollaborativeCorrection, submitReview } from "../../src/services/round/collaborativeCorrection.js";
@@ -416,5 +418,106 @@ describe("mais bordas defensivas do motor de rodadas", () => {
 
   it("viewService.playerState lança 404 para uma sessão inexistente", async () => {
     await expect(viewService.playerState(999999)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("login com um e-mail inexistente ainda compara a senha (sem vazar por tempo) e nega acesso", async () => {
+    await expect(
+      authService.login({ email: "ninguem@stop.local", password: "qualquer" }),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it("requestStop rejeita um participante que não está mais PLAYING (nem ELIMINATED), estado defensivo", async () => {
+    const round = await startedRound();
+    await fillAll(round, players[0].playerSessionId);
+    // Situação que não ocorre pelo fluxo normal (a rodada fecharia junto):
+    // forçamos o status do participante via banco para exercitar a guarda.
+    await prisma.roundParticipant.update({
+      where: {
+        roundId_playerSessionId: { roundId: round.id, playerSessionId: players[0].playerSessionId },
+      },
+      data: { status: "FINISHED" },
+    });
+    await expect(
+      roundService.requestStop({ roundId: round.id, playerSessionId: players[0].playerSessionId }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("lifecycle.create rejeita criar diretamente enquanto já existe uma rodada em andamento", async () => {
+    await roundService.create({ gameId: scenario.game.id, categorySetId: scenario.categorySet.id });
+    await expect(
+      roundService.create({ gameId: scenario.game.id, categorySetId: scenario.categorySet.id }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("um avaliador sem nenhuma resposta própria ainda recebe o bônus da correção colaborativa", async () => {
+    const round = await startedRound();
+    // Joao e Maria preenchem tudo; Pedro não responde nada, mas continua
+    // elegível para avaliar os colegas.
+    await fillAll(round, players[0].playerSessionId);
+    await fillAll(round, players[1].playerSessionId);
+    await roundService.requestStop({ roundId: round.id, playerSessionId: players[0].playerSessionId });
+
+    const pedroReview = await prisma.answerReview.findFirst({
+      where: { roundId: round.id, graderPlayerSessionId: players[2].playerSessionId },
+    });
+    expect(pedroReview).toBeTruthy();
+    // fillAllAnswers preenche com valores que começam com a letra sorteada:
+    // a decisão oficial automática será sempre VALID (UNIQUE ou DUPLICATE, >0pts).
+    await roundService.submitReview({
+      playerSessionId: players[2].playerSessionId,
+      reviewId: pedroReview.id,
+      decision: "VALID",
+    });
+    await roundService.closeCollaborativeCorrection(round.id);
+    await roundService.score(round.id);
+
+    const pedroParticipant = await prisma.roundParticipant.findUnique({
+      where: {
+        roundId_playerSessionId: { roundId: round.id, playerSessionId: players[2].playerSessionId },
+      },
+    });
+    // Sem respostas próprias (0 base) + bônus por acertar a avaliação.
+    expect(pedroParticipant.roundScore).toBeGreaterThan(0);
+  });
+
+  it("groupedCorrectionGrid desempata grupos com a mesma contagem em ordem alfabética", async () => {
+    const round = await startedRound();
+    const [c1] = round.categories;
+    await answerService.submit({
+      roundId: round.id,
+      playerSessionId: players[0].playerSessionId,
+      roundCategoryId: c1.id,
+      value: `${round.letter}zebra`,
+    });
+    await answerService.submit({
+      roundId: round.id,
+      playerSessionId: players[1].playerSessionId,
+      roundCategoryId: c1.id,
+      value: `${round.letter}abelha`,
+    });
+    await roundService.forceStop(round.id);
+    await roundService.closeCollaborativeCorrection(round.id);
+
+    const grouped = await groupedCorrectionGrid(round.id);
+    const category = grouped.categories.find((c) => c.id === c1.id);
+    const tied = category.groups.filter((g) => g.count === 1);
+    expect(tied.length).toBeGreaterThanOrEqual(2);
+    const values = tied.map((g) => g.value);
+    expect(values).toEqual([...values].sort((a, b) => a.localeCompare(b, "pt-BR")));
+  });
+
+  it("requestStop perde a corrida quando a transição atômica não é reivindicada (simulado)", async () => {
+    const round = await startedRound();
+    await fillAll(round, players[0].playerSessionId);
+    const spy = vi.spyOn(roundRepository, "transitionIfStatus").mockResolvedValueOnce({ count: 0 });
+    try {
+      await expect(
+        roundService.requestStop({ roundId: round.id, playerSessionId: players[0].playerSessionId }),
+      ).rejects.toMatchObject({ status: 409 });
+    } finally {
+      spy.mockRestore();
+    }
+    // A rodada continua PLAYING de verdade: ninguém venceu a corrida simulada.
+    expect((await roundService.get(round.id)).status).toBe("PLAYING");
   });
 });

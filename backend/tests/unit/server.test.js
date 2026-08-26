@@ -105,6 +105,14 @@ describe("src/server.js (bootstrap do processo)", () => {
     expect(onSpy.mock.calls.some(([event]) => event === "SIGINT")).toBe(true);
   });
 
+  it("uma falha sem .message (valor não-Error) ainda é registrada normalmente", async () => {
+    // eslint-disable-next-line prefer-promise-reject-errors
+    recoverActiveRoundsMock.mockRejectedValue("motivo sem .message");
+    await import("../../src/server.js");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(onSpy.mock.calls.some(([event]) => event === "SIGINT")).toBe(true);
+  });
+
   it("uma falha fatal na inicialização encerra o processo com código 1", async () => {
     checkDatabaseMock.mockRejectedValue(new Error("fatal"));
     await import("../../src/server.js");

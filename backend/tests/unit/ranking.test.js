@@ -32,4 +32,13 @@ describe("ranking (spec 42)", () => {
     expect(ranking[0].studentId).toBe(1);
     expect(ranking[1].studentId).toBe(2);
   });
+
+  it("usa string vazia dos dois lados quando nenhum dos empatados tem nome", () => {
+    const ranking = buildRanking([
+      { studentId: 1, name: undefined, total: 10 },
+      { studentId: 2, name: undefined, total: 10 },
+      { studentId: 3, name: undefined, total: 10 },
+    ]);
+    expect(ranking.every((entry) => entry.position === 1)).toBe(true);
+  });
 });

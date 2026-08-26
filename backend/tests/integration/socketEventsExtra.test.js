@@ -8,6 +8,7 @@ import authService from "../../src/services/authService.js";
 import roomService from "../../src/services/roomService.js";
 import roundService from "../../src/services/roundService.js";
 import logger from "../../src/lib/logger.js";
+import playerSessionRepository from "../../src/repositories/playerSessionRepository.js";
 import { fillAllAnswers } from "../helpers/fixtures.js";
 
 let server;
