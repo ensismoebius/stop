@@ -280,7 +280,19 @@ function useDashboardStats({ token, game, tab, roundStatus, setError }) {
 }
 
 /** Ações de partida/sala: criar, selecionar, abrir sala, encerrar. Sempre por `guard`, exceto `selectGame` (ver nota). */
-function buildGameLifecycleActions({ token, guard, game, setGame, setRoom, loadBasics, reloadGame, setGrid, setGroupedGrid }) {
+function buildGameLifecycleActions({
+  token,
+  guard,
+  game,
+  setGame,
+  setRoom,
+  loadBasics,
+  reloadGame,
+  setGrid,
+  setGroupedGrid,
+  setStatistics,
+  setHistory,
+}) {
   const createGame = (payload) =>
     guard(async () => {
       const created = await api.createGame(token, payload);
@@ -294,6 +306,13 @@ function buildGameLifecycleActions({ token, guard, game, setGame, setRoom, loadB
   const selectGame = async (selected) => {
     if (!selected) {
       setGame(null);
+      // Sem isso, "Histórico das rodadas" (aba Configuração) continua
+      // mostrando as rodadas da partida anterior, com "Remover" ativo —
+      // clicar chama api.deleteRound(token, game.id, ...) com game=null
+      // e falha silenciosamente (o erro cai dentro do catch do guard()
+      // dos outros handlers, mas aqui nem chega a isso: so nao apaga nada).
+      setStatistics(null);
+      setHistory(null);
       window.localStorage.removeItem(GAME_KEY);
       return;
     }
@@ -314,6 +333,11 @@ function buildGameLifecycleActions({ token, guard, game, setGame, setRoom, loadB
       setGame(null);
       setGrid(null);
       setGroupedGrid(null);
+      // Mesmo motivo do selectGame(null) acima: sem isso a aba
+      // Configuração mostra o histórico da partida já encerrada, com um
+      // "Remover" que aponta para um game.id que não existe mais.
+      setStatistics(null);
+      setHistory(null);
       window.localStorage.removeItem(GAME_KEY);
       await loadBasics();
     });
