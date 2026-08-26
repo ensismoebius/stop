@@ -1,0 +1,1 @@
+- "Histórico das rodadas" - Remover button does not work
