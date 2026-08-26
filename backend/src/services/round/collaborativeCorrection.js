@@ -50,11 +50,62 @@ export async function collaborativeCorrectionProgress(roundId) {
 }
 
 /**
- * Abre a fase de correcao colaborativa (spec 8-14): distribui as respostas
- * preenchidas entre os alunos elegiveis (nunca a propria, nunca repetida)
- * e materializa cada atribuicao como um `AnswerReview` PENDING — mesmo
- * padrao de `openCorrection` pre-criando respostas em branco: existir a
- * linha e o que sustenta o progresso "5/8" e a checagem de duplicidade.
+ * Distribui as respostas preenchidas entre os alunos elegiveis (nunca a
+ * propria, nunca repetida) e monta as linhas `AnswerReview` PENDING
+ * correspondentes — mesmo padrao de `openCorrection` pre-criando respostas
+ * em branco: existir a linha e o que sustenta o progresso "5/8" e a
+ * checagem de duplicidade.
+ */
+function buildReviewAssignments(round, eligible, answers) {
+  const filledByPlayer = new Map();
+  for (const answer of answers) {
+    if (!isFilled(answer.value)) continue;
+    const list = filledByPlayer.get(answer.playerSessionId) ?? [];
+    list.push({ id: answer.id });
+    filledByPlayer.set(answer.playerSessionId, list);
+  }
+
+  const assignments = assignReviews(
+    eligible.map((participant) => ({
+      playerSessionId: participant.playerSessionId,
+      answers: filledByPlayer.get(participant.playerSessionId) ?? [],
+    })),
+    env.collaborativeReviewCount,
+  );
+
+  const rows = [];
+  for (const [graderPlayerSessionId, answerIds] of assignments) {
+    for (const answerId of answerIds) {
+      rows.push({ roundId: round.id, answerId, graderPlayerSessionId, decision: "PENDING" });
+    }
+  }
+
+  return { assignments, rows };
+}
+
+/**
+ * Avisa cada avaliador do que foi atribuido a ele. Anonimo por desenho
+ * (spec 10): so o id da avaliacao, a categoria e o valor da resposta —
+ * nunca o autor.
+ */
+async function notifyGraders(round, assignments) {
+  for (const [graderPlayerSessionId, answerIds] of assignments) {
+    if (answerIds.length === 0) continue;
+    const assigned = await answerReviewRepository.listByGrader(round.id, graderPlayerSessionId);
+    realtime.toPlayer(graderPlayerSessionId, "reviewAssigned", {
+      roundId: round.id,
+      reviews: assigned.map((review) => ({
+        reviewId: review.id,
+        roundCategoryId: review.answer.roundCategoryId,
+        categoryName: review.answer.roundCategory.name,
+        value: review.answer.value,
+      })),
+    });
+  }
+}
+
+/**
+ * Abre a fase de correcao colaborativa (spec 8-14).
  *
  * Chamada por `finalizeRound` logo apos STOPPED. `skipLock` porque
  * `finalizeRound` ja roda dentro da trava da rodada (mesmo padrao de
@@ -76,28 +127,7 @@ export async function startCollaborativeCorrection(round, { skipLock = false } =
     const participants = await roundParticipantRepository.listByRound(round.id);
     const eligible = participants.filter((participant) => participant.status !== PLAYER_STATUS.ELIMINATED);
     const answers = await answerRepository.listByRound(round.id);
-    const filledByPlayer = new Map();
-    for (const answer of answers) {
-      if (!isFilled(answer.value)) continue;
-      const list = filledByPlayer.get(answer.playerSessionId) ?? [];
-      list.push({ id: answer.id });
-      filledByPlayer.set(answer.playerSessionId, list);
-    }
-
-    const assignments = assignReviews(
-      eligible.map((participant) => ({
-        playerSessionId: participant.playerSessionId,
-        answers: filledByPlayer.get(participant.playerSessionId) ?? [],
-      })),
-      env.collaborativeReviewCount,
-    );
-
-    const rows = [];
-    for (const [graderPlayerSessionId, answerIds] of assignments) {
-      for (const answerId of answerIds) {
-        rows.push({ roundId: round.id, answerId, graderPlayerSessionId, decision: "PENDING" });
-      }
-    }
+    const { assignments, rows } = buildReviewAssignments(round, eligible, answers);
 
     assertTransition(fresh.status, ROUND_STATUS.COLLABORATIVE_CORRECTION);
     const collaborativeCorrectionEndsAt =
@@ -118,21 +148,7 @@ export async function startCollaborativeCorrection(round, { skipLock = false } =
     const updated = await getRoundOrFail(round.id);
     const room = await resolveRoom(round.gameId);
 
-    for (const [graderPlayerSessionId, answerIds] of assignments) {
-      if (answerIds.length === 0) continue;
-      const assigned = await answerReviewRepository.listByGrader(round.id, graderPlayerSessionId);
-      realtime.toPlayer(graderPlayerSessionId, "reviewAssigned", {
-        roundId: round.id,
-        // Anonimo por desenho (spec 10): so o id da avaliacao, a categoria
-        // e o valor da resposta — nunca o autor.
-        reviews: assigned.map((review) => ({
-          reviewId: review.id,
-          roundCategoryId: review.answer.roundCategoryId,
-          categoryName: review.answer.roundCategory.name,
-          value: review.answer.value,
-        })),
-      });
-    }
+    await notifyGraders(round, assignments);
 
     realtime.toRoom(room.code, "collaborativeCorrectionStarted", {
       roundId: round.id,

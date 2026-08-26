@@ -6,6 +6,69 @@ import Field from "../components/common/Field.jsx";
 import Alert from "../components/common/Alert.jsx";
 import AvatarPicker from "../components/student/AvatarPicker.jsx";
 
+/** Passo 1: formulário de matrícula. */
+function RegistrationForm({ registration, setRegistration, loading, onSubmit }) {
+  return (
+    <form className="stack" onSubmit={onSubmit}>
+      <Field id="registration" label="Matrícula" hint="Informe o número da sua matrícula.">
+        <input
+          id="registration"
+          className="input"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          value={registration}
+          maxLength={40}
+          onChange={(event) => setRegistration(event.target.value)}
+          required
+        />
+      </Field>
+      <button
+        type="submit"
+        className="btn btn--primary btn--block"
+        disabled={loading || registration.trim().length === 0}
+      >
+        {loading ? "Verificando..." : "CONTINUAR"}
+      </button>
+    </form>
+  );
+}
+
+/** Passo 2: confirmação de identidade ("Você é: <nome>"). */
+function CandidateConfirm({ candidate, loading, onConfirm, onReject }) {
+  return (
+    <div className="confirm stack">
+      <span className="muted">Você é:</span>
+      <div className="confirm__name">{candidate.name}</div>
+      <span className="muted small">Matrícula: {candidate.registrationNumber}</span>
+      <button type="button" className="btn btn--primary btn--block" onClick={onConfirm} disabled={loading}>
+        SIM, SOU EU
+      </button>
+      <button type="button" className="btn btn--block" onClick={onReject} disabled={loading}>
+        NÃO
+      </button>
+    </div>
+  );
+}
+
+/** Passo 3: escolha opcional de avatar antes de entrar na sala. */
+function AvatarStep({ avatarUrl, setAvatarUrl, loading, onContinue, onSkip }) {
+  return (
+    <div className="confirm stack">
+      <span className="muted">Escolha como quer aparecer no jogo:</span>
+      <AvatarPicker value={avatarUrl} onChange={setAvatarUrl} />
+      <button type="button" className="btn btn--primary btn--block" onClick={onContinue} disabled={loading}>
+        {loading ? "Entrando..." : "CONTINUAR"}
+      </button>
+      <button type="button" className="btn btn--ghost btn--block" onClick={onSkip} disabled={loading}>
+        Pular
+      </button>
+    </div>
+  );
+}
+
 /**
  * Entrada do aluno (spec 6).
  *
@@ -110,78 +173,32 @@ export function JoinPage() {
         <Alert kind="error">{error}</Alert>
 
         {candidate && avatarStep ? (
-          <div className="confirm stack">
-            <span className="muted">Escolha como quer aparecer no jogo:</span>
-            <AvatarPicker value={avatarUrl} onChange={setAvatarUrl} />
-            <button
-              type="button"
-              className="btn btn--primary btn--block"
-              onClick={() => finalize(false)}
-              disabled={loading}
-            >
-              {loading ? "Entrando..." : "CONTINUAR"}
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost btn--block"
-              onClick={() => finalize(true)}
-              disabled={loading}
-            >
-              Pular
-            </button>
-          </div>
+          <AvatarStep
+            avatarUrl={avatarUrl}
+            setAvatarUrl={setAvatarUrl}
+            loading={loading}
+            onContinue={() => finalize(false)}
+            onSkip={() => finalize(true)}
+          />
         ) : candidate ? (
-          <div className="confirm stack">
-            <span className="muted">Você é:</span>
-            <div className="confirm__name">{candidate.name}</div>
-            <span className="muted small">Matrícula: {candidate.registrationNumber}</span>
-            <button
-              type="button"
-              className="btn btn--primary btn--block"
-              onClick={() => setAvatarStep(true)}
-              disabled={loading}
-            >
-              SIM, SOU EU
-            </button>
-            <button
-              type="button"
-              className="btn btn--block"
-              onClick={() => {
-                setCandidate(null);
-                setRegistration("");
-                setAvatarStep(false);
-                setAvatarUrl(null);
-              }}
-              disabled={loading}
-            >
-              NÃO
-            </button>
-          </div>
+          <CandidateConfirm
+            candidate={candidate}
+            loading={loading}
+            onConfirm={() => setAvatarStep(true)}
+            onReject={() => {
+              setCandidate(null);
+              setRegistration("");
+              setAvatarStep(false);
+              setAvatarUrl(null);
+            }}
+          />
         ) : (
-          <form className="stack" onSubmit={identify}>
-            <Field id="registration" label="Matrícula" hint="Informe o número da sua matrícula.">
-              <input
-                id="registration"
-                className="input"
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                value={registration}
-                maxLength={40}
-                onChange={(event) => setRegistration(event.target.value)}
-                required
-              />
-            </Field>
-            <button
-              type="submit"
-              className="btn btn--primary btn--block"
-              disabled={loading || registration.trim().length === 0}
-            >
-              {loading ? "Verificando..." : "CONTINUAR"}
-            </button>
-          </form>
+          <RegistrationForm
+            registration={registration}
+            setRegistration={setRegistration}
+            loading={loading}
+            onSubmit={identify}
+          />
         )}
       </div>
     </div>

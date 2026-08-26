@@ -39,31 +39,254 @@ function CancelLink({ onCancel, disabled }) {
 }
 
 /**
- * Controle da rodada (spec 41).
- *
- * Cada fase da máquina de estados exibe **apenas** o painel daquela fase —
- * nada de campos ou botões de outras etapas na tela ao mesmo tempo. Isso
- * evita que o professor precise procurar o comando certo em meio a campos
- * que não servem para o momento.
+ * Escolher tema + duração e confirmar — usado tanto para criar a primeira
+ * rodada (`ThemePhase`) quanto para escolher a próxima depois de pontuar
+ * (`ScoredPhase`, mesma forma de UI, só hint/rótulo/handler mudam).
  */
-export function RoundControl({
-  round,
-  categorySets,
-  usedLetters,
-  seconds,
+function ChooseThemePhase({
+  className,
+  hint,
+  themeField,
+  durationField,
   busy,
-  onCreateRound,
-  onDrawLetter,
-  onStart,
-  onStop,
-  onCancel,
-  onScore,
-  onNextRound,
-  onGoToCorrection,
-  collabProgress,
-  onFinishCollaborativeCorrection,
   disabled,
+  categorySetId,
+  buttonLabel,
+  huge,
+  onSubmit,
 }) {
+  return (
+    <div className={`phase ${className}`}>
+      <p className="phase__hint">{hint}</p>
+      {themeField}
+      {durationField}
+      <button
+        type="button"
+        className={`btn btn--primary btn--block phase__action${huge ? " phase__action--huge" : ""}`}
+        disabled={busy || disabled || !categorySetId}
+        onClick={onSubmit}
+      >
+        {buttonLabel}
+      </button>
+    </div>
+  );
+}
+
+function LetterPhase({ round, busy, onDrawLetter, onCancel }) {
+  return (
+    <div className="phase phase--letter">
+      <p className="phase__hint">
+        Rodada {round.roundNumber} · <strong>{round.themeName}</strong>
+      </p>
+      {/*
+        O sorteio em si (animacao, letra girando) e o momento de show —
+        acontece so na tela publica. Aqui o professor so dispara a acao.
+      */}
+      <button type="button" className="btn btn--warning btn--block phase__action" disabled={busy} onClick={onDrawLetter}>
+        Sortear letra
+      </button>
+      <CancelLink onCancel={onCancel} disabled={busy} />
+    </div>
+  );
+}
+
+function ReadyPhase({ round, busy, onStart, onDrawLetter, onCancel }) {
+  return (
+    <div className="phase phase--ready">
+      <p className="phase__hint">
+        Letra sorteada para <strong>{round.themeName}</strong> — veja a revelação na tela pública. Os
+        alunos ainda não veem as categorias.
+      </p>
+      <button type="button" className="btn btn--success btn--block phase__action" disabled={busy} onClick={onStart}>
+        Iniciar rodada
+      </button>
+      <button type="button" className="btn btn--ghost btn--block" disabled={busy} onClick={onDrawLetter}>
+        Sortear outra letra
+      </button>
+      <CancelLink onCancel={onCancel} disabled={busy} />
+    </div>
+  );
+}
+
+function StartingPhase({ round, busy, onCancel }) {
+  return (
+    <div className="phase phase--starting">
+      <p className="phase__hint">
+        <strong>{round.themeName}</strong> — sincronizando o início com os dispositivos dos alunos. A
+        letra ainda está oculta para eles; o cronômetro começa em instantes.
+      </p>
+      <CancelLink onCancel={onCancel} disabled={busy} />
+    </div>
+  );
+}
+
+function PlayingPhase({ round, seconds, busy, onStop, onCancel }) {
+  return (
+    <div className="phase phase--playing">
+      <div className="phase__live">
+        <span className="phase__clock">{formatClock(seconds)}</span>
+        <span className="phase__letter phase__letter--inline">{round.letter}</span>
+      </div>
+      <p className="phase__hint">
+        <strong>{round.themeName}</strong> em andamento — acompanhe os alunos ao lado.
+      </p>
+      <button
+        type="button"
+        className="btn btn--danger btn--block phase__action phase__action--huge"
+        disabled={busy}
+        onClick={onStop}
+      >
+        ⏹ ENCERRAR RODADA
+      </button>
+      <CancelLink onCancel={onCancel} disabled={busy} />
+    </div>
+  );
+}
+
+function CollaborativeCorrectionPhase({ collabProgress, busy, onFinishCollaborativeCorrection, onCancel }) {
+  const done = collabProgress?.completedAssignments ?? 0;
+  const total = collabProgress?.totalAssignments ?? 0;
+  return (
+    <div className="phase phase--correction">
+      <p className="phase__hint">
+        Os alunos estão corrigindo as respostas dos colegas antes da correção oficial.
+      </p>
+      <div className="phase__live">
+        <span className="phase__clock">
+          {done} / {total}
+        </span>
+        <span className="small muted">avaliações concluídas</span>
+      </div>
+      <button
+        type="button"
+        className="btn btn--primary btn--block phase__action"
+        disabled={busy}
+        onClick={onFinishCollaborativeCorrection}
+      >
+        Finalizar correção colaborativa agora →
+      </button>
+      <CancelLink onCancel={onCancel} disabled={busy} />
+    </div>
+  );
+}
+
+function CorrectionPhase({ busy, onGoToCorrection, onScore, onCancel }) {
+  return (
+    <div className="phase phase--correction">
+      <p className="phase__hint">
+        Corrija as respostas na aba <strong>Correção</strong>.
+      </p>
+      <button type="button" className="btn btn--primary btn--block phase__action" onClick={onGoToCorrection}>
+        Abrir correção →
+      </button>
+      <button type="button" className="btn btn--success btn--block" disabled={busy} onClick={onScore}>
+        Pontuar rodada agora
+      </button>
+      <CancelLink onCancel={onCancel} disabled={busy} />
+    </div>
+  );
+}
+
+/**
+ * Escolhe qual painel de fase renderizar (spec 41) — uma fase, um painel,
+ * nunca dois ao mesmo tempo, para o professor nunca precisar procurar o
+ * comando certo em meio a campos que não servem para o momento.
+ */
+function renderPhase(status, props) {
+  const { round, themeField, durationField, busy, disabled, categorySetId, seconds, collabProgress } = props;
+  const { onCreateRound, onDrawLetter, onStart, onStop, onCancel, onScore, onNextRound } = props;
+  const { onGoToCorrection, onFinishCollaborativeCorrection } = props;
+
+  if (!status || status === "FINISHED") {
+    return (
+      <ChooseThemePhase
+        className="phase--theme"
+        hint="Escolha o tema e o tempo da rodada para começar."
+        themeField={themeField}
+        durationField={durationField}
+        busy={busy}
+        disabled={disabled}
+        categorySetId={categorySetId}
+        buttonLabel="Criar rodada"
+        onSubmit={onCreateRound}
+      />
+    );
+  }
+  if (status === "CREATED") {
+    return <LetterPhase round={round} busy={busy} onDrawLetter={onDrawLetter} onCancel={onCancel} />;
+  }
+  if (status === "READY") {
+    return (
+      <ReadyPhase round={round} busy={busy} onStart={onStart} onDrawLetter={onDrawLetter} onCancel={onCancel} />
+    );
+  }
+  if (status === "STARTING") {
+    return <StartingPhase round={round} busy={busy} onCancel={onCancel} />;
+  }
+  if (status === "PLAYING") {
+    return <PlayingPhase round={round} seconds={seconds} busy={busy} onStop={onStop} onCancel={onCancel} />;
+  }
+  if (status === "STOPPED") {
+    return (
+      <div className="phase phase--correction">
+        <p className="phase__hint">A rodada foi encerrada. Preparando a correção colaborativa…</p>
+      </div>
+    );
+  }
+  if (status === "COLLABORATIVE_CORRECTION") {
+    return (
+      <CollaborativeCorrectionPhase
+        collabProgress={collabProgress}
+        busy={busy}
+        onFinishCollaborativeCorrection={onFinishCollaborativeCorrection}
+        onCancel={onCancel}
+      />
+    );
+  }
+  if (status === "CORRECTION") {
+    return <CorrectionPhase busy={busy} onGoToCorrection={onGoToCorrection} onScore={onScore} onCancel={onCancel} />;
+  }
+  if (status === "SCORED") {
+    return (
+      <ChooseThemePhase
+        className="phase--next"
+        hint={
+          <>
+            Pontuação de <strong>{round.themeName}</strong> divulgada. Escolha o próximo tema.
+          </>
+        }
+        themeField={themeField}
+        durationField={durationField}
+        busy={busy}
+        categorySetId={categorySetId}
+        buttonLabel="PRÓXIMA RODADA →"
+        huge
+        onSubmit={onNextRound}
+      />
+    );
+  }
+  return null;
+}
+
+function RoundFlowSteps({ currentIndex }) {
+  return (
+    <div className="flow" aria-label="Fluxo da rodada">
+      {STEPS.map((step, index) => (
+        <span
+          key={step.key}
+          className={`flow__step${index < currentIndex ? " flow__step--done" : ""}${
+            index === currentIndex ? " flow__step--current" : ""
+          }`}
+        >
+          {step.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Campos de tema/duração compartilhados por `ThemePhase` e `ScoredPhase`, mais o payload pronto para enviar. */
+function useRoundFormFields(categorySets, disabled) {
   const [categorySetId, setCategorySetId] = useState("");
   const [duration, setDuration] = useState(120);
 
@@ -71,12 +294,7 @@ export function RoundControl({
     if (!categorySetId && categorySets.length > 0) setCategorySetId(String(categorySets[0].id));
   }, [categorySets, categorySetId]);
 
-  const status = round?.status;
-  const currentIndex = STEPS.findIndex((step) => step.key === stepStateFor(status));
-  const payload = () => ({
-    categorySetId: Number(categorySetId),
-    durationSeconds: Number(duration),
-  });
+  const payload = () => ({ categorySetId: Number(categorySetId), durationSeconds: Number(duration) });
 
   const themeField = (
     <Field id="category-set" label="Tema / conjunto de categorias">
@@ -111,192 +329,61 @@ export function RoundControl({
     </Field>
   );
 
-  const usedLettersStrip =
-    (usedLetters ?? []).filter(Boolean).length > 0 ? (
-      <div className="letters-strip">
-        <span className="small muted">Letras já usadas nesta partida:</span>
-        <div className="letters">
-          {usedLetters
-            .filter(Boolean)
-            .map((letter, index, list) => (
-              <span
-                key={`${letter}-${index}`}
-                className={`letters__item${
-                  letter === round?.letter && index === list.length - 1
-                    ? " letters__item--current"
-                    : ""
-                }`}
-              >
-                {letter}
-              </span>
-            ))}
-        </div>
-      </div>
-    ) : null;
+  return { categorySetId, themeField, durationField, payload };
+}
 
-  // ------------------------------------------------------------------
-  // Uma fase, um painel. Nunca dois ao mesmo tempo.
-  // ------------------------------------------------------------------
-  let phase;
+function UsedLettersStrip({ usedLetters, currentLetter }) {
+  const letters = (usedLetters ?? []).filter(Boolean);
+  if (letters.length === 0) return null;
 
-  if (!status || status === "FINISHED") {
-    phase = (
-      <div className="phase phase--theme">
-        <p className="phase__hint">Escolha o tema e o tempo da rodada para começar.</p>
-        {themeField}
-        {durationField}
-        <button
-          type="button"
-          className="btn btn--primary btn--block phase__action"
-          disabled={busy || disabled || !categorySetId}
-          onClick={() => onCreateRound(payload())}
-        >
-          Criar rodada
-        </button>
-      </div>
-    );
-  } else if (status === "CREATED") {
-    phase = (
-      <div className="phase phase--letter">
-        <p className="phase__hint">
-          Rodada {round.roundNumber} · <strong>{round.themeName}</strong>
-        </p>
-        {/*
-          O sorteio em si (animacao, letra girando) e o momento de show —
-          acontece so na tela publica. Aqui o professor so dispara a acao.
-        */}
-        <button
-          type="button"
-          className="btn btn--warning btn--block phase__action"
-          disabled={busy}
-          onClick={onDrawLetter}
-        >
-          Sortear letra
-        </button>
-        <CancelLink onCancel={onCancel} disabled={busy} />
-      </div>
-    );
-  } else if (status === "READY") {
-    phase = (
-      <div className="phase phase--ready">
-        <p className="phase__hint">
-          Letra sorteada para <strong>{round.themeName}</strong> — veja a revelação na tela
-          pública. Os alunos ainda não veem as categorias.
-        </p>
-        <button
-          type="button"
-          className="btn btn--success btn--block phase__action"
-          disabled={busy}
-          onClick={onStart}
-        >
-          Iniciar rodada
-        </button>
-        <button type="button" className="btn btn--ghost btn--block" disabled={busy} onClick={onDrawLetter}>
-          Sortear outra letra
-        </button>
-        <CancelLink onCancel={onCancel} disabled={busy} />
-      </div>
-    );
-  } else if (status === "STARTING") {
-    phase = (
-      <div className="phase phase--starting">
-        <p className="phase__hint">
-          <strong>{round.themeName}</strong> — sincronizando o início com os dispositivos dos
-          alunos. A letra ainda está oculta para eles; o cronômetro começa em instantes.
-        </p>
-        <CancelLink onCancel={onCancel} disabled={busy} />
-      </div>
-    );
-  } else if (status === "PLAYING") {
-    phase = (
-      <div className="phase phase--playing">
-        <div className="phase__live">
-          <span className="phase__clock">{formatClock(seconds)}</span>
-          <span className="phase__letter phase__letter--inline">{round.letter}</span>
-        </div>
-        <p className="phase__hint">
-          <strong>{round.themeName}</strong> em andamento — acompanhe os alunos ao lado.
-        </p>
-        <button
-          type="button"
-          className="btn btn--danger btn--block phase__action phase__action--huge"
-          disabled={busy}
-          onClick={onStop}
-        >
-          ⏹ ENCERRAR RODADA
-        </button>
-        <CancelLink onCancel={onCancel} disabled={busy} />
-      </div>
-    );
-  } else if (status === "STOPPED") {
-    phase = (
-      <div className="phase phase--correction">
-        <p className="phase__hint">A rodada foi encerrada. Preparando a correção colaborativa…</p>
-      </div>
-    );
-  } else if (status === "COLLABORATIVE_CORRECTION") {
-    const done = collabProgress?.completedAssignments ?? 0;
-    const total = collabProgress?.totalAssignments ?? 0;
-    phase = (
-      <div className="phase phase--correction">
-        <p className="phase__hint">
-          Os alunos estão corrigindo as respostas dos colegas antes da correção oficial.
-        </p>
-        <div className="phase__live">
-          <span className="phase__clock">
-            {done} / {total}
+  return (
+    <div className="letters-strip">
+      <span className="small muted">Letras já usadas nesta partida:</span>
+      <div className="letters">
+        {letters.map((letter, index, list) => (
+          <span
+            key={`${letter}-${index}`}
+            className={`letters__item${
+              letter === currentLetter && index === list.length - 1 ? " letters__item--current" : ""
+            }`}
+          >
+            {letter}
           </span>
-          <span className="small muted">avaliações concluídas</span>
-        </div>
-        <button
-          type="button"
-          className="btn btn--primary btn--block phase__action"
-          disabled={busy}
-          onClick={onFinishCollaborativeCorrection}
-        >
-          Finalizar correção colaborativa agora →
-        </button>
-        <CancelLink onCancel={onCancel} disabled={busy} />
+        ))}
       </div>
-    );
-  } else if (status === "CORRECTION") {
-    phase = (
-      <div className="phase phase--correction">
-        <p className="phase__hint">
-          Corrija as respostas na aba <strong>Correção</strong>.
-        </p>
-        <button
-          type="button"
-          className="btn btn--primary btn--block phase__action"
-          onClick={onGoToCorrection}
-        >
-          Abrir correção →
-        </button>
-        <button type="button" className="btn btn--success btn--block" disabled={busy} onClick={onScore}>
-          Pontuar rodada agora
-        </button>
-        <CancelLink onCancel={onCancel} disabled={busy} />
-      </div>
-    );
-  } else if (status === "SCORED") {
-    phase = (
-      <div className="phase phase--next">
-        <p className="phase__hint">
-          Pontuação de <strong>{round.themeName}</strong> divulgada. Escolha o próximo tema.
-        </p>
-        {themeField}
-        {durationField}
-        <button
-          type="button"
-          className="btn btn--primary btn--block phase__action phase__action--huge"
-          disabled={busy || !categorySetId}
-          onClick={() => onNextRound(payload())}
-        >
-          PRÓXIMA RODADA →
-        </button>
-      </div>
-    );
-  }
+    </div>
+  );
+}
+
+/**
+ * Controle da rodada (spec 41).
+ *
+ * Cada fase da máquina de estados exibe **apenas** o painel daquela fase —
+ * nada de campos ou botões de outras etapas na tela ao mesmo tempo. Isso
+ * evita que o professor precise procurar o comando certo em meio a campos
+ * que não servem para o momento.
+ */
+export function RoundControl({
+  round,
+  categorySets,
+  usedLetters,
+  seconds,
+  busy,
+  onCreateRound,
+  onDrawLetter,
+  onStart,
+  onStop,
+  onCancel,
+  onScore,
+  onNextRound,
+  onGoToCorrection,
+  collabProgress,
+  onFinishCollaborativeCorrection,
+  disabled,
+}) {
+  const status = round?.status;
+  const currentIndex = STEPS.findIndex((step) => step.key === stepStateFor(status));
+  const { categorySetId, themeField, durationField, payload } = useRoundFormFields(categorySets, disabled);
 
   return (
     <section className="card stack">
@@ -311,21 +398,28 @@ export function RoundControl({
         )}
       </div>
 
-      <div className="flow" aria-label="Fluxo da rodada">
-        {STEPS.map((step, index) => (
-          <span
-            key={step.key}
-            className={`flow__step${
-              index < currentIndex ? " flow__step--done" : ""
-            }${index === currentIndex ? " flow__step--current" : ""}`}
-          >
-            {step.label}
-          </span>
-        ))}
-      </div>
+      <RoundFlowSteps currentIndex={currentIndex} />
 
-      {phase}
-      {usedLettersStrip}
+      {renderPhase(status, {
+        round,
+        themeField,
+        durationField,
+        busy,
+        disabled,
+        categorySetId,
+        seconds,
+        collabProgress,
+        onCreateRound: () => onCreateRound(payload()),
+        onDrawLetter,
+        onStart,
+        onStop,
+        onCancel,
+        onScore,
+        onNextRound: () => onNextRound(payload()),
+        onGoToCorrection,
+        onFinishCollaborativeCorrection,
+      })}
+      <UsedLettersStrip usedLetters={usedLetters} currentLetter={round?.letter} />
     </section>
   );
 }

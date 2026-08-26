@@ -1,6 +1,45 @@
 import { useEffect, useRef, useState } from "react";
 import { createSocket, emitAck } from "../socket/socket.js";
 
+// Eventos servidor->cliente repassados 1:1 para `handlers[event]`, sem
+// tratamento especial (diferente de `roomState`/`syncCountdownRequested`,
+// que atualizam estado do hook ou respondem com ack).
+const NAMED_EVENTS = [
+  "playerJoined",
+  "playerLeft",
+  "roundCreated",
+  "letterSelected",
+  "roundStarting",
+  "syncCountdownReleased",
+  "roundStarted",
+  "answerUpdated",
+  "playerProgress",
+  "playerEliminated",
+  "roundStopped",
+  "roundTimedOut",
+  "collaborativeCorrectionStarted",
+  "reviewAssigned",
+  "reviewCompleted",
+  "collaborativeCorrectionProgress",
+  "collaborativeCorrectionFinished",
+  "correctionStarted",
+  "answerReviewed",
+  "answersReviewed",
+  "scoreUpdated",
+  "rankingUpdated",
+  "roundFinished",
+  "roundCancelled",
+  "nextRound",
+  "roomStatusChanged",
+  "emojiReceived",
+];
+
+function registerNamedListeners(instance, handlersRef) {
+  for (const event of NAMED_EVENTS) {
+    instance.on(event, (payload) => handlersRef.current?.[event]?.(payload));
+  }
+}
+
 /**
  * Conecta a sala e mantem o estado autoritativo recebido do servidor.
  *
@@ -67,38 +106,7 @@ export function useRoomSocket({ roomCode, role, playerToken, adminToken, handler
       if (typeof ack === "function") ack(true);
     });
 
-    const named = [
-      "playerJoined",
-      "playerLeft",
-      "roundCreated",
-      "letterSelected",
-      "roundStarting",
-      "syncCountdownReleased",
-      "roundStarted",
-      "answerUpdated",
-      "playerProgress",
-      "playerEliminated",
-      "roundStopped",
-      "roundTimedOut",
-      "collaborativeCorrectionStarted",
-      "reviewAssigned",
-      "reviewCompleted",
-      "collaborativeCorrectionProgress",
-      "collaborativeCorrectionFinished",
-      "correctionStarted",
-      "answerReviewed",
-      "answersReviewed",
-      "scoreUpdated",
-      "rankingUpdated",
-      "roundFinished",
-      "roundCancelled",
-      "nextRound",
-      "roomStatusChanged",
-      "emojiReceived",
-    ];
-    for (const event of named) {
-      instance.on(event, (payload) => handlersRef.current?.[event]?.(payload));
-    }
+    registerNamedListeners(instance, handlersRef);
 
     return () => {
       instance.removeAllListeners();

@@ -66,65 +66,69 @@ function CategoryRow({ category, onUpdate, onDelete }) {
   );
 }
 
-/** Um conjunto de categorias: nome editável + categorias com CRUD próprio. */
-function CategorySetCard({ set, onUpdateSet, onDeleteSet, onCreateCategory, onUpdateCategory, onDeleteCategory }) {
+/** Cabeçalho de um conjunto: nome editável inline + remover conjunto inteiro. */
+function SetNameHeader({ set, onUpdateSet, onDeleteSet }) {
   const [editingSet, setEditingSet] = useState(false);
   const [setName, setSetName] = useState(set.name);
-  const [newCategoryName, setNewCategoryName] = useState("");
 
   return (
-    <div className="card stack">
-      <div className="spread">
-        {editingSet ? (
-          <div className="row">
-            <input
-              className="input"
-              value={setName}
-              onChange={(event) => setSetName(event.target.value)}
-            />
-            <button
-              type="button"
-              className="btn btn--primary small"
-              onClick={() => {
-                onUpdateSet(set.id, { name: setName.trim() });
-                setEditingSet(false);
-              }}
-            >
-              Salvar
-            </button>
-            <button
-              type="button"
-              className="btn btn--ghost small"
-              onClick={() => {
-                setSetName(set.name);
-                setEditingSet(false);
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        ) : (
-          <strong>{set.name}</strong>
-        )}
+    <div className="spread">
+      {editingSet ? (
         <div className="row">
-          {!editingSet ? (
-            <button type="button" className="btn btn--ghost small" onClick={() => setEditingSet(true)}>
-              Editar nome
-            </button>
-          ) : null}
+          <input className="input" value={setName} onChange={(event) => setSetName(event.target.value)} />
+          <button
+            type="button"
+            className="btn btn--primary small"
+            onClick={() => {
+              onUpdateSet(set.id, { name: setName.trim() });
+              setEditingSet(false);
+            }}
+          >
+            Salvar
+          </button>
           <button
             type="button"
             className="btn btn--ghost small"
             onClick={() => {
-              if (window.confirm(`Remover o conjunto "${set.name}" e todas as suas categorias?`)) {
-                onDeleteSet(set.id);
-              }
+              setSetName(set.name);
+              setEditingSet(false);
             }}
           >
-            Remover conjunto
+            Cancelar
           </button>
         </div>
+      ) : (
+        <strong>{set.name}</strong>
+      )}
+      <div className="row">
+        {!editingSet ? (
+          <button type="button" className="btn btn--ghost small" onClick={() => setEditingSet(true)}>
+            Editar nome
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="btn btn--ghost small"
+          onClick={() => {
+            if (window.confirm(`Remover o conjunto "${set.name}" e todas as suas categorias?`)) {
+              onDeleteSet(set.id);
+            }
+          }}
+        >
+          Remover conjunto
+        </button>
       </div>
+    </div>
+  );
+}
+
+/** Um conjunto de categorias: nome editável + categorias com CRUD próprio. */
+function CategorySetCard({ set, onUpdateSet, onDeleteSet, onCreateCategory, onUpdateCategory, onDeleteCategory }) {
+  const [newCategoryName, setNewCategoryName] = useState("");
+
+  return (
+    <div className="card stack">
+      <SetNameHeader set={set} onUpdateSet={onUpdateSet} onDeleteSet={onDeleteSet} />
 
       <div className="stack">
         {(set.categories ?? []).map((category) => (

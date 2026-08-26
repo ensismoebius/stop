@@ -18,16 +18,12 @@ import EmojiBursts from "../components/common/EmojiBursts.jsx";
 import StopSplash from "../components/common/StopSplash.jsx";
 
 /**
- * Public screen page for TV/projector (spec 22).
- * Shows the game state to the classroom without revealing any
- * private student data.
- *
- * @returns {JSX.Element}
+ * Estado da tela pública: socket + fallback REST + QR code + derivação de
+ * fase (lobby/playing/ranking) e contador — extraído da página porque é
+ * toda a "aquisição de dados", nao o "como desenhar", e a página já tinha
+ * ficado longa demais so com isso.
  */
-export function PublicScreenPage() {
-  const { code } = useParams();
-  const navigate = useNavigate();
-  const [input, setInput] = useState("");
+function useScreenState(code) {
   const audio = useAudio();
   const { sync, now } = useServerClock();
   const [collabProgress, setCollabProgress] = useState(null);
@@ -128,6 +124,153 @@ export function PublicScreenPage() {
     audio.play("FINAL_SECONDS");
   }, [seconds, playing, audio, lastBeep]);
 
+  return {
+    audio,
+    connected,
+    view,
+    round,
+    waitingForPlayers,
+    playing,
+    showRanking,
+    seconds,
+    collabProgress,
+    qrCode,
+    emojiBursts,
+    stopSplash,
+    setStopSplash,
+  };
+}
+
+/** Formulário exibido quando a tela pública é aberta sem código de sala na URL. */
+function ScreenCodeForm({ input, setInput, onSubmit }) {
+  return (
+    <div className="home">
+      <h1 className="home__title">Tela pública</h1>
+      <form className="card stack" onSubmit={onSubmit}>
+        <Field id="screen-code" label="Código da sala">
+          <input
+            id="screen-code"
+            className="input"
+            value={input}
+            placeholder="STOP-7F42"
+            autoCapitalize="characters"
+            onChange={(event) => setInput(event.target.value)}
+          />
+        </Field>
+        <button type="submit" className="btn btn--primary btn--block">
+          Exibir
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/** Barra de progresso agregado da correção colaborativa (spec 36: nunca respostas individuais). */
+function CollabProgressBar({ collabProgress }) {
+  const percent =
+    collabProgress.totalAssignments > 0
+      ? Math.round((collabProgress.completedAssignments / collabProgress.totalAssignments) * 100)
+      : 0;
+  return (
+    <div className="screen__collabProgress" role="status">
+      <div className="screen__collabProgressBar">
+        <div className="screen__collabProgressFill" style={{ width: `${percent}%` }} />
+      </div>
+      <span className="small">
+        {collabProgress.completedGraders} / {collabProgress.totalGraders} jogadores concluíram
+      </span>
+    </div>
+  );
+}
+
+/** Corpo principal da tela: lobby com QR grande enquanto espera jogadores, ou tema/letra/contador durante a rodada. */
+function ScreenMain({ round, waitingForPlayers, playing, seconds, qrCode, code, audio, collabProgress, view }) {
+  return (
+    <main className="screen__main">
+      {waitingForPlayers ? (
+        <div className="screen__lobby">
+          {qrCode?.dataUrl ? (
+            <img
+              className="screen__qr screen__qr--big"
+              src={qrCode.dataUrl}
+              alt={`QR Code de entrada da sala ${code}`}
+            />
+          ) : null}
+          <div className="screen__joincode">{code}</div>
+          <p className="screen__hint">Escaneie o QR Code ou acesse /join/{code}</p>
+        </div>
+      ) : (
+        <>
+          <ThemeDisplay theme={round?.themeName} roundNumber={round?.roundNumber} />
+          <LetterAnimation letter={round?.letter} audio={audio} />
+          {playing ? <Countdown seconds={seconds} running={playing} /> : null}
+        </>
+      )}
+      <GameStatus status={round?.status} />
+      {round?.status === "COLLABORATIVE_CORRECTION" && collabProgress ? (
+        <CollabProgressBar collabProgress={collabProgress} />
+      ) : null}
+      <PlayerCount
+        active={view?.activePlayers ?? view?.connectedPlayers ?? 0}
+        total={view?.totalPlayers ?? 0}
+        eliminated={view?.eliminatedPlayers ?? 0}
+      />
+      {round?.firstStopperName && round?.status !== "PLAYING" ? (
+        <div className="screen__players">STOP de {round.firstStopperName}</div>
+      ) : null}
+    </main>
+  );
+}
+
+/** Rodapé: código de acesso/QR pequeno, mudo/audio e badge de conexão. */
+function ScreenFooter({ waitingForPlayers, qrCode, code, audio, connected }) {
+  return (
+    <footer className="screen__bottom">
+      <div className="spread small muted">
+        <span className="row screen__join">
+          {!waitingForPlayers && qrCode?.dataUrl ? (
+            <img className="screen__qr" src={qrCode.dataUrl} alt={`QR Code de entrada da sala ${code}`} />
+          ) : null}
+          <span>Acesse: /join/{code}</span>
+        </span>
+        <span className="row">
+          <button type="button" className="btn btn--ghost" onClick={audio.toggle}>
+            {audio.enabled ? "🔊" : "🔇"}
+          </button>
+          <ConnectionBadge connected={connected} />
+        </span>
+      </div>
+    </footer>
+  );
+}
+
+/**
+ * Public screen page for TV/projector (spec 22).
+ * Shows the game state to the classroom without revealing any
+ * private student data.
+ *
+ * @returns {JSX.Element}
+ */
+export function PublicScreenPage() {
+  const { code } = useParams();
+  const navigate = useNavigate();
+  const [input, setInput] = useState("");
+  const {
+    audio,
+    connected,
+    view,
+    round,
+    waitingForPlayers,
+    playing,
+    showRanking,
+    seconds,
+    collabProgress,
+    qrCode,
+    emojiBursts,
+    stopSplash,
+    setStopSplash,
+  } = useScreenState(code);
+
   const submit = useCallback(
     (event) => {
       event.preventDefault();
@@ -138,26 +281,7 @@ export function PublicScreenPage() {
   );
 
   if (!code) {
-    return (
-      <div className="home">
-        <h1 className="home__title">Tela pública</h1>
-        <form className="card stack" onSubmit={submit}>
-          <Field id="screen-code" label="Código da sala">
-            <input
-              id="screen-code"
-              className="input"
-              value={input}
-              placeholder="STOP-7F42"
-              autoCapitalize="characters"
-              onChange={(event) => setInput(event.target.value)}
-            />
-          </Field>
-          <button type="submit" className="btn btn--primary btn--block">
-            Exibir
-          </button>
-        </form>
-      </div>
-    );
+    return <ScreenCodeForm input={input} setInput={setInput} onSubmit={submit} />;
   }
 
   // No momento do ranking a tela e so o ranking (spec de drama): nada de
@@ -175,74 +299,25 @@ export function PublicScreenPage() {
     <div className="screen">
       <GameTitle name={view?.game?.name ?? "Partida"} roomCode={code} />
 
-      <main className="screen__main">
-        {waitingForPlayers ? (
-          <div className="screen__lobby">
-            {qrCode?.dataUrl ? (
-              <img
-                className="screen__qr screen__qr--big"
-                src={qrCode.dataUrl}
-                alt={`QR Code de entrada da sala ${code}`}
-              />
-            ) : null}
-            <div className="screen__joincode">{code}</div>
-            <p className="screen__hint">Escaneie o QR Code ou acesse /join/{code}</p>
-          </div>
-        ) : (
-          <>
-            <ThemeDisplay theme={round?.themeName} roundNumber={round?.roundNumber} />
-            <LetterAnimation letter={round?.letter} audio={audio} />
-            {playing ? <Countdown seconds={seconds} running={playing} /> : null}
-          </>
-        )}
-        <GameStatus status={round?.status} />
-        {round?.status === "COLLABORATIVE_CORRECTION" && collabProgress ? (
-          <div className="screen__collabProgress" role="status">
-            <div className="screen__collabProgressBar">
-              <div
-                className="screen__collabProgressFill"
-                style={{
-                  width: `${
-                    collabProgress.totalAssignments > 0
-                      ? Math.round(
-                          (collabProgress.completedAssignments / collabProgress.totalAssignments) * 100,
-                        )
-                      : 0
-                  }%`,
-                }}
-              />
-            </div>
-            <span className="small">
-              {collabProgress.completedGraders} / {collabProgress.totalGraders} jogadores concluíram
-            </span>
-          </div>
-        ) : null}
-        <PlayerCount
-          active={view?.activePlayers ?? view?.connectedPlayers ?? 0}
-          total={view?.totalPlayers ?? 0}
-          eliminated={view?.eliminatedPlayers ?? 0}
-        />
-        {round?.firstStopperName && round?.status !== "PLAYING" ? (
-          <div className="screen__players">STOP de {round.firstStopperName}</div>
-        ) : null}
-      </main>
+      <ScreenMain
+        round={round}
+        waitingForPlayers={waitingForPlayers}
+        playing={playing}
+        seconds={seconds}
+        qrCode={qrCode}
+        code={code}
+        audio={audio}
+        collabProgress={collabProgress}
+        view={view}
+      />
 
-      <footer className="screen__bottom">
-        <div className="spread small muted">
-          <span className="row screen__join">
-            {!waitingForPlayers && qrCode?.dataUrl ? (
-              <img className="screen__qr" src={qrCode.dataUrl} alt={`QR Code de entrada da sala ${code}`} />
-            ) : null}
-            <span>Acesse: /join/{code}</span>
-          </span>
-          <span className="row">
-            <button type="button" className="btn btn--ghost" onClick={audio.toggle}>
-              {audio.enabled ? "🔊" : "🔇"}
-            </button>
-            <ConnectionBadge connected={connected} />
-          </span>
-        </div>
-      </footer>
+      <ScreenFooter
+        waitingForPlayers={waitingForPlayers}
+        qrCode={qrCode}
+        code={code}
+        audio={audio}
+        connected={connected}
+      />
 
       <EmojiBursts items={emojiBursts.items} />
 

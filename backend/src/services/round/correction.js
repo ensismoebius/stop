@@ -102,6 +102,82 @@ export async function openCorrection(roundId, { skipLock = false } = {}) {
   return skipLock ? run() : gameLock.run(lockKey(roundId), run);
 }
 
+/** Pontua cada resposta e devolve o total base (sem bonus) por jogador. */
+function scoreParticipantAnswers(answers, scoreable) {
+  const scored = scoreAnswers(scoreable);
+
+  const answerUpdates = answers.map((answer) => {
+    const entry = scored.get(answer.id);
+    const points = entry?.score ?? 0;
+    return prisma.answer.update({
+      where: { id: answer.id },
+      data: { score: points, isValid: points > 0 },
+    });
+  });
+
+  const totals = new Map();
+  for (const answer of scoreable) {
+    const entry = scored.get(answer.id);
+    totals.set(
+      answer.playerSessionId,
+      (totals.get(answer.playerSessionId) ?? 0) + (entry?.score ?? 0),
+    );
+  }
+
+  return { scored, answerUpdates, totals };
+}
+
+/**
+ * Bonus da correcao colaborativa (spec 27-31): decisao do aluno igual a
+ * decisao oficial do professor concede COLLABORATIVE_REVIEW_BONUS,
+ * independente da pontuacao das proprias respostas do aluno (spec 29).
+ */
+function collaborativeBonusByGrader(reviews, scored) {
+  const reviewStatsByGrader = new Map();
+  for (const review of reviews) {
+    if (review.decision === "PENDING") continue;
+    const stats = reviewStatsByGrader.get(review.graderPlayerSessionId) ?? { total: 0, matches: 0 };
+    stats.total += 1;
+    const officialIsValid = (scored.get(review.answerId)?.score ?? 0) > 0;
+    const matched =
+      (review.decision === "VALID" && officialIsValid) ||
+      (review.decision === "INVALID" && !officialIsValid);
+    if (matched) stats.matches += 1;
+    reviewStatsByGrader.set(review.graderPlayerSessionId, stats);
+  }
+  for (const stats of reviewStatsByGrader.values()) stats.bonus = stats.matches * env.collaborativeReviewBonus;
+  return reviewStatsByGrader;
+}
+
+/** Monta as escritas de `RoundParticipant.roundScore` e `Score.total` a partir dos totais já calculados. */
+function buildScorePersistence(round, participants, totals) {
+  const participantUpdates = participants.map((participant) =>
+    prisma.roundParticipant.update({
+      where: { id: participant.id },
+      data: { roundScore: totals.get(participant.playerSessionId) ?? 0 },
+    }),
+  );
+
+  const scoreUpdates = participants.map((participant) =>
+    prisma.score.upsert({
+      where: {
+        gameId_studentId: {
+          gameId: round.gameId,
+          studentId: participant.playerSession.studentId,
+        },
+      },
+      update: { total: { increment: totals.get(participant.playerSessionId) ?? 0 } },
+      create: {
+        gameId: round.gameId,
+        studentId: participant.playerSession.studentId,
+        total: totals.get(participant.playerSessionId) ?? 0,
+      },
+    }),
+  );
+
+  return [...participantUpdates, ...scoreUpdates];
+}
+
 /** Aplica a pontuacao 10/5/0 e atualiza o ranking (spec 19 e 42). */
 export async function score(roundId) {
   return gameLock.run(lockKey(roundId), async () => {
@@ -119,76 +195,18 @@ export async function score(roundId) {
 
     const answers = await answerRepository.listByRound(roundId);
     const scoreable = answers.filter((answer) => !eliminated.has(answer.playerSessionId));
-    const scored = scoreAnswers(scoreable);
+    const { scored, answerUpdates, totals } = scoreParticipantAnswers(answers, scoreable);
 
-    const answerUpdates = answers.map((answer) => {
-      const entry = scored.get(answer.id);
-      const points = entry?.score ?? 0;
-      return prisma.answer.update({
-        where: { id: answer.id },
-        data: { score: points, isValid: points > 0 },
-      });
-    });
-
-    const totals = new Map();
-    for (const answer of scoreable) {
-      const entry = scored.get(answer.id);
-      totals.set(
-        answer.playerSessionId,
-        (totals.get(answer.playerSessionId) ?? 0) + (entry?.score ?? 0),
-      );
-    }
-
-    // Bonus da correcao colaborativa (spec 27-31): decisao do aluno igual
-    // a decisao oficial do professor concede COLLABORATIVE_REVIEW_BONUS.
-    // Independente da pontuacao das proprias respostas do aluno (spec 29).
     const reviews = await answerReviewRepository.listByRound(roundId);
-    const reviewStatsByGrader = new Map();
-    for (const review of reviews) {
-      if (review.decision === "PENDING") continue;
-      const stats = reviewStatsByGrader.get(review.graderPlayerSessionId) ?? { total: 0, matches: 0 };
-      stats.total += 1;
-      const officialIsValid = (scored.get(review.answerId)?.score ?? 0) > 0;
-      const matched =
-        (review.decision === "VALID" && officialIsValid) ||
-        (review.decision === "INVALID" && !officialIsValid);
-      if (matched) stats.matches += 1;
-      reviewStatsByGrader.set(review.graderPlayerSessionId, stats);
-    }
-    for (const stats of reviewStatsByGrader.values()) stats.bonus = stats.matches * env.collaborativeReviewBonus;
+    const reviewStatsByGrader = collaborativeBonusByGrader(reviews, scored);
     for (const [graderPlayerSessionId, stats] of reviewStatsByGrader) {
       totals.set(graderPlayerSessionId, (totals.get(graderPlayerSessionId) ?? 0) + stats.bonus);
     }
 
-    const participantUpdates = participants.map((participant) =>
-      prisma.roundParticipant.update({
-        where: { id: participant.id },
-        data: { roundScore: totals.get(participant.playerSessionId) ?? 0 },
-      }),
-    );
-
-    const scoreUpdates = participants.map((participant) =>
-      prisma.score.upsert({
-        where: {
-          gameId_studentId: {
-            gameId: round.gameId,
-            studentId: participant.playerSession.studentId,
-          },
-        },
-        update: { total: { increment: totals.get(participant.playerSessionId) ?? 0 } },
-        create: {
-          gameId: round.gameId,
-          studentId: participant.playerSession.studentId,
-          total: totals.get(participant.playerSessionId) ?? 0,
-        },
-      }),
-    );
-
     assertTransition(round.status, ROUND_STATUS.SCORED);
     await prisma.$transaction([
       ...answerUpdates,
-      ...participantUpdates,
-      ...scoreUpdates,
+      ...buildScorePersistence(round, participants, totals),
       prisma.round.updateMany({
         where: { id: roundId, status: ROUND_STATUS.CORRECTION },
         data: { status: ROUND_STATUS.SCORED, scoredAt: new Date() },

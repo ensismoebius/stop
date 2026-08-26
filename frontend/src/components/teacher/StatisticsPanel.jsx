@@ -1,3 +1,166 @@
+function SummaryStats({ totals }) {
+  return (
+    <section className="card stack">
+      <h2>Resumo</h2>
+      <div className="stat-grid">
+        <div className="stat">
+          <div className="stat__value">{totals.rounds}</div>
+          <div className="stat__label">Rodadas</div>
+        </div>
+        <div className="stat">
+          <div className="stat__value">{Math.round(totals.fillRate * 100)}%</div>
+          <div className="stat__label">Taxa de preenchimento</div>
+        </div>
+        <div className="stat">
+          <div className="stat__value">{totals.validAnswers}</div>
+          <div className="stat__label">Respostas válidas</div>
+        </div>
+        <div className="stat">
+          <div className="stat__value">{totals.answers - totals.validAnswers}</div>
+          <div className="stat__label">Respostas inválidas</div>
+        </div>
+        <div className="stat">
+          <div className="stat__value">{totals.stops}</div>
+          <div className="stat__label">STOPs</div>
+        </div>
+        <div className="stat">
+          <div className="stat__value">{totals.timeouts}</div>
+          <div className="stat__label">Timeouts</div>
+        </div>
+        <div className="stat">
+          <div className="stat__value">{totals.eliminations}</div>
+          <div className="stat__label">Eliminações</div>
+        </div>
+        <div className="stat">
+          <div className="stat__value">
+            {totals.averageSecondsToStop === null ? "—" : `${totals.averageSecondsToStop}s`}
+          </div>
+          <div className="stat__label">Tempo médio até STOP</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PerCategoryStats({ byCategory }) {
+  return (
+    <section className="card stack">
+      <h2>Desempenho por categoria</h2>
+      <div className="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Categoria</th>
+              <th scope="col">Respostas</th>
+              <th scope="col">Preenchidas</th>
+              <th scope="col">Válidas</th>
+              <th scope="col">Pontos</th>
+            </tr>
+          </thead>
+          <tbody>
+            {byCategory.map((entry) => (
+              <tr key={entry.category}>
+                <td>{entry.category}</td>
+                <td>{entry.answers}</td>
+                <td>{entry.filled}</td>
+                <td>{entry.valid}</td>
+                <td>{entry.totalScore}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function PerThemeStats({ byTheme }) {
+  return (
+    <section className="card stack">
+      <h2>Desempenho por tema</h2>
+      <div className="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Tema</th>
+              <th scope="col">Rodadas</th>
+              <th scope="col">Válidas</th>
+              <th scope="col">Inválidas</th>
+              <th scope="col">Pontos</th>
+            </tr>
+          </thead>
+          <tbody>
+            {byTheme.map((entry) => (
+              <tr key={entry.theme}>
+                <td>{entry.theme}</td>
+                <td>{entry.rounds}</td>
+                <td>{entry.validAnswers}</td>
+                <td>{entry.invalidAnswers}</td>
+                <td>{entry.totalScore}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function RoundHistoryTable({ history, onDeleteRound, busy }) {
+  if (!history) return null;
+
+  return (
+    <section className="card stack">
+      <h2>Histórico das rodadas</h2>
+      <div className="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Tema</th>
+              <th scope="col">Letra</th>
+              <th scope="col">Encerramento</th>
+              <th scope="col">STOP de</th>
+              <th scope="col" />
+            </tr>
+          </thead>
+          <tbody>
+            {history.rounds.map((round) => (
+              <tr key={round.id}>
+                <td>{round.roundNumber}</td>
+                <td>{round.themeName}</td>
+                <td>{round.letter || "—"}</td>
+                <td>{round.stopReason ?? round.status}</td>
+                <td>{round.firstStopper ?? "—"}</td>
+                <td>
+                  {onDeleteRound && (round.status === "SCORED" || round.status === "FINISHED") ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost small"
+                      disabled={busy}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Remover a rodada ${round.roundNumber} (${round.themeName}) do histórico? Os pontos que ela gerou serão descontados do ranking.`,
+                          )
+                        ) {
+                          onDeleteRound(round.id);
+                        }
+                      }}
+                    >
+                      Remover
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 /** Estatisticas da partida (spec 43). */
 export function StatisticsPanel({ statistics, history, onDeleteRound, busy }) {
   if (!statistics) {
@@ -9,156 +172,12 @@ export function StatisticsPanel({ statistics, history, onDeleteRound, busy }) {
     );
   }
 
-  const { totals } = statistics;
-
   return (
     <div className="stack">
-      <section className="card stack">
-        <h2>Resumo</h2>
-        <div className="stat-grid">
-          <div className="stat">
-            <div className="stat__value">{totals.rounds}</div>
-            <div className="stat__label">Rodadas</div>
-          </div>
-          <div className="stat">
-            <div className="stat__value">{Math.round(totals.fillRate * 100)}%</div>
-            <div className="stat__label">Taxa de preenchimento</div>
-          </div>
-          <div className="stat">
-            <div className="stat__value">{totals.validAnswers}</div>
-            <div className="stat__label">Respostas válidas</div>
-          </div>
-          <div className="stat">
-            <div className="stat__value">{totals.answers - totals.validAnswers}</div>
-            <div className="stat__label">Respostas inválidas</div>
-          </div>
-          <div className="stat">
-            <div className="stat__value">{totals.stops}</div>
-            <div className="stat__label">STOPs</div>
-          </div>
-          <div className="stat">
-            <div className="stat__value">{totals.timeouts}</div>
-            <div className="stat__label">Timeouts</div>
-          </div>
-          <div className="stat">
-            <div className="stat__value">{totals.eliminations}</div>
-            <div className="stat__label">Eliminações</div>
-          </div>
-          <div className="stat">
-            <div className="stat__value">
-              {totals.averageSecondsToStop === null ? "—" : `${totals.averageSecondsToStop}s`}
-            </div>
-            <div className="stat__label">Tempo médio até STOP</div>
-          </div>
-        </div>
-      </section>
-
-      <section className="card stack">
-        <h2>Desempenho por categoria</h2>
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Categoria</th>
-                <th scope="col">Respostas</th>
-                <th scope="col">Preenchidas</th>
-                <th scope="col">Válidas</th>
-                <th scope="col">Pontos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {statistics.byCategory.map((entry) => (
-                <tr key={entry.category}>
-                  <td>{entry.category}</td>
-                  <td>{entry.answers}</td>
-                  <td>{entry.filled}</td>
-                  <td>{entry.valid}</td>
-                  <td>{entry.totalScore}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="card stack">
-        <h2>Desempenho por tema</h2>
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Tema</th>
-                <th scope="col">Rodadas</th>
-                <th scope="col">Válidas</th>
-                <th scope="col">Inválidas</th>
-                <th scope="col">Pontos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {statistics.byTheme.map((entry) => (
-                <tr key={entry.theme}>
-                  <td>{entry.theme}</td>
-                  <td>{entry.rounds}</td>
-                  <td>{entry.validAnswers}</td>
-                  <td>{entry.invalidAnswers}</td>
-                  <td>{entry.totalScore}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {history ? (
-        <section className="card stack">
-          <h2>Histórico das rodadas</h2>
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">#</th>
-                  <th scope="col">Tema</th>
-                  <th scope="col">Letra</th>
-                  <th scope="col">Encerramento</th>
-                  <th scope="col">STOP de</th>
-                  <th scope="col" />
-                </tr>
-              </thead>
-              <tbody>
-                {history.rounds.map((round) => (
-                  <tr key={round.id}>
-                    <td>{round.roundNumber}</td>
-                    <td>{round.themeName}</td>
-                    <td>{round.letter || "—"}</td>
-                    <td>{round.stopReason ?? round.status}</td>
-                    <td>{round.firstStopper ?? "—"}</td>
-                    <td>
-                      {onDeleteRound && (round.status === "SCORED" || round.status === "FINISHED") ? (
-                        <button
-                          type="button"
-                          className="btn btn--ghost small"
-                          disabled={busy}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Remover a rodada ${round.roundNumber} (${round.themeName}) do histórico? Os pontos que ela gerou serão descontados do ranking.`,
-                              )
-                            ) {
-                              onDeleteRound(round.id);
-                            }
-                          }}
-                        >
-                          Remover
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
+      <SummaryStats totals={statistics.totals} />
+      <PerCategoryStats byCategory={statistics.byCategory} />
+      <PerThemeStats byTheme={statistics.byTheme} />
+      <RoundHistoryTable history={history} onDeleteRound={onDeleteRound} busy={busy} />
     </div>
   );
 }

@@ -22,17 +22,15 @@ const KEY_MAP = {
 };
 
 /**
- * Grade de correcao (spec 18).
- *
- * A correcao precisa ser rapida: e possivel percorrer as respostas com as
- * setas e marcar com o teclado (1/V, 2/I, 3/B, 4/D ou espaco para alternar).
+ * Navegacao por teclado da grade de correcao: setas movem o foco, 1/V 2/I
+ * 3/B 4/D marcam direto, espaco/enter alternam o ciclo VALID→INVALID→
+ * BLANK→DUPLICATE. Extraido do componente porque mistura varios hooks
+ * (estado de foco, callbacks memoizados, ref de nós DOM) que nao tem
+ * relacao com o JSX em si — so com "onde estou e o que a tecla significa".
  */
-export function CorrectionPanel({ grid, onReview, busy }) {
+function useCorrectionGridKeyboard(players, categories, onReview) {
   const [focus, setFocus] = useState({ row: 0, column: 0 });
   const cellsRef = useRef(new Map());
-
-  const players = grid?.players ?? [];
-  const categories = grid?.categories ?? [];
 
   const answerAt = useCallback(
     (row, column) => {
@@ -92,17 +90,119 @@ export function CorrectionPanel({ grid, onReview, busy }) {
     [answerAt, move, onReview],
   );
 
-  const summary = useMemo(() => {
-    let pending = 0;
-    let valid = 0;
-    for (const player of players) {
-      for (const answer of player.answers) {
-        if (answer.reviewState === "PENDING") pending += 1;
-        if (answer.reviewState === "VALID") valid += 1;
-      }
+  return { setFocus, cellsRef, handleKeyDown };
+}
+
+/** Um botão-célula da grade: valor + estado, cicla a marcação no clique ou navega/marca pelo teclado. */
+function AnswerCell({ player, category, answer, row, column, busy, cellsRef, setFocus, handleKeyDown, onReview }) {
+  const state = answer?.reviewState ?? "BLANK";
+  const classes = [
+    "answer-chip",
+    `answer-chip--${state.toLowerCase()}`,
+    answer?.duplicated ? "answer-chip--duplicate" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <td className="answer-cell">
+      <button
+        type="button"
+        className={classes}
+        disabled={busy || !answer}
+        ref={(node) => {
+          const key = `${row}:${column}`;
+          if (node) cellsRef.current.set(key, node);
+          else cellsRef.current.delete(key);
+        }}
+        onFocus={() => setFocus({ row, column })}
+        onKeyDown={(event) => handleKeyDown(event, row, column)}
+        onClick={() => {
+          if (!answer) return;
+          const index = CYCLE.indexOf(answer.reviewState);
+          onReview(answer.id, CYCLE[(index + 1) % CYCLE.length]);
+        }}
+        aria-label={`${player.name}, ${category.name}: ${answer?.value || "em branco"}, ${STATE_LABEL[state]}`}
+      >
+        <span className="answer-chip__value">{answer?.value || <em className="muted">— vazio —</em>}</span>
+        <span className="answer-chip__state">
+          {STATE_LABEL[state]}
+          {answer?.duplicated ? " · repetida" : ""}
+          {answer && !answer.startsWithLetter && answer.value ? " · fora da letra" : ""}
+        </span>
+      </button>
+    </td>
+  );
+}
+
+/** Grade aluno × categoria propriamente dita. */
+function AnswerGrid({ players, categories, busy, cellsRef, setFocus, handleKeyDown, onReview }) {
+  return (
+    <div className="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Aluno</th>
+            {categories.map((category) => (
+              <th key={category.id} scope="col">
+                {category.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {players.map((player, row) => (
+            <tr key={player.playerSessionId}>
+              <th scope="row">{player.name}</th>
+              {categories.map((category, column) => {
+                const answer = player.answers.find((item) => item.roundCategoryId === category.id);
+                return (
+                  <AnswerCell
+                    key={category.id}
+                    player={player}
+                    category={category}
+                    answer={answer}
+                    row={row}
+                    column={column}
+                    busy={busy}
+                    cellsRef={cellsRef}
+                    setFocus={setFocus}
+                    handleKeyDown={handleKeyDown}
+                    onReview={onReview}
+                  />
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function reviewSummary(players) {
+  let pending = 0;
+  let valid = 0;
+  for (const player of players) {
+    for (const answer of player.answers) {
+      if (answer.reviewState === "PENDING") pending += 1;
+      if (answer.reviewState === "VALID") valid += 1;
     }
-    return { pending, valid };
-  }, [players]);
+  }
+  return { pending, valid };
+}
+
+/**
+ * Grade de correcao (spec 18).
+ *
+ * A correcao precisa ser rapida: e possivel percorrer as respostas com as
+ * setas e marcar com o teclado (1/V, 2/I, 3/B, 4/D ou espaco para alternar).
+ */
+export function CorrectionPanel({ grid, onReview, busy }) {
+  const players = grid?.players ?? [];
+  const categories = grid?.categories ?? [];
+  const { setFocus, cellsRef, handleKeyDown } = useCorrectionGridKeyboard(players, categories, onReview);
+  const summary = useMemo(() => reviewSummary(players), [players]);
 
   if (!grid) {
     return (
@@ -129,75 +229,15 @@ export function CorrectionPanel({ grid, onReview, busy }) {
         inválida, <strong>3/B</strong> em branco, <strong>4/D</strong> duplicada. Espaço alterna.
       </p>
 
-      <div className="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Aluno</th>
-              {categories.map((category) => (
-                <th key={category.id} scope="col">
-                  {category.name}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {players.map((player, row) => (
-              <tr key={player.playerSessionId}>
-                <th scope="row">{player.name}</th>
-                {categories.map((category, column) => {
-                  const answer = player.answers.find(
-                    (item) => item.roundCategoryId === category.id,
-                  );
-                  const state = answer?.reviewState ?? "BLANK";
-                  const classes = [
-                    "answer-chip",
-                    `answer-chip--${state.toLowerCase()}`,
-                    answer?.duplicated ? "answer-chip--duplicate" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
-                  return (
-                    <td key={category.id} className="answer-cell">
-                      <button
-                        type="button"
-                        className={classes}
-                        disabled={busy || !answer}
-                        ref={(node) => {
-                          const key = `${row}:${column}`;
-                          if (node) cellsRef.current.set(key, node);
-                          else cellsRef.current.delete(key);
-                        }}
-                        onFocus={() => setFocus({ row, column })}
-                        onKeyDown={(event) => handleKeyDown(event, row, column)}
-                        onClick={() => {
-                          if (!answer) return;
-                          const index = CYCLE.indexOf(answer.reviewState);
-                          onReview(answer.id, CYCLE[(index + 1) % CYCLE.length]);
-                        }}
-                        aria-label={`${player.name}, ${category.name}: ${
-                          answer?.value || "em branco"
-                        }, ${STATE_LABEL[state]}`}
-                      >
-                        <span className="answer-chip__value">
-                          {answer?.value || <em className="muted">— vazio —</em>}
-                        </span>
-                        <span className="answer-chip__state">
-                          {STATE_LABEL[state]}
-                          {answer?.duplicated ? " · repetida" : ""}
-                          {answer && !answer.startsWithLetter && answer.value
-                            ? " · fora da letra"
-                            : ""}
-                        </span>
-                      </button>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <AnswerGrid
+        players={players}
+        categories={categories}
+        busy={busy}
+        cellsRef={cellsRef}
+        setFocus={setFocus}
+        handleKeyDown={handleKeyDown}
+        onReview={onReview}
+      />
 
       {grid.eliminated?.length > 0 ? (
         <p className="small muted">

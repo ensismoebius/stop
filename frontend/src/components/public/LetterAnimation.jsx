@@ -16,6 +16,45 @@ function buildDelays(ticks, min, max) {
   return delays;
 }
 
+function buildConfetti(count) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: i,
+    angle: (360 / count) * i + (Math.random() * 20 - 10),
+    distance: 70 + Math.random() * 50,
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    delay: Math.round(Math.random() * 80),
+  }));
+}
+
+/** A letra girando/revelada, com o brilho e o confete — puramente visual. */
+function AnimatedLetter({ display, phase, confetti }) {
+  return (
+    <div className={`screen__letterWrap screen__letterWrap--${phase}`}>
+      {phase === "reveal" ? <div className="screen__burst" aria-hidden="true" /> : null}
+      {confetti.map((piece) => (
+        <span
+          key={piece.id}
+          className="screen__confetti"
+          style={{
+            "--angle": `${piece.angle}deg`,
+            "--distance": `${piece.distance}px`,
+            "--color": piece.color,
+            "--delay": `${piece.delay}ms`,
+          }}
+        />
+      ))}
+      <div
+        className={`screen__letter${phase === "spinning" ? " screen__letter--spin" : ""}${
+          phase === "reveal" ? " screen__letter--reveal" : ""
+        }`}
+        aria-live="polite"
+      >
+        {display}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Animacao do sorteio (spec 15 e 22) — o grande momento de show da tela
  * publica: a letra gira acelerada, desacelera como um caca-niquel e "bate"
@@ -57,15 +96,7 @@ export function LetterAnimation({ letter, audio }) {
       setDisplay(letter);
       setPhase("reveal");
       audioRef.current?.play?.("LETTER_REVEAL");
-      setConfetti(
-        Array.from({ length: CONFETTI_COUNT }, (_, i) => ({
-          id: i,
-          angle: (360 / CONFETTI_COUNT) * i + (Math.random() * 20 - 10),
-          distance: 70 + Math.random() * 50,
-          color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-          delay: Math.round(Math.random() * 80),
-        })),
-      );
+      setConfetti(buildConfetti(CONFETTI_COUNT));
       settleTimerRef.current = setTimeout(() => {
         setPhase("settled");
         setConfetti([]);
@@ -84,31 +115,7 @@ export function LetterAnimation({ letter, audio }) {
   // poluiria a tela da TV.
   if (!display) return null;
 
-  return (
-    <div className={`screen__letterWrap screen__letterWrap--${phase}`}>
-      {phase === "reveal" ? <div className="screen__burst" aria-hidden="true" /> : null}
-      {confetti.map((piece) => (
-        <span
-          key={piece.id}
-          className="screen__confetti"
-          style={{
-            "--angle": `${piece.angle}deg`,
-            "--distance": `${piece.distance}px`,
-            "--color": piece.color,
-            "--delay": `${piece.delay}ms`,
-          }}
-        />
-      ))}
-      <div
-        className={`screen__letter${phase === "spinning" ? " screen__letter--spin" : ""}${
-          phase === "reveal" ? " screen__letter--reveal" : ""
-        }`}
-        aria-live="polite"
-      >
-        {display}
-      </div>
-    </div>
-  );
+  return <AnimatedLetter display={display} phase={phase} confetti={confetti} />;
 }
 
 export default LetterAnimation;
