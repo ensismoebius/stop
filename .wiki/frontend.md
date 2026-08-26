@@ -12,6 +12,7 @@ e monta a UI; a lógica de apresentação fica em `components/<cliente>/`.
 | `/screen/:código` | `PublicScreenPage.jsx` | tela pública |
 | `/join/:código` | `JoinPage.jsx` | aluno (entrada) |
 | `/play` | `StudentGamePage.jsx` | aluno (jogo) |
+| `/historico`, `/historico/:matrícula` | `StudentHistoryPage.jsx` | aluno (consulta, fora de uma partida) |
 | `/` | `HomePage.jsx` | — |
 
 ## Hooks (`frontend/src/hooks/`)
@@ -56,12 +57,43 @@ opcionais e combináveis. **Sempre** ordenado por nome do aluno
 de quais filtros estão ativos — não é uma opção de ordenação da UI, é fixo no
 serviço.
 
+Duas ações adicionais na mesma tela:
+
+* **Exportar CSV** — gera o arquivo inteiramente no cliente a partir do `results` já
+  carregado (sem round-trip ao servidor); usa BOM UTF-8 para acentuação abrir
+  corretamente no Excel.
+* **Desempenho por categoria** — dispara `GET /reports/category-stats`
+  (`api.categoryStats`), reaproveitando só os filtros de disciplina/turma/partida do
+  mesmo formulário (não aluno/medalha/data/pontuação, que não fazem sentido nessa
+  granularidade). Agrega `Answer` por `roundCategory.name` — estável entre partidas
+  diferentes que reusam o mesmo `CategorySet`, pelo mesmo motivo que
+  `RoundCategory` é uma cópia imutável (ver
+  [Modelo de dados](modelo-de-dados.md#roundcategory-cópia-imutável-não-referência))
+  — e ordena por taxa de acerto **crescente**: a categoria em que a turma mais erra
+  aparece primeiro, o dado mais acionável para o professor.
+
 ### `components/student/`
 
 `AvatarPicker`, `GameHeader`, `LetterDisplay`, `CountdownTimer`, `CategoryList` +
 `CategoryCard`, `AnswerEditor`, `StopButton`, `ProgressIndicator`,
 `CollaborativeCorrection`, `EmojiPicker`. Compostos por `StudentGamePage.jsx`, que
 também renderiza o ranking final (com medalha) quando `game.status === "FINISHED"`.
+
+`EmojiPicker.jsx`'s `EMOJI_REACTIONS` (conjunto fixo, sem digitação livre — spec:
+fácil de moderar) é **duplicado** em `backend/src/validators/schemas.js` como
+`z.enum(EMOJI_REACTIONS)`: o servidor rejeita qualquer emoji fora dessa lista via
+`sendEmoji`. Adicionar uma reação nova exige editar os dois lugares — esquecer o
+backend faz o clique do aluno falhar silenciosamente na validação do socket.
+
+### `StudentHistoryPage.jsx` (`/historico`)
+
+Consulta o histórico do próprio aluno (medalhas/pontuação por partida) só pela
+matrícula, via o endpoint público `GET /students/history/:registrationNumber` — ver
+[Arquitetura](arquitetura.md#autenticação-dois-níveis-mais-rotas-públicas-por-matrícula)
+para o porquê desse endpoint não exigir token de professor. Aceita tanto `/historico` (formulário) quanto
+`/historico/:matrícula` (link direto, para favoritar/compartilhar). Link visível para
+todos na `HomePage`, sem gate de autenticação — diferente dos atalhos de professor,
+que só aparecem para quem já está autenticado.
 
 ### `components/public/`
 

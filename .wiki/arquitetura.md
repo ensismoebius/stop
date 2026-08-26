@@ -43,6 +43,32 @@ sockets/          → realtime.js (bridge para Socket.IO) + handlers.js (eventos
 recebem dados já carregados e devolvem estruturas puras, o que os torna testáveis sem
 banco nem socket (ver [Testes](testes.md)).
 
+## Autenticação: dois níveis, mais rotas públicas por matrícula
+
+Dois middlewares em `backend/src/middleware/auth.js`:
+
+* **`requireTeacher`** — token administrativo (`Authorization: Bearer`), protege
+  cadastros e controle de partida (spec 34/35). A sessão do aluno nunca é aceita
+  aqui.
+* **`requirePlayer`** — token de sessão do aluno (`x-player-token`), emitido ao
+  entrar numa sala (`roomService.join`), escopado a essa sala/sessão específica.
+
+Um terceiro nível, sem middleware algum, cobre o que o aluno precisa acessar **antes**
+de ter qualquer token: identificação por matrícula (`POST /rooms/:code/identify`,
+spec 6) e, mais recentemente, o próprio histórico acadêmico
+(`GET /students/history/:registrationNumber`, usado por `StudentHistoryPage.jsx`).
+O modelo de confiança é deliberadamente simples — só a matrícula, sem senha — e
+consistente em todo o app: o aluno nunca teve senha para nada, então um endpoint de
+consulta não deveria inventar uma exigência de segurança que o resto do sistema não
+tem. Essas rotas levam `authLimiter` (rate limit mais estrito) para dificultar
+varredura de matrículas.
+
+Detalhe de implementação ao adicionar uma rota pública nova a um router que também
+tem rotas protegidas: `router.use(requireTeacher)` (ex.: `studentRoutes.js`) só afeta
+o que for registrado **depois** dele no mesmo router — a rota pública precisa vir
+**antes** dessa linha, não depois com alguma exceção especial. Foi assim que
+`/students/history/:registrationNumber` foi adicionada sem exigir um router separado.
+
 ## Camadas do frontend
 
 ```

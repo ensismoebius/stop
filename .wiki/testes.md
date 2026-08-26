@@ -6,9 +6,17 @@ repositório (scratchpad), não uma suíte versionada.
 
 ## Backend — Vitest (`backend/tests/`)
 
-`backend/tests/integration/api.test.js` cobre o fluxo completo via chamadas diretas
-aos serviços (não HTTP) contra um banco de teste real (`stop_test`). Fixtures em
-`backend/tests/helpers/fixtures.js`.
+`backend/tests/integration/api.test.js` cobre o fluxo completo via HTTP real
+(`supertest` contra `createApp()`) sobre um banco de teste real (`stop_test`) —
+diferente de `gameFlow.test.js`/`collaborativeCorrection.test.js`, que chamam os
+serviços diretamente. Fixtures em `backend/tests/helpers/fixtures.js`.
+
+Alguns passos de setup não têm equivalente em REST (ex.: submeter resposta —
+`submitAnswer` só existe como evento de socket, spec 45) — nesses casos,
+`api.test.js` importa e chama o serviço diretamente (`answerService.submit`,
+`roundService.forceStop`, `roomService.join`) para montar o estado, e só volta a usar
+`request(app)` para o endpoint HTTP que o teste está de fato verificando. Mistura
+intencional, não descuido: o objetivo do teste é o endpoint, não o caminho até ele.
 
 ### `resetDatabase()` e a ordem de `TABLES`
 
@@ -42,6 +50,13 @@ partida + sala num único helper; `startedRound()` cria uma rodada e a avança a
 timeout — a sequência de revelação/contagem regressiva atravessa ticks assíncronos
 mesmo com as durações configuradas para ~0 em ambiente de teste, via
 `env.letterRevealAnimationMs`/`countdownAckTimeoutMs`/`countdownDurationMs`).
+
+`roomService.join(code, registrationNumber)` devolve `{ playerSessionId, playerToken,
+student, room, game }` — **não** `{ id, ... }`. Usar `session.id` em vez de
+`session.playerSessionId` num teste passa despercebido até a primeira chamada que
+depende desse valor (ex.: `answerService.submit({ playerSessionId: session.id, ...
+})`), que falha com um erro do Prisma sobre argumento faltando, não com um erro óbvio
+de "propriedade indefinida" — a mensagem não aponta de volta para a causa.
 
 ### Rodando
 
@@ -113,3 +128,10 @@ Válida/Inválida) → pontuação → CRUD completo (criar/editar/apagar) de Tu
 Alunos e Conjuntos de categorias/Categorias → finalização da partida (pódio na tela
 pública, medalha na tela do aluno, aba Relatórios com busca filtrada e não
 filtrada).
+
+Para uma tela nova isolada (ex.: `StudentHistoryPage.jsx`, o botão "Desempenho por
+categoria" do `ReportsPanel`), nem sempre vale a pena estender o script grande — um
+script de verificação avulso, mais curto, que sobe os dois processos isolados,
+semeia só o cenário mínimo necessário via Prisma direto (ex.: um `GameResult` sem
+rodadas de verdade, para checar o estado vazio) e tira 1-2 screenshots, é suficiente
+e mais rápido de escrever/rodar do que encaixar mais uma fase no fluxo completo.
