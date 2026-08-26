@@ -1,0 +1,279 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError, api } from "../../src/services/api.js";
+
+function jsonResponse(body, { status = 200, ok = true } = {}) {
+  return {
+    status,
+    ok,
+    text: () => Promise.resolve(body === undefined ? "" : JSON.stringify(body)),
+  };
+}
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn());
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("api.request (low level)", () => {
+  it("performs a GET with no body/content-type header", async () => {
+    fetch.mockResolvedValue(jsonResponse({ ok: true }));
+    const result = await api.request("/ping");
+    expect(result).toEqual({ ok: true });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/ping");
+    expect(options.method).toBe("GET");
+    expect(options.headers["Content-Type"]).toBeUndefined();
+    expect(options.body).toBeUndefined();
+  });
+
+  it("sends a JSON body with Content-Type on POST", async () => {
+    fetch.mockResolvedValue(jsonResponse({ id: 1 }));
+    await api.request("/things", { method: "POST", body: { name: "x" } });
+    const [, options] = fetch.mock.calls[0];
+    expect(options.method).toBe("POST");
+    expect(options.headers["Content-Type"]).toBe("application/json");
+    expect(options.body).toBe(JSON.stringify({ name: "x" }));
+  });
+
+  it("attaches an Authorization bearer header for adminToken", async () => {
+    fetch.mockResolvedValue(jsonResponse({}));
+    await api.request("/secure", { adminToken: "admin-123" });
+    const [, options] = fetch.mock.calls[0];
+    expect(options.headers.Authorization).toBe("Bearer admin-123");
+  });
+
+  it("attaches an x-player-token header for playerToken", async () => {
+    fetch.mockResolvedValue(jsonResponse({}));
+    await api.request("/secure", { playerToken: "player-123" });
+    const [, options] = fetch.mock.calls[0];
+    expect(options.headers["x-player-token"]).toBe("player-123");
+  });
+
+  it("returns null for a 204 No Content response without reading the body", async () => {
+    const text = vi.fn();
+    fetch.mockResolvedValue({ status: 204, ok: true, text });
+    const result = await api.request("/nothing");
+    expect(result).toBeNull();
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the response body is an empty string", async () => {
+    fetch.mockResolvedValue({ status: 200, ok: true, text: () => Promise.resolve("") });
+    const result = await api.request("/empty");
+    expect(result).toBeNull();
+  });
+
+  it("throws an ApiError with details on a non-2xx JSON error response", async () => {
+    fetch.mockResolvedValue(
+      jsonResponse(
+        { error: { message: "Não autorizado", code: "AUTH", details: { field: "token" } } },
+        { status: 401, ok: false },
+      ),
+    );
+    const promise = api.request("/secure");
+    await expect(promise).rejects.toBeInstanceOf(ApiError);
+    try {
+      await api.request("/secure");
+    } catch (error) {
+      expect(error.status).toBe(401);
+      expect(error.code).toBe("AUTH");
+      expect(error.message).toBe("Não autorizado");
+      expect(error.details).toEqual({ field: "token" });
+      expect(error.name).toBe("ApiError");
+    }
+  });
+
+  it("falls back to a default error message when the body has no error.message", async () => {
+    fetch.mockResolvedValue(jsonResponse({}, { status: 500, ok: false }));
+    try {
+      await api.request("/broken");
+      throw new Error("should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error.message).toBe("Falha na requisicao");
+      expect(error.code).toBeUndefined();
+    }
+  });
+
+  it("falls back to a default error message when the body is empty on error", async () => {
+    fetch.mockResolvedValue({ status: 500, ok: false, text: () => Promise.resolve("") });
+    try {
+      await api.request("/broken");
+      throw new Error("should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error.message).toBe("Falha na requisicao");
+    }
+  });
+
+  it("propagates network failures from fetch", async () => {
+    fetch.mockRejectedValue(new Error("network down"));
+    await expect(api.request("/x")).rejects.toThrow("network down");
+  });
+});
+
+describe("api convenience methods", () => {
+  beforeEach(() => {
+    fetch.mockResolvedValue(jsonResponse({}));
+  });
+
+  it("login posts credentials", async () => {
+    await api.login("a@b.com", "pw");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/auth/login");
+    expect(JSON.parse(options.body)).toEqual({ email: "a@b.com", password: "pw" });
+  });
+
+  it("me sends the admin token", async () => {
+    await api.me("tok");
+    const [, options] = fetch.mock.calls[0];
+    expect(options.headers.Authorization).toBe("Bearer tok");
+  });
+
+  it("listStudents omits the query string when no classId given", async () => {
+    await api.listStudents("tok");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/students");
+  });
+
+  it("listStudents includes classId in the query string when given", async () => {
+    await api.listStudents("tok", "class-1");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/students?classId=class-1");
+  });
+
+  it("deleteClass issues a DELETE", async () => {
+    await api.deleteClass("tok", "c1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/classes/c1");
+    expect(options.method).toBe("DELETE");
+  });
+
+  it("updateCategorySet issues a PATCH with a body", async () => {
+    await api.updateCategorySet("tok", "cs1", { name: "Novo" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/category-sets/cs1");
+    expect(options.method).toBe("PATCH");
+    expect(JSON.parse(options.body)).toEqual({ name: "Novo" });
+  });
+
+  it("createRoom posts to the game's rooms endpoint", async () => {
+    await api.createRoom("tok", "game1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games/game1/rooms");
+    expect(options.method).toBe("POST");
+  });
+
+  it("reviewAnswer PATCHes a reviewState body", async () => {
+    await api.reviewAnswer("tok", "ans1", "VALID");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/answers/ans1");
+    expect(JSON.parse(options.body)).toEqual({ reviewState: "VALID" });
+  });
+
+  it("reviewAnswers posts a bulk reviews body", async () => {
+    await api.reviewAnswers("tok", [{ id: "a1", reviewState: "VALID" }]);
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/answers/bulk-review");
+    expect(JSON.parse(options.body)).toEqual({ reviews: [{ id: "a1", reviewState: "VALID" }] });
+  });
+
+  it("nextRound posts a body to the game's next-round endpoint", async () => {
+    await api.nextRound("tok", "game1", { categorySetId: "cs1" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games/game1/rounds/next");
+    expect(JSON.parse(options.body)).toEqual({ categorySetId: "cs1" });
+  });
+
+  it("searchReports builds a query string, skipping empty/null/undefined filters", async () => {
+    await api.searchReports("tok", { classId: "c1", studentId: "", gameId: null, page: undefined });
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/reports/results?classId=c1");
+  });
+
+  it("searchReports omits the query string entirely when no filters given", async () => {
+    await api.searchReports("tok");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/reports/results");
+  });
+
+  it("categoryStats builds a query string from filters", async () => {
+    await api.categoryStats("tok", { classId: "c1", categorySetId: "cs1" });
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/reports/category-stats?classId=c1&categorySetId=cs1");
+  });
+
+  it("categoryStats omits the query string when no filters given", async () => {
+    await api.categoryStats("tok");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/reports/category-stats");
+  });
+
+  it("getStudentHistory encodes the registration number in the URL", async () => {
+    await api.getStudentHistory("12/34 5");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe(`/api/students/history/${encodeURIComponent("12/34 5")}`);
+  });
+
+  it("getRoom fetches a room by code with no auth headers", async () => {
+    await api.getRoom("ABCD");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rooms/ABCD");
+    expect(options.headers.Authorization).toBeUndefined();
+    expect(options.headers["x-player-token"]).toBeUndefined();
+  });
+
+  it("identify posts the registration number", async () => {
+    await api.identify("ABCD", "123");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rooms/ABCD/identify");
+    expect(JSON.parse(options.body)).toEqual({ registrationNumber: "123" });
+  });
+
+  it("join posts the registration number", async () => {
+    await api.join("ABCD", "123");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rooms/ABCD/join");
+    expect(JSON.parse(options.body)).toEqual({ registrationNumber: "123" });
+  });
+
+  it("setAvatar posts registrationNumber and avatarUrl", async () => {
+    await api.setAvatar("ABCD", "123", "/avatars/a1.svg");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rooms/ABCD/avatar");
+    expect(JSON.parse(options.body)).toEqual({
+      registrationNumber: "123",
+      avatarUrl: "/avatars/a1.svg",
+    });
+  });
+
+  it("playerState sends the player token header", async () => {
+    await api.playerState("ABCD", "ptok");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rooms/ABCD/me");
+    expect(options.headers["x-player-token"]).toBe("ptok");
+  });
+
+  it("publicState fetches the public room state with no auth", async () => {
+    await api.publicState("ABCD");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rooms/ABCD/public-state");
+    expect(options.headers.Authorization).toBeUndefined();
+  });
+
+  it("usedLetters fetches a game's used letters", async () => {
+    await api.usedLetters("tok", "game1");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games/game1/letters");
+  });
+
+  it("deleteRound issues a DELETE to the nested round path", async () => {
+    await api.deleteRound("tok", "game1", "round1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games/game1/rounds/round1");
+    expect(options.method).toBe("DELETE");
+  });
+});
