@@ -211,7 +211,7 @@ export function CategorySetsPanel({
             className="input"
             value={setName}
             onChange={(event) => setSetName(event.target.value)}
-            placeholder="React Native — Estilos"
+            placeholder="Biologia — Sistemas do corpo"
             required
           />
         </Field>

@@ -1,7 +1,8 @@
-# STOP — Plataforma Competitiva de Revisão de React Native
+# STOP
 
 Aplicação web multiplayer para uso em sala de aula, inspirada no jogo **Stop**, voltada à
-memorização e recuperação de conceitos de **React Native**.
+memorização e recuperação de conceitos de **qualquer disciplina** — o professor define as
+categorias e o conteúdo revisado.
 
 Três clientes convivem na mesma partida:
 
@@ -41,9 +42,11 @@ anunciada em voz alta como "**A de** Nome", "**A de** Animal", "**A de** Cor" �
 Essa plataforma recria esse ritual exatamente como ele é jogado à mão — sorteio de letra,
 corrida contra o tempo, grito de STOP, correção coletiva e pontuação 10/5/0 — só que como um
 jogo multiplayer em tempo real, trocando as categorias tradicionais (Nome, Animal, Cor...)
-por conceitos de **React Native** (hooks, componentes, APIs nativas, bibliotecas...), e
-movendo o papel do "juiz" humano — cronômetro, ordem do STOP, validação das respostas — para
-o servidor, que arbitra tudo de forma justa e instantânea para a turma inteira.
+pelo conteúdo de **qualquer disciplina** que o professor esteja lecionando — cada turma tem
+seus próprios conjuntos de categorias, então o mesmo jogo serve para revisar React Native,
+Biologia, História ou qualquer outra matéria. O papel do "juiz" humano — cronômetro, ordem
+do STOP, validação das respostas — fica com o servidor, que arbitra tudo de forma justa e
+instantânea para a turma inteira.
 
 ---
 

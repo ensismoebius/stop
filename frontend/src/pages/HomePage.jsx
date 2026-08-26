@@ -13,7 +13,7 @@ export function HomePage() {
     <div className="home">
       <div>
         <h1 className="home__title">STOP</h1>
-        <p className="muted">Plataforma competitiva de revisão de React Native</p>
+        <p className="muted">Plataforma competitiva de revisão de conteúdo</p>
       </div>
 
       <form

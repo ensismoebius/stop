@@ -194,7 +194,7 @@ export function JoinPage() {
     <div className="join">
       <div>
         <h1>STOP</h1>
-        <p className="muted">Revisão de React Native</p>
+        <p className="muted">Revisão de conteúdo</p>
       </div>
 
       <div className="card stack">

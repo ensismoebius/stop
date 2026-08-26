@@ -56,7 +56,7 @@ function GameSelector({ classes, games, onCreateGame, onSelectGame, busy }) {
             className="input"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Revisão React Native — aula 7"
+            placeholder="Revisão de conteúdo — aula 7"
             required
           />
         </Field>
