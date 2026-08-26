@@ -231,6 +231,17 @@ export const viewService = {
     // regra para todos os alunos da sala nesse instante do broadcast.
     const roundForPlayers = roundForPlayer(round);
     const serverTime = new Date().toISOString();
+    // Calculado uma unica vez para a sala inteira (nao por aluno): mesmo
+    // motivo do `reviewsByGrader` acima. Sem isso, o ranking so chegava ao
+    // aluno pelo evento pontual `rankingUpdated` — quem reconectasse depois
+    // (tela apagou, saiu da tela cheia, atualizou a pagina) nunca via a
+    // colocacao final, so quem estava conectado no instante exato da
+    // pontuacao/finalizacao. So carrega (e revela nomes de colegas) quando
+    // ja faz sentido mostrar — mesma condicao usada pela tela do aluno
+    // para exibir o ranking — nunca durante uma rodada em andamento
+    // (spec 49: aluno so ve as proprias respostas antes disso).
+    const showRanking = !round || round.status === "SCORED" || round.status === "FINISHED";
+    const ranking = showRanking ? await loadRanking(room.gameId) : [];
 
     return new Map(
       room.sessions.map((session) => {
@@ -252,6 +263,7 @@ export const viewService = {
               value: answer.value,
             })),
             reviews: reviewsByGrader.get(session.id) ?? [],
+            ranking,
             canAnswer:
               Boolean(round) && round.status === "PLAYING" && participant?.status === "PLAYING",
           },
@@ -277,6 +289,10 @@ export const viewService = {
       : null;
     const answers = round ? await answerRepository.listByPlayer(round.id, session.id) : [];
     const reviews = await reviewsForPlayer(round, session.id);
+    // Mesma condicao de `playerStatesForRoom`: so revela o ranking (nomes
+    // dos colegas) quando a rodada ja foi pontuada ou nao ha rodada em
+    // andamento — nunca durante o jogo (spec 49).
+    const showRanking = !round || round.status === "SCORED" || round.status === "FINISHED";
 
     return {
       playerSessionId: session.id,
@@ -287,6 +303,7 @@ export const viewService = {
       roundStatus: participant?.status ?? null,
       round: roundForPlayer(round),
       reviews,
+      ranking: showRanking ? await loadRanking(session.room.gameId) : [],
       serverTime: new Date().toISOString(),
       answers: answers.map((answer) => ({
         roundCategoryId: answer.roundCategoryId,

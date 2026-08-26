@@ -33,7 +33,7 @@ const STATUS_MESSAGE = {
 };
 
 /** Aplica um `roomState` recebido do servidor (via socket ou REST) ao estado local de respostas/eliminação/revisões. */
-function useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds }) {
+function useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds, setRanking }) {
   return useCallback(
     (state) => {
       if (!state) return;
@@ -50,8 +50,14 @@ function useApplyState({ sync, setAnswers, setEliminated, setReviews, setComplet
           new Set(state.reviews.filter((review) => review.decision !== "PENDING").map((review) => review.reviewId)),
         );
       }
+      // Mesmo raciocinio para o ranking: `rankingUpdated` so chega ao vivo,
+      // no instante da pontuacao/finalizacao. Quem reconecta depois disso
+      // (tela apagou, saiu da tela cheia, atualizou a pagina) precisa
+      // encontrar a colocacao final aqui, no estado normal da sala — senao
+      // nunca mais aparece.
+      if (state.ranking) setRanking(state.ranking);
     },
-    [sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds],
+    [sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds, setRanking],
   );
 }
 
@@ -629,7 +635,7 @@ function useStudentConnectionState() {
     if (!player?.playerToken) navigate("/", { replace: true });
   }, [player, navigate]);
 
-  const applyState = useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds });
+  const applyState = useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds, setRanking });
   const handlers = useStudentHandlers({
     applyState,
     audio,
