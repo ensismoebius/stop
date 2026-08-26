@@ -92,4 +92,17 @@ describe("sugestao automatica de correcao (spec 19 e 21)", () => {
   it("deixa pendente a decisao semantica", () => {
     expect(suggestReviewState("React", "R")).toBe("PENDING");
   });
+
+  it("usa STARTS_WITH por padrao quando a regra nao e informada", () => {
+    expect(suggestReviewState("Expo", "R")).toBe("INVALID");
+  });
+
+  it("com regra CONTAINS, aceita a letra em qualquer posicao", () => {
+    expect(suggestReviewState("Servidor", "R", "CONTAINS")).toBe("PENDING");
+    expect(suggestReviewState("Vite", "R", "CONTAINS")).toBe("INVALID");
+  });
+
+  it("com regra CONTAINS, ainda marca vazio como EM BRANCO", () => {
+    expect(suggestReviewState("   ", "R", "CONTAINS")).toBe("BLANK");
+  });
 });

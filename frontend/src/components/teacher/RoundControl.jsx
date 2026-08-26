@@ -48,6 +48,7 @@ function ChooseThemePhase({
   hint,
   themeField,
   durationField,
+  letterRuleField,
   busy,
   disabled,
   categorySetId,
@@ -60,6 +61,7 @@ function ChooseThemePhase({
       <p className="phase__hint">{hint}</p>
       {themeField}
       {durationField}
+      {letterRuleField}
       <button
         type="button"
         className={`btn btn--primary btn--block phase__action${huge ? " phase__action--huge" : ""}`}
@@ -193,7 +195,8 @@ function CorrectionPhase({ busy, onGoToCorrection, onScore, onCancel }) {
  * comando certo em meio a campos que não servem para o momento.
  */
 function renderPhase(status, props) {
-  const { round, themeField, durationField, busy, disabled, categorySetId, seconds, collabProgress } = props;
+  const { round, themeField, durationField, letterRuleField, busy, disabled, categorySetId, seconds, collabProgress } =
+    props;
   const { onCreateRound, onDrawLetter, onStart, onStop, onCancel, onScore, onNextRound } = props;
   const { onGoToCorrection, onFinishCollaborativeCorrection } = props;
 
@@ -204,6 +207,7 @@ function renderPhase(status, props) {
         hint="Escolha o tema e o tempo da rodada para começar."
         themeField={themeField}
         durationField={durationField}
+        letterRuleField={letterRuleField}
         busy={busy}
         disabled={disabled}
         categorySetId={categorySetId}
@@ -257,6 +261,7 @@ function renderPhase(status, props) {
         }
         themeField={themeField}
         durationField={durationField}
+        letterRuleField={letterRuleField}
         busy={busy}
         categorySetId={categorySetId}
         buttonLabel="PRÓXIMA RODADA →"
@@ -289,12 +294,13 @@ function RoundFlowSteps({ currentIndex }) {
 function useRoundFormFields(categorySets, disabled) {
   const [categorySetId, setCategorySetId] = useState("");
   const [duration, setDuration] = useState(120);
+  const [letterRule, setLetterRule] = useState("STARTS_WITH");
 
   useEffect(() => {
     if (!categorySetId && categorySets.length > 0) setCategorySetId(String(categorySets[0].id));
   }, [categorySets, categorySetId]);
 
-  const payload = () => ({ categorySetId: Number(categorySetId), durationSeconds: Number(duration) });
+  const payload = () => ({ categorySetId: Number(categorySetId), durationSeconds: Number(duration), letterRule });
 
   const themeField = (
     <Field id="category-set" label="Tema / conjunto de categorias">
@@ -329,7 +335,22 @@ function useRoundFormFields(categorySets, disabled) {
     </Field>
   );
 
-  return { categorySetId, themeField, durationField, payload };
+  const letterRuleField = (
+    <Field id="letter-rule" label="Regra da letra">
+      <select
+        id="letter-rule"
+        className="input"
+        value={letterRule}
+        onChange={(event) => setLetterRule(event.target.value)}
+        disabled={disabled}
+      >
+        <option value="STARTS_WITH">Começar com a letra</option>
+        <option value="CONTAINS">Conter a letra</option>
+      </select>
+    </Field>
+  );
+
+  return { categorySetId, themeField, durationField, letterRuleField, payload };
 }
 
 function UsedLettersStrip({ usedLetters, currentLetter }) {
@@ -383,7 +404,10 @@ export function RoundControl({
 }) {
   const status = round?.status;
   const currentIndex = STEPS.findIndex((step) => step.key === stepStateFor(status));
-  const { categorySetId, themeField, durationField, payload } = useRoundFormFields(categorySets, disabled);
+  const { categorySetId, themeField, durationField, letterRuleField, payload } = useRoundFormFields(
+    categorySets,
+    disabled,
+  );
 
   return (
     <section className="card stack">
@@ -404,6 +428,7 @@ export function RoundControl({
         round,
         themeField,
         durationField,
+        letterRuleField,
         busy,
         disabled,
         categorySetId,

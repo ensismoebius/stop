@@ -24,7 +24,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, m
  * A copia impede que alteracoes futuras no cadastro alterem uma partida
  * ja realizada (spec 17).
  */
-export async function create({ gameId, categorySetId, durationSeconds, themeName }) {
+export async function create({ gameId, categorySetId, durationSeconds, themeName, letterRule }) {
   const game = await gameRepository.findById(gameId);
   if (game?.status === "FINISHED") {
     throw conflict("Esta partida já foi finalizada e não pode receber novas rodadas.");
@@ -58,6 +58,7 @@ export async function create({ gameId, categorySetId, durationSeconds, themeName
         categorySetId,
         themeName: themeName ?? set.name,
         letter: "",
+        letterRule: letterRule ?? "STARTS_WITH",
         durationSeconds: durationSeconds ?? env.defaultRoundDuration,
         status: ROUND_STATUS.CREATED,
       },

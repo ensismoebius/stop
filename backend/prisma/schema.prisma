@@ -40,6 +40,13 @@ enum RoundStatus {
 /// secao 15). PENDING e o estado inicial: a atribuicao ja existe (para
 /// progresso "5/8" e para impedir auto-correcao/duplicidade), mas o aluno
 /// ainda nao decidiu.
+/// Regra lexical usada para avaliar se uma resposta "bate" com a letra
+/// sorteada (spec 21) — escolhida pelo professor ao criar a rodada.
+enum LetterRule {
+  STARTS_WITH
+  CONTAINS
+}
+
 enum ReviewDecision {
   PENDING
   VALID
@@ -242,6 +249,7 @@ model Round {
   categorySetId   Int?
   themeName       String
   letter          String      @db.VarChar(4)
+  letterRule      LetterRule  @default(STARTS_WITH)
   durationSeconds Int         @default(120)
   status          RoundStatus @default(CREATED)
   startedAt       DateTime?

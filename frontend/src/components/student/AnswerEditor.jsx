@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
  * sincronizado com o servidor por debounce, ao sair do campo e ao trocar
  * de categoria (spec 48).
  */
-export function AnswerEditor({ category, value, letter, disabled, onChange, onCommit, onClose }) {
+export function AnswerEditor({ category, value, letter, letterRule = "STARTS_WITH", disabled, onChange, onCommit, onClose }) {
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -17,19 +17,16 @@ export function AnswerEditor({ category, value, letter, disabled, onChange, onCo
   if (!category) return null;
 
   const trimmed = (value ?? "").trim();
-  const startsWithLetter =
-    !letter ||
-    trimmed.length === 0 ||
-    trimmed
+  const fold = (text) =>
+    text
       .normalize("NFD")
       .replace(/\p{Diacritic}/gu, "")
-      .toLocaleLowerCase("pt-BR")
-      .startsWith(
-        letter
-          .normalize("NFD")
-          .replace(/\p{Diacritic}/gu, "")
-          .toLocaleLowerCase("pt-BR"),
-      );
+      .toLocaleLowerCase("pt-BR");
+  const matchesLetter =
+    !letter ||
+    trimmed.length === 0 ||
+    (letterRule === "CONTAINS" ? fold(trimmed).includes(fold(letter)) : fold(trimmed).startsWith(fold(letter)));
+  const ruleHint = letterRule === "CONTAINS" ? `Contém ${letter}` : `Começa com ${letter}`;
 
   return (
     <section className="editor" aria-label={`Resposta para ${category.name}`}>
@@ -47,7 +44,7 @@ export function AnswerEditor({ category, value, letter, disabled, onChange, onCo
         autoCapitalize="off"
         spellCheck={false}
         enterKeyHint="done"
-        placeholder={letter ? `Começa com ${letter}...` : "Sua resposta"}
+        placeholder={letter ? `${ruleHint}...` : "Sua resposta"}
         onChange={(event) => onChange(category.id, event.target.value)}
         onBlur={() => onCommit(category.id)}
         onKeyDown={(event) => {
@@ -58,9 +55,9 @@ export function AnswerEditor({ category, value, letter, disabled, onChange, onCo
           }
         }}
       />
-      {!startsWithLetter ? (
+      {!matchesLetter ? (
         <span className="editor__hint editor__hint--warn">
-          Atenção: a resposta não começa com a letra {letter}.
+          Atenção: a resposta não {letterRule === "CONTAINS" ? "contém" : "começa com"} a letra {letter}.
         </span>
       ) : (
         <span className="editor__hint">A resposta é salva automaticamente.</span>

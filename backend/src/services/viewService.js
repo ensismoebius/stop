@@ -65,6 +65,7 @@ function roundSummary(round) {
     status: round.status,
     themeName: round.themeName,
     letter: round.letter || null,
+    letterRule: round.letterRule,
     durationSeconds: round.durationSeconds,
     startedAt: round.startedAt,
     revealAt: round.revealAt,

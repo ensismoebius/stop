@@ -42,10 +42,26 @@ export function normalizeLetter(letter) {
  * Criterio puramente lexical: nao decide correcao semantica.
  */
 export function startsWithLetter(value, letter) {
+  return matchesLetter(value, letter, "STARTS_WITH");
+}
+
+/**
+ * Verifica se a resposta "bate" com a letra sorteada segundo a regra
+ * escolhida pelo professor para a rodada (spec 21): `STARTS_WITH` (padrao,
+ * a resposta comeca com a letra) ou `CONTAINS` (a letra aparece em
+ * qualquer posicao da resposta).
+ *
+ * @param {unknown} value
+ * @param {unknown} letter
+ * @param {"STARTS_WITH"|"CONTAINS"} [rule]
+ */
+export function matchesLetter(value, letter, rule = "STARTS_WITH") {
   const normalizedValue = normalizeAnswer(value);
   const normalizedLetter = normalizeAnswer(letter);
   if (!normalizedValue || !normalizedLetter) return false;
-  return normalizedValue.startsWith(normalizedLetter);
+  return rule === "CONTAINS"
+    ? normalizedValue.includes(normalizedLetter)
+    : normalizedValue.startsWith(normalizedLetter);
 }
 
 /**

@@ -84,4 +84,47 @@ describe("correção agregada por resposta distinta (spec 17/20/21/52)", () => {
     const category = grouped.categories.find((cat) => cat.id === c1.id);
     expect(category.groups).toHaveLength(0);
   });
+
+  it("por padrao (STARTS_WITH), so marca matchesLetter para respostas que comecam com a letra", async () => {
+    const round = await startedRound();
+    const [c1] = round.categories;
+    const letra = round.letter;
+
+    await answerService.submit({
+      roundId: round.id,
+      playerSessionId: players[0].playerSessionId,
+      roundCategoryId: c1.id,
+      value: `Servi${letra}o`, // contem a letra, mas nao comeca com ela
+    });
+
+    const grouped = await roundService.groupedCorrectionGrid(round.id);
+    const category = grouped.categories.find((cat) => cat.id === c1.id);
+    expect(category.groups[0].matchesLetter).toBe(false);
+  });
+
+  it("com a rodada configurada para CONTAINS, marca matchesLetter para respostas que apenas contem a letra", async () => {
+    const round = await startedRoundFixture(scenario, { letterRule: "CONTAINS" });
+    expect(round.letterRule).toBe("CONTAINS");
+    const [c1] = round.categories;
+    const letra = round.letter;
+
+    await answerService.submit({
+      roundId: round.id,
+      playerSessionId: players[0].playerSessionId,
+      roundCategoryId: c1.id,
+      value: `Servi${letra}o`, // nao comeca com a letra, mas contem
+    });
+
+    const grouped = await roundService.groupedCorrectionGrid(round.id);
+    expect(grouped.round.letterRule).toBe("CONTAINS");
+    const category = grouped.categories.find((cat) => cat.id === c1.id);
+    expect(category.groups[0].matchesLetter).toBe(true);
+
+    // a correcao automatica tambem respeita a regra: nao marca INVALID so
+    // por nao comecar com a letra quando a regra da rodada e CONTAINS.
+    await roundService.forceStop(round.id);
+    await roundService.closeCollaborativeCorrection(round.id);
+    const answer = await prisma.answer.findFirst({ where: { roundId: round.id, roundCategoryId: c1.id } });
+    expect(answer.reviewState).not.toBe("INVALID");
+  });
 });

@@ -95,6 +95,7 @@ export const roundCreateSchema = z.object({
   categorySetId: id,
   durationSeconds: z.coerce.number().int().min(15).max(900).optional(),
   themeName: z.string().trim().max(120).optional(),
+  letterRule: z.enum(["STARTS_WITH", "CONTAINS"]).optional(),
 });
 
 export const answerReviewSchema = z.object({

@@ -78,7 +78,7 @@ function GroupRow({ group, groupIndex, busy, rowRefs, decide }) {
         <span className="group-row__value">{group.value || <em className="muted">— vazio —</em>}</span>
         <span className="small muted">
           {group.count} aluno(s)
-          {!group.startsWithLetter && group.value ? " · fora da letra" : ""}
+          {!group.matchesLetter && group.value ? " · fora da letra" : ""}
           {group.reviewState === "MIXED" ? " · marcações divergentes" : ` · ${group.reviewState.toLowerCase()}`}
         </span>
       </div>

@@ -122,11 +122,12 @@ export async function waitForRoundStatus(roundId, status, { timeoutMs = 2000, in
 }
 
 /** Cria, sorteia a letra e inicia uma rodada pronta para responder. */
-export async function startedRound(scenario, { durationSeconds } = {}) {
+export async function startedRound(scenario, { durationSeconds, letterRule } = {}) {
   const round = await roundService.create({
     gameId: scenario.game.id,
     categorySetId: scenario.categorySet.id,
     durationSeconds,
+    letterRule,
   });
   await roundService.drawRoundLetter(round.id);
   await roundService.start(round.id);

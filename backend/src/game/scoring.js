@@ -1,4 +1,4 @@
-import { normalizeAnswer } from "./normalize.js";
+import { normalizeAnswer, matchesLetter } from "./normalize.js";
 
 /**
  * Regra classica de pontuacao (spec 19).
@@ -91,16 +91,17 @@ export function scoreByPlayer(answers) {
 
 /**
  * Sugere marcacoes automaticas para acelerar a correcao (spec 19).
- * Nunca substitui o professor: apenas pre-marca vazios e respostas que
- * nao comecam com a letra sorteada.
+ * Nunca substitui o professor: apenas pre-marca vazios e respostas que nao
+ * atendem a regra da letra escolhida para a rodada (comecar com ou conter).
  *
+ * @param {"STARTS_WITH"|"CONTAINS"} [rule]
  * @returns {"BLANK"|"INVALID"|"PENDING"}
  */
-export function suggestReviewState(value, letter) {
+export function suggestReviewState(value, letter, rule = "STARTS_WITH") {
   const normalized = normalizeAnswer(value);
   if (normalized.length === 0) return REVIEW_STATE.BLANK;
   const normalizedLetter = normalizeAnswer(letter);
-  if (normalizedLetter && !normalized.startsWith(normalizedLetter)) {
+  if (normalizedLetter && !matchesLetter(value, letter, rule)) {
     return REVIEW_STATE.INVALID;
   }
   return REVIEW_STATE.PENDING;

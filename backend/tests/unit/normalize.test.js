@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAnswer, normalizeLetter, startsWithLetter, isFilled } from "../../src/game/normalize.js";
+import { normalizeAnswer, normalizeLetter, startsWithLetter, matchesLetter, isFilled } from "../../src/game/normalize.js";
 
 describe("normalizeAnswer (spec 20 e 57)", () => {
   it("e case-insensitive", () => {
@@ -51,6 +51,34 @@ describe("startsWithLetter (spec 21)", () => {
 
   it("rejeita resposta vazia", () => {
     expect(startsWithLetter("   ", "R")).toBe(false);
+  });
+});
+
+describe("matchesLetter (spec 21 — regra escolhida pelo professor)", () => {
+  it("no modo padrao (sem regra informada), comporta-se como startsWithLetter", () => {
+    expect(matchesLetter("React", "R")).toBe(true);
+    expect(matchesLetter("Expo", "R")).toBe(false);
+  });
+
+  it("STARTS_WITH explicito aceita so quando a resposta comeca com a letra", () => {
+    expect(matchesLetter("React", "R", "STARTS_WITH")).toBe(true);
+    expect(matchesLetter("Expo", "R", "STARTS_WITH")).toBe(false);
+  });
+
+  it("CONTAINS aceita a letra em qualquer posicao da resposta", () => {
+    expect(matchesLetter("Expo", "R", "CONTAINS")).toBe(false);
+    expect(matchesLetter("Servidor", "R", "CONTAINS")).toBe(true);
+    expect(matchesLetter("React", "R", "CONTAINS")).toBe(true);
+  });
+
+  it("CONTAINS ignora acentos, igual STARTS_WITH", () => {
+    expect(matchesLetter("Bola", "I", "CONTAINS")).toBe(false);
+    expect(matchesLetter("Ícone", "I", "CONTAINS")).toBe(true);
+  });
+
+  it("rejeita resposta ou letra vazia em qualquer modo", () => {
+    expect(matchesLetter("   ", "R", "CONTAINS")).toBe(false);
+    expect(matchesLetter("React", "", "CONTAINS")).toBe(false);
   });
 });
 

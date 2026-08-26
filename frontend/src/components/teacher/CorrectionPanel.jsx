@@ -128,7 +128,7 @@ function AnswerCell({ player, category, answer, row, column, busy, cellsRef, set
         <span className="answer-chip__state">
           {STATE_LABEL[state]}
           {answer?.duplicated ? " · repetida" : ""}
-          {answer && !answer.startsWithLetter && answer.value ? " · fora da letra" : ""}
+          {answer && !answer.matchesLetter && answer.value ? " · fora da letra" : ""}
         </span>
       </button>
     </td>

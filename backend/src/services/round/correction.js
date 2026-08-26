@@ -7,7 +7,7 @@ import answerRepository from "../../repositories/answerRepository.js";
 import answerReviewRepository from "../../repositories/answerReviewRepository.js";
 import { assertTransition, ROUND_STATUS } from "../../game/roundState.js";
 import { PLAYER_STATUS } from "../../game/playerState.js";
-import { normalizeAnswer, isFilled } from "../../game/normalize.js";
+import { isFilled, matchesLetter } from "../../game/normalize.js";
 import { scoreAnswers, suggestReviewState, REVIEW_STATE } from "../../game/scoring.js";
 import * as realtime from "../../sockets/realtime.js";
 import viewService from "../viewService.js";
@@ -63,7 +63,7 @@ export async function openCorrection(roundId, { skipLock = false } = {}) {
           continue;
         }
         if (answer.reviewState !== REVIEW_STATE.PENDING) continue;
-        const suggested = suggestReviewState(answer.value, round.letter);
+        const suggested = suggestReviewState(answer.value, round.letter, round.letterRule);
         // Respostas coerentes com a letra ja entram como validas; o
         // professor ajusta o que estiver semanticamente errado.
         updates.push({
@@ -282,9 +282,7 @@ export async function correctionGrid(roundId) {
           normalizedValue: answer.normalizedValue,
           reviewState: answer.reviewState,
           score: answer.score,
-          startsWithLetter:
-            answer.normalizedValue.length > 0 &&
-            answer.normalizedValue.startsWith(normalizeAnswer(round.letter)),
+          matchesLetter: matchesLetter(answer.normalizedValue, round.letter, round.letterRule),
           duplicated:
             (duplicates.get(`${answer.roundCategoryId}::${answer.normalizedValue}`) ?? 0) > 1,
         })),
@@ -331,7 +329,7 @@ export async function groupedCorrectionGrid(roundId) {
       value: answer.value,
       answerIds: [],
       reviewStates: new Set(),
-      startsWithLetter: key.length > 0 && key.startsWith(normalizeAnswer(round.letter)),
+      matchesLetter: matchesLetter(key, round.letter, round.letterRule),
     };
     group.answerIds.push(answer.id);
     group.reviewStates.add(answer.reviewState);
@@ -345,7 +343,7 @@ export async function groupedCorrectionGrid(roundId) {
         value: group.value,
         count: group.answerIds.length,
         answerIds: group.answerIds,
-        startsWithLetter: group.startsWithLetter,
+        matchesLetter: group.matchesLetter,
         // Uma unica marcacao representa o grupo inteiro so quando todas as
         // respostas do grupo ja compartilham o mesmo estado (ex.: recem
         // sugerido automaticamente); caso contrario o professor ve MISTO.

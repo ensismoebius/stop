@@ -546,6 +546,7 @@ function StudentAnswerArea({ currentCategory, answers, phase, answerActions, set
           category={currentCategory}
           value={answers[currentCategory.id] ?? ""}
           letter={round?.letter}
+          letterRule={round?.letterRule}
           disabled={!playing}
           onChange={handleChange}
           onCommit={commit}
