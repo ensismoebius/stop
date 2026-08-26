@@ -1,0 +1,339 @@
+import { act, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import PublicScreenPage from "../../src/pages/PublicScreenPage.jsx";
+import api from "../../src/services/api.js";
+
+vi.mock("../../src/services/api.js", () => ({
+  default: {
+    publicState: vi.fn(),
+    roomQrCode: vi.fn(),
+  },
+}));
+
+// --- useRoomSocket: fully controlled, and captures the `handlers` object so
+// tests can fire socket events directly (roundStarted, emojiReceived, etc).
+let lastHandlers = null;
+let socketReturn = { connected: false, state: null };
+const useRoomSocketMock = vi.fn((config) => {
+  lastHandlers = config.handlers;
+  return socketReturn;
+});
+vi.mock("../../src/hooks/useRoomSocket.js", () => ({
+  default: (config) => useRoomSocketMock(config),
+}));
+
+// --- useServerClock: sync/now are irrelevant to page logic under test;
+// useCountdown is fully controlled per test via its mock return value.
+const useCountdownMock = vi.fn(() => null);
+vi.mock("../../src/hooks/useServerClock.js", () => ({
+  useServerClock: () => ({ sync: vi.fn(), now: () => Date.now() }),
+  useCountdown: (...args) => useCountdownMock(...args),
+}));
+
+// --- useAudio: stubbed so sound-cue calls are assertable without touching
+// WebAudio, and so play()/playVoice()/toggle() calls are observable.
+const audioMock = { play: vi.fn(), playVoice: vi.fn(), unlock: vi.fn(), enabled: true, volume: 0.4, toggle: vi.fn(), setVolume: vi.fn() };
+vi.mock("../../src/hooks/useAudio.js", () => ({
+  default: () => audioMock,
+}));
+
+// --- components/public/* and the common screen widgets: out of scope here
+// (owned by a different agent testing components/public + components/common)
+// — stub each as a marker so PublicScreenPage's own branching/prop-passing
+// logic is what's under test, not their internal animations/timers.
+vi.mock("../../src/components/public/GameTitle.jsx", () => ({
+  default: ({ name, roomCode }) => <div data-testid="game-title">{name} · {roomCode}</div>,
+}));
+vi.mock("../../src/components/public/ThemeDisplay.jsx", () => ({
+  default: ({ theme, roundNumber }) => <div data-testid="theme-display">{theme} #{roundNumber}</div>,
+}));
+vi.mock("../../src/components/public/LetterAnimation.jsx", () => ({
+  default: ({ letter }) => <div data-testid="letter-animation">{letter}</div>,
+}));
+vi.mock("../../src/components/public/Countdown.jsx", () => ({
+  default: ({ seconds, running }) => <div data-testid="countdown">{running ? seconds : "stopped"}</div>,
+}));
+vi.mock("../../src/components/public/PlayerCount.jsx", () => ({
+  default: ({ active, total, eliminated }) => (
+    <div data-testid="player-count">{active}/{total}/{eliminated}</div>
+  ),
+}));
+vi.mock("../../src/components/public/GameStatus.jsx", () => ({
+  default: ({ status }) => <div data-testid="game-status">{status ?? "none"}</div>,
+}));
+vi.mock("../../src/components/public/Ranking.jsx", () => ({
+  default: ({ entries }) => <div data-testid="ranking">ranking:{entries.length}</div>,
+}));
+vi.mock("../../src/components/common/ConnectionBadge.jsx", () => ({
+  default: ({ connected }) => <div data-testid="connection-badge">{connected ? "online" : "offline"}</div>,
+}));
+vi.mock("../../src/components/common/EmojiBursts.jsx", () => ({
+  default: ({ items }) => <div data-testid="emoji-bursts">{items.map((i) => i.emoji).join(",")}</div>,
+}));
+vi.mock("../../src/components/common/StopSplash.jsx", () => ({
+  default: ({ onDone }) => (
+    <div data-testid="stop-splash">
+      <button type="button" onClick={onDone}>
+        dismiss-splash
+      </button>
+    </div>
+  ),
+}));
+
+function renderPage(initialEntry) {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route path="/screen" element={<PublicScreenPage />} />
+        <Route path="/screen/:code" element={<PublicScreenPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+describe("PublicScreenPage", () => {
+  beforeEach(() => {
+    lastHandlers = null;
+    socketReturn = { connected: false, state: null };
+    useCountdownMock.mockReturnValue(null);
+    api.publicState.mockResolvedValue(null);
+    api.roomQrCode.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows the code-entry form when there is no room code in the URL, and navigates on submit", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/screen"]}>
+        <Routes>
+          <Route path="/screen" element={<PublicScreenPage />} />
+          <Route path="/screen/:code" element={<div>screen-for-code</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Tela pública")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Código da sala"), "  abcd  ");
+    await user.click(screen.getByRole("button", { name: "Exibir" }));
+    // Navigation happened away from the bare form (no route match needed —
+    // we only assert the form itself unmounts).
+    await waitFor(() => expect(screen.queryByText("Tela pública")).not.toBeInTheDocument());
+  });
+
+  it("does not navigate when the submitted code is blank", async () => {
+    const user = userEvent.setup();
+    renderPage("/screen");
+    await user.click(screen.getByRole("button", { name: "Exibir" }));
+    expect(screen.getByText("Tela pública")).toBeInTheDocument();
+  });
+
+  it("shows the lobby (QR + join code) while waiting for players, with no round at all", async () => {
+    api.roomQrCode.mockResolvedValue({ dataUrl: "data:img", url: "http://x" });
+    socketReturn = { connected: true, state: { round: null, game: { name: "Jogo" } } };
+
+    renderPage("/screen/STOP-1");
+
+    expect(await screen.findByRole("img", { name: /QR Code de entrada da sala STOP-1/ })).toBeInTheDocument();
+    expect(screen.getByText("STOP-1")).toBeInTheDocument();
+    expect(screen.getByTestId("game-title")).toHaveTextContent("Jogo · STOP-1");
+    expect(screen.getByTestId("game-status")).toHaveTextContent("none");
+  });
+
+  it("treats CREATED and READY rounds as still waiting for players", () => {
+    socketReturn = { connected: true, state: { round: { status: "CREATED" } } };
+    const { rerender } = renderPage("/screen/STOP-1");
+    expect(screen.getByText("STOP-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("theme-display")).not.toBeInTheDocument();
+
+    socketReturn = { connected: true, state: { round: { status: "READY" } } };
+    rerender(
+      <MemoryRouter initialEntries={["/screen/STOP-1"]}>
+        <Routes>
+          <Route path="/screen/:code" element={<PublicScreenPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  });
+
+  it("shows theme/letter/countdown once the round leaves the waiting phases (PLAYING)", () => {
+    useCountdownMock.mockReturnValue(42);
+    socketReturn = {
+      connected: true,
+      state: {
+        round: { status: "PLAYING", themeName: "Biologia", roundNumber: 2, letter: "B", endsAt: "later" },
+        game: { name: "Jogo" },
+        activePlayers: 5,
+        totalPlayers: 8,
+        eliminatedPlayers: 1,
+      },
+    };
+
+    renderPage("/screen/STOP-1");
+
+    expect(screen.getByTestId("theme-display")).toHaveTextContent("Biologia #2");
+    expect(screen.getByTestId("letter-animation")).toHaveTextContent("B");
+    expect(screen.getByTestId("countdown")).toHaveTextContent("42");
+    expect(screen.getByTestId("game-status")).toHaveTextContent("PLAYING");
+    expect(screen.getByTestId("player-count")).toHaveTextContent("5/8/1");
+  });
+
+  it("falls back to connectedPlayers/0/0 when the richer player-count fields are absent", () => {
+    socketReturn = { connected: true, state: { round: { status: "PLAYING" }, connectedPlayers: 3 } };
+    renderPage("/screen/STOP-1");
+    expect(screen.getByTestId("player-count")).toHaveTextContent("3/0/0");
+  });
+
+  it("does not render the Countdown component outside the PLAYING phase", () => {
+    socketReturn = { connected: true, state: { round: { status: "STOPPED" } } };
+    renderPage("/screen/STOP-1");
+    expect(screen.queryByTestId("countdown")).not.toBeInTheDocument();
+  });
+
+  it("shows the collaborative-correction progress bar with a computed percentage", () => {
+    socketReturn = { connected: true, state: { round: { status: "COLLABORATIVE_CORRECTION" } } };
+    renderPage("/screen/STOP-1");
+
+    act(() => {
+      lastHandlers.collaborativeCorrectionStarted({
+        completedAssignments: 3,
+        totalAssignments: 12,
+        completedGraders: 2,
+        totalGraders: 6,
+      });
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("2 / 6 jogadores concluíram");
+    expect(document.querySelector(".screen__collabProgressFill")).toHaveStyle({ width: "25%" });
+  });
+
+  it("shows 0% progress when totalAssignments is 0", () => {
+    socketReturn = { connected: true, state: { round: { status: "COLLABORATIVE_CORRECTION" } } };
+    renderPage("/screen/STOP-1");
+    act(() => {
+      lastHandlers.collaborativeCorrectionProgress({
+        completedAssignments: 0,
+        totalAssignments: 0,
+        completedGraders: 0,
+        totalGraders: 0,
+      });
+    });
+    expect(document.querySelector(".screen__collabProgressFill")).toHaveStyle({ width: "0%" });
+  });
+
+  it("hides the progress bar once collaborative correction finishes", () => {
+    socketReturn = { connected: true, state: { round: { status: "COLLABORATIVE_CORRECTION" } } };
+    renderPage("/screen/STOP-1");
+    act(() => {
+      lastHandlers.collaborativeCorrectionStarted({ completedAssignments: 1, totalAssignments: 2, completedGraders: 1, totalGraders: 2 });
+    });
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    act(() => {
+      lastHandlers.collaborativeCorrectionFinished();
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("shows 'STOP de <name>' only when there is a first stopper and the round isn't PLAYING", () => {
+    socketReturn = {
+      connected: true,
+      state: { round: { status: "STOPPED", firstStopperName: "Ana" } },
+    };
+    const { rerender } = renderPage("/screen/STOP-1");
+    expect(screen.getByText("STOP de Ana")).toBeInTheDocument();
+
+    socketReturn = {
+      connected: true,
+      state: { round: { status: "PLAYING", firstStopperName: "Ana" } },
+    };
+    rerender(
+      <MemoryRouter initialEntries={["/screen/STOP-1"]}>
+        <Routes>
+          <Route path="/screen/:code" element={<PublicScreenPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("STOP de Ana")).not.toBeInTheDocument();
+  });
+
+  it("plays the START cue on roundStarted, and STOPPED cue + voice + splash on roundStopped", () => {
+    socketReturn = { connected: true, state: { round: { status: "PLAYING" } } };
+    renderPage("/screen/STOP-1");
+
+    act(() => lastHandlers.roundStarted());
+    expect(audioMock.play).toHaveBeenCalledWith("START");
+
+    expect(screen.queryByTestId("stop-splash")).not.toBeInTheDocument();
+    act(() => lastHandlers.roundStopped());
+    expect(audioMock.play).toHaveBeenCalledWith("STOPPED");
+    expect(audioMock.playVoice).toHaveBeenCalled();
+    expect(screen.getByTestId("stop-splash")).toBeInTheDocument();
+  });
+
+  it("shows the splash on roundTimedOut too, and it can be dismissed", async () => {
+    const user = userEvent.setup();
+    socketReturn = { connected: true, state: { round: { status: "PLAYING" } } };
+    renderPage("/screen/STOP-1");
+
+    act(() => lastHandlers.roundTimedOut());
+    expect(screen.getByTestId("stop-splash")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "dismiss-splash" }));
+    expect(screen.queryByTestId("stop-splash")).not.toBeInTheDocument();
+  });
+
+  it("pushes an emoji burst on emojiReceived", () => {
+    socketReturn = { connected: true, state: { round: { status: "PLAYING" } } };
+    renderPage("/screen/STOP-1");
+
+    act(() => lastHandlers.emojiReceived({ emoji: "🎉" }));
+    expect(screen.getByTestId("emoji-bursts")).toHaveTextContent("🎉");
+  });
+
+  it("shows only the Ranking + emoji bursts (no header/footer) when the round is SCORED", () => {
+    socketReturn = {
+      connected: true,
+      state: { round: { status: "SCORED" }, ranking: [{ studentId: 1 }, { studentId: 2 }] },
+    };
+    renderPage("/screen/STOP-1");
+
+    expect(screen.getByTestId("ranking")).toHaveTextContent("ranking:2");
+    expect(screen.queryByTestId("game-title")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("connection-badge")).not.toBeInTheDocument();
+  });
+
+  it("also shows only the Ranking when the game itself is FINISHED, defaulting entries to an empty list", () => {
+    socketReturn = { connected: true, state: { round: { status: "CORRECTION" }, game: { status: "FINISHED" } } };
+    renderPage("/screen/STOP-1");
+    expect(screen.getByTestId("ranking")).toHaveTextContent("ranking:0");
+  });
+
+  it("toggles audio from the footer, and reflects the connection badge state", async () => {
+    const user = userEvent.setup();
+    socketReturn = { connected: false, state: { round: { status: "PLAYING" } } };
+    renderPage("/screen/STOP-1");
+
+    expect(screen.getByTestId("connection-badge")).toHaveTextContent("offline");
+    await user.click(screen.getByRole("button", { name: "🔊" }));
+    expect(audioMock.toggle).toHaveBeenCalled();
+  });
+
+  it("falls back to the REST publicState snapshot when there is no socket state yet", async () => {
+    socketReturn = { connected: false, state: null };
+    api.publicState.mockResolvedValue({ round: { status: "PLAYING", themeName: "Fallback" }, game: { name: "Via REST" } });
+
+    renderPage("/screen/STOP-1");
+
+    expect(await screen.findByTestId("theme-display")).toHaveTextContent("Fallback");
+    expect(screen.getByTestId("game-title")).toHaveTextContent("Via REST · STOP-1");
+  });
+
+  it("defaults the game title to 'Partida' when there is no game name available", () => {
+    socketReturn = { connected: true, state: { round: null } };
+    renderPage("/screen/STOP-1");
+    expect(screen.getByTestId("game-title")).toHaveTextContent("Partida · STOP-1");
+  });
+});

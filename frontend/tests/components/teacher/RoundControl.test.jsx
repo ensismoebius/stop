@@ -56,14 +56,19 @@ describe("RoundControl", () => {
     expect(onCreateRound).toHaveBeenCalledWith({ categorySetId: 2, durationSeconds: 60 });
   });
 
-  it("disables the create-round action while disabled or busy, or with no category sets", () => {
+  it("disables the create-round action while disabled or busy", () => {
     const { rerender } = render(<RoundControl {...baseProps({ disabled: true })} />);
     expect(screen.getByRole("button", { name: "Criar rodada" })).toBeDisabled();
 
     rerender(<RoundControl {...baseProps({ busy: true })} />);
     expect(screen.getByRole("button", { name: "Criar rodada" })).toBeDisabled();
+  });
 
-    rerender(<RoundControl {...baseProps({ categorySets: [] })} />);
+  it("disables the create-round action when there are no category sets to select from", () => {
+    // A fresh render (not a rerender of the same instance): categorySetId
+    // starts unset and, with categorySets empty, useRoundFormFields' effect
+    // has nothing to default it to, so it stays falsy.
+    render(<RoundControl {...baseProps({ categorySets: [] })} />);
     expect(screen.getByRole("button", { name: "Criar rodada" })).toBeDisabled();
   });
 
@@ -80,7 +85,6 @@ describe("RoundControl", () => {
     );
 
     expect(screen.getByText("Rodada 3 · CREATED")).toBeInTheDocument();
-    expect(screen.getByText(/Rodada 3/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Sortear letra" }));
     expect(onDrawLetter).toHaveBeenCalled();
   });
