@@ -208,47 +208,50 @@ function ReportsFilterForm({ classes, students, games, results, busy, onSearch, 
 /** Tabela de resultados filtrados, sempre ordenada por nome do aluno (fixo no backend). */
 function ResultsTable({ results }) {
   return (
-    <div className="table-wrapper">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Aluno</th>
-            <th scope="col">Matrícula</th>
-            <th scope="col">Disciplina</th>
-            <th scope="col">Turma</th>
-            <th scope="col">Partida</th>
-            <th scope="col">Data</th>
-            <th scope="col">Posição</th>
-            <th scope="col">Pontos</th>
-            <th scope="col">Medalha</th>
-          </tr>
-        </thead>
-        <tbody>
-          {results.length === 0 ? (
+    <div className="card stack">
+      <h3>Resultados</h3>
+      <div className="table-wrapper">
+        <table>
+          <thead>
             <tr>
-              <td colSpan={9} className="muted">
-                Nenhum resultado para os filtros selecionados.
-              </td>
+              <th scope="col">Aluno</th>
+              <th scope="col">Matrícula</th>
+              <th scope="col">Disciplina</th>
+              <th scope="col">Turma</th>
+              <th scope="col">Partida</th>
+              <th scope="col">Data</th>
+              <th scope="col">Posição</th>
+              <th scope="col">Pontos</th>
+              <th scope="col">Medalha</th>
             </tr>
-          ) : (
-            results.map((result) => (
-              <tr key={result.id}>
-                <td>{result.student?.name}</td>
-                <td className="small muted">{result.student?.registrationNumber}</td>
-                <td className="small muted">{result.game?.class?.discipline || "—"}</td>
-                <td className="small muted">{result.game?.class?.name}</td>
-                <td>{result.game?.name}</td>
-                <td className="small muted">
-                  {result.game?.finishedAt ? new Date(result.game.finishedAt).toLocaleDateString("pt-BR") : "—"}
+          </thead>
+          <tbody>
+            {results.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="muted">
+                  Nenhum resultado para os filtros selecionados.
                 </td>
-                <td>{result.position}º</td>
-                <td>{result.score}</td>
-                <td>{result.medal ? MEDAL_LABEL[result.medal] : "—"}</td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              results.map((result) => (
+                <tr key={result.id}>
+                  <td>{result.student?.name}</td>
+                  <td className="small muted">{result.student?.registrationNumber}</td>
+                  <td className="small muted">{result.game?.class?.discipline || "—"}</td>
+                  <td className="small muted">{result.game?.class?.name}</td>
+                  <td>{result.game?.name}</td>
+                  <td className="small muted">
+                    {result.game?.finishedAt ? new Date(result.game.finishedAt).toLocaleDateString("pt-BR") : "—"}
+                  </td>
+                  <td>{result.position}º</td>
+                  <td>{result.score}</td>
+                  <td>{result.medal ? MEDAL_LABEL[result.medal] : "—"}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

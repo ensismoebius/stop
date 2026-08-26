@@ -326,19 +326,22 @@ function buildGameLifecycleActions({
       await reloadGame();
     });
 
-  /** Encerra a partida e volta para a selecao/criacao de outra. */
+  /**
+   * Encerra a partida, mas mantem ela selecionada — o professor acabou de
+   * finalizar e normalmente quer revisar o historico/estatisticas/ranking
+   * final na hora, no proprio painel. So refaz o `game` (status agora
+   * FINISHED) para refletir o novo estado; estatisticas e historico
+   * continuam validos (mesmo game.id) e nao precisam ser recarregados.
+   * Zerar tudo aqui — como antes — apagava esses dados da tela mesmo sem
+   * nada ter sido apagado no banco, e como uma partida FINISHED some da
+   * lista "continuar partida existente" (RoomControl.jsx), nao havia mais
+   * como voltar a ve-los. Trocar de partida explicitamente (botao
+   * "Trocar", que chama selectGame(null)) continua limpando normalmente.
+   */
   const finishGame = () =>
     guard(async () => {
       await api.finishGame(token, game.id);
-      setGame(null);
-      setGrid(null);
-      setGroupedGrid(null);
-      // Mesmo motivo do selectGame(null) acima: sem isso a aba
-      // Configuração mostra o histórico da partida já encerrada, com um
-      // "Remover" que aponta para um game.id que não existe mais.
-      setStatistics(null);
-      setHistory(null);
-      window.localStorage.removeItem(GAME_KEY);
+      setGame(await api.getGame(token, game.id));
       await loadBasics();
     });
 

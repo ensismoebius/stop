@@ -237,10 +237,14 @@ export const viewService = {
     // (tela apagou, saiu da tela cheia, atualizou a pagina) nunca via a
     // colocacao final, so quem estava conectado no instante exato da
     // pontuacao/finalizacao. So carrega (e revela nomes de colegas) quando
-    // ja faz sentido mostrar — mesma condicao usada pela tela do aluno
-    // para exibir o ranking — nunca durante uma rodada em andamento
-    // (spec 49: aluno so ve as proprias respostas antes disso).
-    const showRanking = !round || round.status === "SCORED" || round.status === "FINISHED";
+    // ja faz sentido mostrar — nunca durante uma rodada em andamento
+    // (spec 49: aluno so ve as proprias respostas antes disso). A checagem
+    // inclui `game.status === "FINISHED"` porque "Finalizar partida" pode
+    // ser clicado a qualquer momento, inclusive com a ultima rodada ainda
+    // em correcao (nunca pontuada) — sem isso, o ranking final nunca
+    // aparecia nesse caso, mesmo com a partida encerrada.
+    const showRanking =
+      room.game.status === "FINISHED" || !round || round.status === "SCORED" || round.status === "FINISHED";
     const ranking = showRanking ? await loadRanking(room.gameId) : [];
 
     return new Map(
@@ -253,7 +257,7 @@ export const viewService = {
             playerSessionId: session.id,
             student: session.student,
             room: { code: room.code, status: room.status },
-            game: { id: room.game.id, name: room.game.name },
+            game: { id: room.game.id, name: room.game.name, status: room.game.status },
             roomStatus: session.status,
             roundStatus: participant?.status ?? null,
             round: roundForPlayers,
@@ -289,16 +293,20 @@ export const viewService = {
       : null;
     const answers = round ? await answerRepository.listByPlayer(round.id, session.id) : [];
     const reviews = await reviewsForPlayer(round, session.id);
-    // Mesma condicao de `playerStatesForRoom`: so revela o ranking (nomes
-    // dos colegas) quando a rodada ja foi pontuada ou nao ha rodada em
-    // andamento — nunca durante o jogo (spec 49).
-    const showRanking = !round || round.status === "SCORED" || round.status === "FINISHED";
+    // Mesma condicao de `playerStatesForRoom`, incluindo `game.status ===
+    // "FINISHED"` (a partida pode ser finalizada com a ultima rodada ainda
+    // em correcao, nunca pontuada).
+    const showRanking =
+      session.room.game.status === "FINISHED" ||
+      !round ||
+      round.status === "SCORED" ||
+      round.status === "FINISHED";
 
     return {
       playerSessionId: session.id,
       student: session.student,
       room: { code: session.room.code, status: session.room.status },
-      game: { id: session.room.game.id, name: session.room.game.name },
+      game: { id: session.room.game.id, name: session.room.game.name, status: session.room.game.status },
       roomStatus: session.status,
       roundStatus: participant?.status ?? null,
       round: roundForPlayer(round),

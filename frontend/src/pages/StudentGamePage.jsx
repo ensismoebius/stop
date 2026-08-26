@@ -573,9 +573,16 @@ function StudentAnswerArea({ currentCategory, answers, phase, answerActions, set
   );
 }
 
-/** Ranking, visível só ao fim de rodada/partida (nunca durante o jogo). */
-function StudentRankingList({ ranking, round }) {
-  if (!(ranking.length > 0 && (round?.status === "SCORED" || round?.status === "FINISHED" || !round))) {
+/**
+ * Ranking, visível só ao fim de rodada/partida (nunca durante o jogo).
+ * Checa `gameStatus` alem de `round?.status` porque o professor pode
+ * finalizar a partida com a ultima rodada ainda em correcao (nunca
+ * pontuada) — sem isso, o ranking final nunca aparecia nesse caso.
+ */
+function StudentRankingList({ ranking, round, gameStatus }) {
+  const show =
+    gameStatus === "FINISHED" || round?.status === "SCORED" || round?.status === "FINISHED" || !round;
+  if (!(ranking.length > 0 && show)) {
     return null;
   }
   return (
@@ -768,7 +775,7 @@ export function StudentGamePage() {
           currentId={game.currentId}
         />
 
-        <StudentRankingList ranking={game.ranking} round={phase.round} />
+        <StudentRankingList ranking={game.ranking} round={phase.round} gameStatus={game.connection.state?.game?.status} />
 
         <StudentFooterControls sendEmoji={reviewActions.sendEmoji} audio={game.audio} leaveRoom={fullscreenFlow.leaveRoom} />
       </main>
