@@ -33,6 +33,13 @@ function GameSelector({ classes, games, onCreateGame, onSelectGame, busy }) {
   const [name, setName] = useState("");
   const [classId, setClassId] = useState("");
 
+  // Uma partida FINISHED nunca pode receber nova rodada (o backend rejeita),
+  // entao "continuar" nao faz sentido para ela — sem este filtro, partidas
+  // ja encerradas continuavam aparecendo aqui (e como listGames() nao filtra
+  // por status e a ordenacao e por criacao mais recente, elas dominavam a
+  // lista, dando a impressao de que partidas "removidas" nunca somem).
+  const resumable = games.filter((item) => item.status !== "FINISHED");
+
   return (
     <div className="stack">
       <form
@@ -74,11 +81,11 @@ function GameSelector({ classes, games, onCreateGame, onSelectGame, busy }) {
         </button>
       </form>
 
-      {games.length > 0 ? (
+      {resumable.length > 0 ? (
         <div className="stack">
           <span className="small muted">Ou continue uma partida existente</span>
           <div className="stack">
-            {games.slice(0, 6).map((item) => (
+            {resumable.slice(0, 6).map((item) => (
               <button key={item.id} type="button" className="btn" onClick={() => onSelectGame(item)}>
                 {item.name} · {item.class?.name} · {item._count?.rounds ?? 0} rodada(s)
               </button>
