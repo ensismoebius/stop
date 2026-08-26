@@ -580,26 +580,64 @@ function StudentAnswerArea({ currentCategory, answers, phase, answerActions, set
  * finalizar a partida com a ultima rodada ainda em correcao (nunca
  * pontuada) — sem isso, o ranking final nunca aparecia nesse caso.
  */
-function StudentRankingList({ ranking, round, gameStatus }) {
+function StudentRankingList({ ranking, round, gameStatus, studentId }) {
   const show =
     gameStatus === "FINISHED" || round?.status === "SCORED" || round?.status === "FINISHED" || !round;
   if (!(ranking.length > 0 && show)) {
     return null;
   }
+
+  // A lista visivel e so o top 10, entao numa turma de 100+ alunos a
+  // maioria simplesmente nao se encontrava nela e terminava a partida sem
+  // saber a propria colocacao. O aluno sempre ve o proprio resultado: em
+  // destaque no topo e, se estiver fora do top 10, tambem no fim da lista.
+  const me = studentId ? ranking.find((entry) => entry.studentId === studentId) : null;
+  const top = ranking.slice(0, 10);
+  const meOutsideTop = Boolean(me) && !top.some((entry) => entry.studentId === me.studentId);
+
+  const renderRow = (entry) => (
+    <li
+      key={entry.studentId}
+      className={[
+        "ranking__item",
+        entry.position <= 3 ? `ranking__item--p${entry.position}` : "",
+        me && entry.studentId === me.studentId ? "ranking__item--me" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <span className="ranking__position">{MEDAL_BY_POSITION[entry.position] ?? entry.position}</span>
+      <span className="ranking__name">{entry.name}</span>
+      <span className="ranking__total">{entry.total}</span>
+    </li>
+  );
+
   return (
     <section className="card">
       <h2>Ranking</h2>
+
+      {me ? (
+        <div className="ranking__me">
+          <span className="ranking__me-medal">{MEDAL_BY_POSITION[me.position] ?? `${me.position}º`}</span>
+          <span className="ranking__me-label">
+            Sua colocação: <strong>{me.position}º lugar</strong>
+          </span>
+          <span className="ranking__me-total">
+            <strong>{me.total}</strong> {me.total === 1 ? "ponto" : "pontos"}
+          </span>
+        </div>
+      ) : null}
+
       <ol className="ranking__list">
-        {ranking.slice(0, 10).map((entry) => (
-          <li
-            key={entry.studentId}
-            className={`ranking__item${entry.position <= 3 ? ` ranking__item--p${entry.position}` : ""}`}
-          >
-            <span className="ranking__position">{MEDAL_BY_POSITION[entry.position] ?? entry.position}</span>
-            <span className="ranking__name">{entry.name}</span>
-            <span className="ranking__total">{entry.total}</span>
-          </li>
-        ))}
+        {top.map(renderRow)}
+        {meOutsideTop ? (
+          <>
+            <li className="ranking__gap" aria-hidden="true">
+              ⋯
+            </li>
+            {renderRow(me)}
+          </>
+        ) : null}
       </ol>
     </section>
   );
@@ -776,7 +814,12 @@ export function StudentGamePage() {
           currentId={game.currentId}
         />
 
-        <StudentRankingList ranking={game.ranking} round={phase.round} gameStatus={game.connection.state?.game?.status} />
+        <StudentRankingList
+          ranking={game.ranking}
+          round={phase.round}
+          gameStatus={game.connection.state?.game?.status}
+          studentId={game.connection.state?.student?.id}
+        />
 
         <StudentFooterControls sendEmoji={reviewActions.sendEmoji} audio={game.audio} leaveRoom={fullscreenFlow.leaveRoom} />
       </main>

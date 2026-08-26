@@ -2,6 +2,7 @@ import prisma from "../lib/prisma.js";
 import gameRepository from "../repositories/gameRepository.js";
 import classRepository from "../repositories/classRepository.js";
 import roundRepository, { roundParticipantRepository } from "../repositories/roundRepository.js";
+import roomRepository from "../repositories/roomRepository.js";
 import viewService from "./viewService.js";
 import { resolveRoom, broadcastState } from "./round/shared.js";
 import * as realtime from "../sockets/realtime.js";
@@ -33,6 +34,19 @@ export const gameService = {
    */
   async finish(id) {
     await gameService.get(id);
+
+    // Encerra a rodada em andamento ANTES de qualquer outra coisa. Sem
+    // isso "Finalizar partida" so mexia na tabela Game: a rodada seguia
+    // PLAYING, a sala seguia OPEN e os alunos continuavam conseguindo
+    // responder — ou seja, a partida "terminava" sem terminar de fato.
+    // Cancelar (em vez de pontuar) preserva as respostas para auditoria
+    // (spec 44) sem inventar pontos de uma rodada que nunca foi corrigida.
+    const current = await roundRepository.findCurrentByGame(id);
+    if (current && current.status !== "FINISHED") {
+      const { default: roundService } = await import("./roundService.js");
+      await roundService.cancel(current.id);
+    }
+
     const updated = await gameRepository.update(id, { status: "FINISHED", finishedAt: new Date() });
 
     const ranking = await viewService.loadRanking(id);
@@ -66,6 +80,14 @@ export const gameService = {
     // falha aqui derrubar a finalizacao, que ja foi persistida com sucesso.
     try {
       const room = await resolveRoom(id);
+      // Fecha a sala: impede que alguem entre numa partida ja encerrada.
+      // Nao derruba quem ja esta conectado (CLOSED so bloqueia `join`),
+      // entao os alunos presentes continuam recebendo o estado e veem o
+      // podio normalmente.
+      if (room.status !== "CLOSED") {
+        await roomRepository.update(room.id, { status: "CLOSED" });
+        realtime.toRoom(room.code, "roomStatusChanged", { status: "CLOSED" });
+      }
       realtime.toRoom(room.code, "rankingUpdated", { ranking });
       await broadcastState(room.code);
     } catch (error) {

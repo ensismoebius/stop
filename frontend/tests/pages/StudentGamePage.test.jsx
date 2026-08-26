@@ -424,6 +424,66 @@ describe("StudentGamePage", () => {
     expect(screen.queryByText("Aluno 11")).not.toBeInTheDocument();
   });
 
+  it("shows the student's own placement, points and medal when they are in the top 3", () => {
+    seedSocket({
+      connected: true,
+      state: { round: { status: "SCORED", id: 1 }, student: { id: 2, name: "Aluno 2" } },
+    });
+    renderPage();
+    const ranking = Array.from({ length: 12 }, (_, i) => ({
+      studentId: i + 1,
+      position: i + 1,
+      name: `Aluno ${i + 1}`,
+      total: 100 - i,
+    }));
+    act(() => lastHandlers.rankingUpdated({ ranking }));
+
+    expect(screen.getByText(/Sua colocação/)).toBeInTheDocument();
+    expect(screen.getByText("2º lugar")).toBeInTheDocument();
+    // Os 99 pontos aparecem no destaque e na linha da lista.
+    expect(screen.getAllByText("99").length).toBeGreaterThan(0);
+    // 🥈 aparece na linha da lista e tambem no destaque da propria colocacao.
+    expect(screen.getAllByText("🥈").length).toBeGreaterThan(1);
+  });
+
+  it("shows the student's own placement even when they are far outside the top 10", () => {
+    // O caso real que quebrava: turma grande, aluno em 42o lugar. Antes ele
+    // via so o top 10 e nunca a propria colocacao.
+    seedSocket({
+      connected: true,
+      state: { round: { status: "SCORED", id: 1 }, student: { id: 42, name: "Aluno 42" } },
+    });
+    renderPage();
+    const ranking = Array.from({ length: 60 }, (_, i) => ({
+      studentId: i + 1,
+      position: i + 1,
+      name: `Aluno ${i + 1}`,
+      total: 100 - i,
+    }));
+    act(() => lastHandlers.rankingUpdated({ ranking }));
+
+    expect(screen.getByText("42º lugar")).toBeInTheDocument();
+    expect(screen.getByText(/Sua colocação/)).toBeInTheDocument();
+    // A propria linha e anexada apos o top 10 (10 + separador + ela).
+    expect(screen.getByText("Aluno 42")).toBeInTheDocument();
+    expect(screen.queryByText("Aluno 11")).not.toBeInTheDocument();
+  });
+
+  it("still caps at 10 rows when the student's identity is unknown", () => {
+    seedSocket({ connected: true, state: { round: { status: "SCORED", id: 1 } } });
+    renderPage();
+    const ranking = Array.from({ length: 12 }, (_, i) => ({
+      studentId: i + 1,
+      position: i + 1,
+      name: `Aluno ${i + 1}`,
+      total: 100 - i,
+    }));
+    act(() => lastHandlers.rankingUpdated({ ranking }));
+
+    expect(screen.queryByText(/Sua colocação/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(10);
+  });
+
   it("hides the ranking while the round is still playing, even if ranking data exists", () => {
     seedSocket({ connected: true, state: { round: { status: "PLAYING", id: 1 } } });
     renderPage();

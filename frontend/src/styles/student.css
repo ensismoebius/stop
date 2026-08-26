@@ -468,3 +468,58 @@
     margin: 0 auto;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Colocacao do proprio aluno no fim da partida
+   ---------------------------------------------------------------------------
+   Numa turma grande o top 10 quase nunca inclui quem esta olhando a tela,
+   entao o aluno terminava a partida sem saber a propria colocacao. Este
+   bloco mostra o resultado dele em destaque, e a lista abaixo ainda o
+   repete (com `--me`) para dar contexto de vizinhanca.
+   ------------------------------------------------------------------------ */
+.ranking__me {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.9rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--purple) 0%, var(--blue) 100%);
+  color: #fff;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.22);
+}
+
+.ranking__me-medal {
+  font-size: 1.9rem;
+  line-height: 1;
+  flex: none;
+}
+
+.ranking__me-label {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.ranking__me-total {
+  margin-left: auto;
+  font-size: 1rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* A propria linha do aluno dentro da lista. */
+.ranking__item--me {
+  background: rgba(139, 61, 255, 0.14);
+  border-radius: 0.5rem;
+  outline: 2px solid var(--purple);
+}
+
+/* Separador entre o top 10 e a linha do aluno, quando ele esta fora dele. */
+.ranking__gap {
+  text-align: center;
+  color: var(--ink-muted);
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  line-height: 1;
+}

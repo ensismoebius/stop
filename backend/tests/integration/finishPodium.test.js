@@ -9,6 +9,7 @@ import {
 } from "../helpers/fixtures.js";
 import roundService from "../../src/services/roundService.js";
 import gameService from "../../src/services/gameService.js";
+import answerService from "../../src/services/answerService.js";
 import viewService from "../../src/services/viewService.js";
 
 let scenario;
@@ -77,6 +78,41 @@ describe("podio apos Finalizar partida (spec 42/44)", () => {
     const solo = await viewService.playerState(players[0].playerSessionId);
     expect(solo.game.status).toBe("FINISHED");
     expect(solo.ranking.length).toBeGreaterThan(0);
+  });
+
+  it("encerra de fato a partida: rodada em andamento fecha, sala fecha, aluno nao responde mais", async () => {
+    // "Finalizar partida" so mexia na tabela Game: a rodada seguia PLAYING,
+    // a sala seguia OPEN e os alunos continuavam respondendo — a partida
+    // "terminava" sem terminar.
+    const round = await startedRound(scenario);
+    expect(round.status).toBe("PLAYING");
+
+    await gameService.finish(scenario.game.id);
+
+    const afterRound = await prisma.round.findUnique({ where: { id: round.id } });
+    const room = await roomOf(scenario.game.id);
+    expect(afterRound.status).toBe("FINISHED");
+    expect(room.status).toBe("CLOSED");
+
+    await expect(
+      answerService.submit({
+        roundId: round.id,
+        playerSessionId: players[0].playerSessionId,
+        roundCategoryId: round.categories[0].id,
+        value: `${round.letter}teste`,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("nao deixa criar nova rodada numa partida ja finalizada", async () => {
+    await gameService.finish(scenario.game.id);
+    await expect(
+      roundService.create({
+        gameId: scenario.game.id,
+        categorySetId: scenario.categorySet.id,
+        durationSeconds: 60,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("persiste GameResult com medalha para os tres primeiros", async () => {
