@@ -27,8 +27,9 @@ vi.mock("../../src/hooks/useRoomSocket.js", () => ({
 // --- useServerClock: sync/now are irrelevant to page logic under test;
 // useCountdown is fully controlled per test via its mock return value.
 const useCountdownMock = vi.fn(() => null);
+const syncMock = vi.fn();
 vi.mock("../../src/hooks/useServerClock.js", () => ({
-  useServerClock: () => ({ sync: vi.fn(), now: () => Date.now() }),
+  useServerClock: () => ({ sync: syncMock, now: () => Date.now() }),
   useCountdown: (...args) => useCountdownMock(...args),
 }));
 
@@ -191,6 +192,13 @@ describe("PublicScreenPage", () => {
     };
     renderPage("/screen/STOP-1");
     expect(screen.getByTestId("game-status")).toHaveTextContent("PLAYING");
+
+    // The `onState` handler passed to useRoomSocket is its own separate sync
+    // side-channel (distinct from the `state` prop driving the render above)
+    // — invoke it directly to exercise that code path too.
+    syncMock.mockClear();
+    act(() => lastHandlers.onState({ serverTime: "2026-01-01T00:00:05Z" }));
+    expect(syncMock).toHaveBeenCalledWith("2026-01-01T00:00:05Z");
   });
 
   it("plays the FINAL_SECONDS cue once per second in the last 10 seconds while playing", () => {

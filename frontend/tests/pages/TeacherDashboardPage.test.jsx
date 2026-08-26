@@ -693,6 +693,37 @@ describe("TeacherDashboardPage", () => {
     act(() => lastHandlers.collaborativeCorrectionFinished());
   });
 
+  it("updates collaborative-correction progress on collaborativeCorrectionProgress events", async () => {
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    const user = userEvent.setup();
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+    seedSocket({ connected: true, state: { round: { id: 9, status: "COLLABORATIVE_CORRECTION" } } });
+    act(() => pushRoomState({ round: { id: 9, status: "COLLABORATIVE_CORRECTION" } }));
+    act(() => lastHandlers.collaborativeCorrectionProgress({ completedAssignments: 2, totalAssignments: 3 }));
+    expect(await screen.findByTestId("round-control")).toHaveTextContent("COLLABORATIVE_CORRECTION");
+  });
+
+  it("switches the correction view back to the grouped tab", async () => {
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    api.correctionGrid.mockResolvedValue({ players: [] });
+    api.groupedCorrectionGrid.mockResolvedValue({ categories: [] });
+    const user = userEvent.setup();
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+    act(() => pushRoomState({ round: { id: 9, status: "STOPPED" } }));
+    await waitFor(() => expect(api.correctionGrid).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("tab", { name: "Correção" }));
+    await user.click(screen.getByRole("tab", { name: "Grade por aluno" }));
+    expect(await screen.findByTestId("correction-panel")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Agregada por resposta" }));
+    expect(await screen.findByTestId("grouped-correction-panel")).toBeInTheDocument();
+  });
+
   it("resets collaborative-correction progress and reloads the grid on correctionStarted", async () => {
     await loginSession();
     api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
@@ -1100,6 +1131,13 @@ describe("TeacherDashboardPage", () => {
     // this just exercises the early-return branch.
   });
 
+  it("skips loading the catalog when there is no authenticated session yet", async () => {
+    api.me.mockResolvedValue(null);
+    renderDashboard();
+    await screen.findByRole("heading", { name: "Painel do professor" });
+    expect(api.listClasses).not.toHaveBeenCalled();
+  });
+
   it("falls back to webkitExitFullscreen when exitFullscreen is unavailable", async () => {
     const webkitExitFullscreen = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(document, "fullscreenElement", { value: {}, configurable: true });
@@ -1183,9 +1221,13 @@ describe("TeacherDashboardPage", () => {
     await screen.findByTestId("round-control");
     expect(screen.getByTestId("round-control")).toHaveTextContent(":1");
 
+    await user.click(screen.getByRole("button", { name: "rc-create-round" }));
+    act(() => pushRoomState({ round: { id: 9, status: "CREATED" } }));
+    await screen.findByText(/round-control:CREATED/);
+
     api.drawLetter.mockResolvedValue({});
     await user.click(screen.getByRole("button", { name: "rc-draw-letter" }));
-    await waitFor(() => expect(api.drawLetter).toHaveBeenCalled());
+    await waitFor(() => expect(api.drawLetter).toHaveBeenCalledWith("tok-1", 9));
     // Falls back to the pre-existing `usedLetters` (still length 1), not [].
     expect(screen.getByTestId("round-control")).toHaveTextContent(":1");
   });

@@ -336,6 +336,21 @@ describe("StudentGamePage", () => {
     expect(screen.getByRole("alert", { name: "STOP!" })).toBeInTheDocument();
   });
 
+  it("hides the STOP splash on its own once its animation timer elapses", () => {
+    vi.useFakeTimers();
+    try {
+      seedSocket({ connected: true, state: { round: { status: "PLAYING", id: 1 } } });
+      renderPage();
+      act(() => lastHandlers.roundStopped({ firstStopperName: "Beto" }));
+      expect(screen.getByRole("alert", { name: "STOP!" })).toBeInTheDocument();
+
+      act(() => vi.advanceTimersByTime(2500));
+      expect(screen.queryByRole("alert", { name: "STOP!" })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows a generic STOP message when roundStopped has no firstStopperName", () => {
     seedSocket({ connected: true, state: { round: { status: "PLAYING", id: 1 } } });
     renderPage();
@@ -662,6 +677,12 @@ describe("StudentGamePage", () => {
     // is awkward, so instead assert emitAck was NOT used for this (telemetry
     // bypasses the ack helper) while the page didn't crash.
     expect(emitAck).not.toHaveBeenCalledWith(expect.anything(), "telemetry", expect.anything());
+
+    // Also exercise the visibilitychange listener, both directions.
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
   });
 
   it("commits an answer even outside PLAYING once the round has started (e.g. STOPPED), hitting pushAnswer's status guard when off PLAYING", async () => {

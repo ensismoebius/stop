@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import roundRepository from "../../src/repositories/roundRepository.js";
+import roundRepository, { roundParticipantRepository } from "../../src/repositories/roundRepository.js";
 import {
   createScenario,
   prisma,
@@ -21,6 +21,7 @@ import { missingRequiredCategories, openCorrection, groupedCorrectionGrid } from
 import { startCollaborativeCorrection, submitReview } from "../../src/services/round/collaborativeCorrection.js";
 import { beginPlaying } from "../../src/services/round/lifecycle.js";
 import { eliminate, forceStop, handleTimeout } from "../../src/services/round/stop.js";
+import answerReviewRepository from "../../src/repositories/answerReviewRepository.js";
 
 let scenario;
 let players;
@@ -519,5 +520,94 @@ describe("mais bordas defensivas do motor de rodadas", () => {
     }
     // A rodada continua PLAYING de verdade: ninguém venceu a corrida simulada.
     expect((await roundService.get(round.id)).status).toBe("PLAYING");
+  });
+
+  it("forceStop perde a corrida quando a transição atômica não é reivindicada (simulado)", async () => {
+    const round = await startedRound();
+    const spy = vi.spyOn(roundRepository, "transitionIfStatus").mockResolvedValueOnce({ count: 0 });
+    try {
+      await expect(forceStop(round.id)).rejects.toMatchObject({ status: 409 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await roundService.get(round.id)).status).toBe("PLAYING");
+  });
+
+  it("start() perde a corrida quando a transição atômica não é reivindicada (simulado)", async () => {
+    const round = await roundService.create({ gameId: scenario.game.id, categorySetId: scenario.categorySet.id });
+    await roundService.drawRoundLetter(round.id);
+    const spy = vi.spyOn(roundRepository, "transitionIfStatus").mockResolvedValueOnce({ count: 0 });
+    try {
+      await expect(roundService.start(round.id)).rejects.toMatchObject({ status: 409 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await roundService.get(round.id)).status).toBe("READY");
+  });
+
+  it("beginPlaying() é no-op (devolve a rodada em STARTING) quando a transição atômica não é reivindicada (simulado)", async () => {
+    const round = await roundService.create({ gameId: scenario.game.id, categorySetId: scenario.categorySet.id });
+    await roundService.drawRoundLetter(round.id);
+    await roundService.start(round.id);
+    // Chamamos beginPlaying diretamente, antes que a sequência de revelação
+    // em segundo plano tenha chance de rodar (ela só age depois de um
+    // setTimeout, uma macrotask — nossa chamada síncrona ganha a corrida).
+    const spy = vi.spyOn(roundRepository, "transitionIfStatus").mockResolvedValueOnce({ count: 0 });
+    let result;
+    try {
+      result = await beginPlaying(round.id);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(result.status).toBe("STARTING");
+  });
+
+  it("submitReview perde a corrida quando a transição atômica não é reivindicada (simulado)", async () => {
+    const round = await startedRound();
+    for (const player of players) await fillAll(round, player.playerSessionId);
+    await roundService.forceStop(round.id);
+    const review = await prisma.answerReview.findFirst({ where: { roundId: round.id } });
+    expect(review).toBeTruthy();
+
+    const spy = vi.spyOn(answerReviewRepository, "claimDecision").mockResolvedValueOnce({ count: 0 });
+    try {
+      await expect(
+        submitReview({ playerSessionId: review.graderPlayerSessionId, reviewId: review.id, decision: "VALID" }),
+      ).rejects.toMatchObject({ status: 409 });
+    } finally {
+      spy.mockRestore();
+    }
+    const stillPending = await prisma.answerReview.findUnique({ where: { id: review.id } });
+    expect(stillPending.decision).toBe("PENDING");
+  });
+
+  it("handleTimeout é no-op quando a transição atômica não é reivindicada (simulado)", async () => {
+    const round = await startedRound();
+    const spy = vi.spyOn(roundRepository, "transitionIfStatus").mockResolvedValueOnce({ count: 0 });
+    let result;
+    try {
+      result = await handleTimeout(round.id);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(result).toBeNull();
+    expect((await roundService.get(round.id)).status).toBe("PLAYING");
+  });
+
+  it("eliminate() é no-op quando a transição atômica não é reivindicada (simulado)", async () => {
+    const round = await startedRound();
+    const spy = vi.spyOn(roundParticipantRepository, "updateIfStatus").mockResolvedValueOnce({ count: 0 });
+    let result;
+    try {
+      result = await eliminate({ roundId: round.id, playerSessionId: players[0].playerSessionId });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(result).toBeNull();
+    // O participante nao foi de fato eliminado: ninguem venceu a corrida simulada.
+    const participant = await prisma.roundParticipant.findFirst({
+      where: { roundId: round.id, playerSessionId: players[0].playerSessionId },
+    });
+    expect(participant.status).toBe("PLAYING");
   });
 });

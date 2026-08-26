@@ -113,11 +113,14 @@ describe("ConfigPanel — Turmas", () => {
     const nameInput = screen.getByDisplayValue("9A");
     await user.clear(nameInput);
     await user.type(nameInput, " 9A-Novo ");
+    const codeInput = screen.getByDisplayValue("9A-M");
+    await user.clear(codeInput);
+    await user.type(codeInput, " 9A-M2 ");
     const disciplineInput = screen.getByDisplayValue("Biologia");
     await user.clear(disciplineInput);
     await user.click(screen.getByRole("button", { name: "Salvar" }));
 
-    expect(onUpdateClass).toHaveBeenCalledWith(1, { name: "9A-Novo", code: "9A-M", discipline: null });
+    expect(onUpdateClass).toHaveBeenCalledWith(1, { name: "9A-Novo", code: "9A-M2", discipline: null });
   });
 
   it("cancels editing a class without saving", async () => {
@@ -273,6 +276,9 @@ describe("ConfigPanel — Alunos", () => {
     const nameInput = screen.getByDisplayValue("Ana");
     await user.clear(nameInput);
     await user.type(nameInput, "Ana Paula");
+    const registrationInput = screen.getByDisplayValue("111");
+    await user.clear(registrationInput);
+    await user.type(registrationInput, "222");
 
     // Add class 2 on top of the already-enrolled class 1, and flip active off.
     await user.click(screen.getByLabelText("9B (9B-M)"));
@@ -280,7 +286,7 @@ describe("ConfigPanel — Alunos", () => {
     await user.click(screen.getByRole("button", { name: "Salvar" }));
 
     expect(onUpdateStudent).toHaveBeenCalledWith(100, {
-      registrationNumber: "111",
+      registrationNumber: "222",
       name: "Ana Paula",
       active: false,
       classIds: [1, 2],

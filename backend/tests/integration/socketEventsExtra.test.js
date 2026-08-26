@@ -105,6 +105,17 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     expect(events.length).toBeGreaterThan(0);
   });
 
+  it("telemetry vinda de um papel sem sessão de aluno (professor) grava playerSessionId nulo", async () => {
+    const teacher = await joinTeacher();
+    const ack = await emit(teacher.client, "telemetry", { type: "TAB_HIDDEN" });
+    expect(ack.ok).toBe(true);
+    const event = await prisma.telemetryEvent.findFirst({
+      where: { type: "TAB_HIDDEN", roomId: scenario.room.id },
+      orderBy: { id: "desc" },
+    });
+    expect(event.playerSessionId).toBeNull();
+  });
+
   it("submitReview via socket registra a decisão do aluno (spec 9-16, 45)", async () => {
     const players = [];
     for (const student of scenario.students) players.push(await joinPlayer(student));
@@ -175,5 +186,54 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     expect(stateTeacher.ok).toBe(true);
     expect(stateTeacher.data.room).toBeTruthy();
     expect(stateTeacher.data.players).toBeDefined();
+  });
+
+  it("requestState devolve a projeção do próprio aluno quando pedida por um jogador", async () => {
+    const player = await joinPlayer(scenario.students[0]);
+    const statePlayer = await emit(player.client, "requestState", {});
+    expect(statePlayer.ok).toBe(true);
+    expect(statePlayer.data.playerSessionId).toBe(player.playerSessionId);
+    expect(statePlayer.data.student.name).toBe(scenario.students[0].name);
+  });
+
+  it("uma falha ao tratar a desconexão de um jogador é registrada, sem derrubar o servidor", async () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.spyOn(playerSessionRepository, "markDisconnected").mockRejectedValueOnce(
+      new Error("falha simulada ao marcar desconexão"),
+    );
+
+    const player = await joinPlayer(scenario.students[0]);
+    player.client.close();
+
+    await vi.waitFor(
+      () => {
+        expect(warnSpy).toHaveBeenCalledWith(
+          "Falha ao tratar desconexao",
+          "falha simulada ao marcar desconexão",
+        );
+      },
+      { timeout: 2000 },
+    );
+
+    // O servidor continua respondendo normalmente após a falha tratada.
+    const teacher = await joinTeacher();
+    const state = await emit(teacher.client, "requestState", {});
+    expect(state.ok).toBe(true);
+  });
+
+  it("uma falha na desconexão sem .message (valor não-Error) ainda é registrada normalmente", async () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    // eslint-disable-next-line prefer-promise-reject-errors
+    vi.spyOn(playerSessionRepository, "markDisconnected").mockRejectedValueOnce("motivo sem .message");
+
+    const player = await joinPlayer(scenario.students[0]);
+    player.client.close();
+
+    await vi.waitFor(
+      () => {
+        expect(warnSpy).toHaveBeenCalledWith("Falha ao tratar desconexao", "motivo sem .message");
+      },
+      { timeout: 2000 },
+    );
   });
 });
