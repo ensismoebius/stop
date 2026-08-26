@@ -21,6 +21,9 @@ export const studentController = {
     await studentService.remove(Number(req.params.id));
     res.status(204).end();
   }),
+  history: asyncHandler(async (req, res) =>
+    res.json(await studentService.historyByRegistration(req.params.registrationNumber)),
+  ),
 };
 
 export default studentController;

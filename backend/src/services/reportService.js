@@ -43,6 +43,49 @@ async function search({
   });
 }
 
-export const reportService = { search };
+/**
+ * Desempenho por categoria (nome copiado em `RoundCategory` no momento da
+ * criação da rodada, spec 17 — por isso continua estável entre partidas
+ * diferentes que reusam o mesmo `CategorySet`). Ordenado por taxa de
+ * acerto crescente: a categoria em que a turma mais erra aparece primeiro,
+ * é o dado mais acionável para o professor.
+ */
+async function categoryStats({ discipline, classId, gameId } = {}) {
+  const answers = await prisma.answer.findMany({
+    where: {
+      round: {
+        game: {
+          id: gameId || undefined,
+          classId: classId || undefined,
+          class: discipline ? { discipline } : undefined,
+        },
+      },
+    },
+    select: { normalizedValue: true, score: true, roundCategory: { select: { name: true } } },
+  });
+
+  const byCategory = new Map();
+  for (const answer of answers) {
+    const key = answer.roundCategory.name;
+    const entry = byCategory.get(key) ?? { category: key, answers: 0, filled: 0, valid: 0, invalid: 0 };
+    entry.answers += 1;
+    if (answer.normalizedValue) {
+      entry.filled += 1;
+      if (answer.score > 0) entry.valid += 1;
+      else entry.invalid += 1;
+    }
+    byCategory.set(key, entry);
+  }
+
+  return [...byCategory.values()]
+    .map((entry) => ({
+      ...entry,
+      fillRate: entry.answers === 0 ? 0 : Number((entry.filled / entry.answers).toFixed(3)),
+      accuracyRate: entry.filled === 0 ? 0 : Number((entry.valid / entry.filled).toFixed(3)),
+    }))
+    .sort((a, b) => a.accuracyRate - b.accuracyRate || a.category.localeCompare(b.category, "pt-BR"));
+}
+
+export const reportService = { search, categoryStats };
 
 export default reportService;

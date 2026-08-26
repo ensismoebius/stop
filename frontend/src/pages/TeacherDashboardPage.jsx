@@ -63,6 +63,7 @@ export function TeacherDashboardPage() {
   const [history, setHistory] = useState(null);
   const [allStudents, setAllStudents] = useState([]);
   const [reportResults, setReportResults] = useState([]);
+  const [categoryStats, setCategoryStats] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -654,10 +655,16 @@ export function TeacherDashboardPage() {
             students={allStudents}
             games={games}
             results={reportResults}
+            categoryStats={categoryStats}
             busy={busy}
             onSearch={(filters) =>
               guard(async () => {
                 setReportResults(await api.searchReports(token, filters));
+              })
+            }
+            onCategoryStats={(filters) =>
+              guard(async () => {
+                setCategoryStats(await api.categoryStats(token, filters));
               })
             }
           />

@@ -41,6 +41,11 @@ export function HomePage() {
         </button>
       </form>
 
+      <Link className="home__link" to="/historico">
+        <strong>Meu histórico</strong>
+        <span className="muted small">Suas partidas e medalhas, por matrícula</span>
+      </Link>
+
       {/*
         So o dispositivo do professor ja autenticado (localStorage, spec 35)
         ve esses atalhos — um aluno que cai aqui ao digitar a URL raiz nunca

@@ -94,6 +94,14 @@ export const studentRepository = {
       }
       return { count: students.length };
     }),
+
+  /** Historico academico permanente do aluno (spec: avaliacao entre partidas). */
+  gameHistory: (studentId) =>
+    prisma.gameResult.findMany({
+      where: { studentId },
+      include: { game: { include: { class: { select: { name: true, discipline: true } } } } },
+      orderBy: { game: { finishedAt: "desc" } },
+    }),
 };
 
 export default studentRepository;

@@ -2,6 +2,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../../src/app.js";
 import { createScenario, prisma, resetDatabase, waitForRoundStatus } from "../helpers/fixtures.js";
+import roundService from "../../src/services/roundService.js";
+import answerService from "../../src/services/answerService.js";
+import roomService from "../../src/services/roomService.js";
 
 const app = createApp();
 let scenario;
@@ -383,5 +386,74 @@ describe("API REST (spec 30 e 34)", () => {
       request(app).get("/api/reports/results?discipline=Inexistente"),
     );
     expect(outraDisciplina.body).toEqual([]);
+  });
+
+  it("aluno consulta o proprio historico por matricula, sem autenticacao de professor (nova feature)", async () => {
+    const [a] = scenario.students;
+    await prisma.score.create({ data: { gameId: scenario.game.id, studentId: a.id, total: 10 } });
+    await auth(request(app).post(`/api/games/${scenario.game.id}/finish`));
+
+    const history = await request(app).get(`/api/students/history/${a.registrationNumber}`);
+    expect(history.status).toBe(200);
+    expect(history.body.student).toMatchObject({
+      name: a.name,
+      registrationNumber: a.registrationNumber,
+    });
+    expect(history.body.results).toHaveLength(1);
+    expect(history.body.results[0]).toMatchObject({ score: 10, position: 1, medal: "GOLD" });
+
+    const notFound = await request(app).get("/api/students/history/000000000");
+    expect(notFound.status).toBe(404);
+  });
+
+  it("agrega desempenho por categoria, ordenado pela pior taxa de acerto primeiro (nova feature)", async () => {
+    const sessions = await Promise.all(
+      scenario.students.map((student) => roomService.join(scenario.room.code, student.registrationNumber)),
+    );
+
+    const created = await roundService.create({
+      gameId: scenario.game.id,
+      categorySetId: scenario.categorySet.id,
+      durationSeconds: 60,
+    });
+    await roundService.drawRoundLetter(created.id);
+    await roundService.start(created.id);
+    const round = await waitForRoundStatus(created.id, "PLAYING");
+    const [certa, errada] = round.categories;
+
+    // "certa": todo mundo responde valido (mesma resposta -> duplicada,
+    // mas ainda pontua e conta como valida). "errada": ninguem comeca com
+    // a letra sorteada -> tudo marcado invalido na correcao (spec 19).
+    for (const session of sessions) {
+      await answerService.submit({
+        roundId: round.id,
+        playerSessionId: session.playerSessionId,
+        roundCategoryId: certa.id,
+        value: `${round.letter}resposta`,
+      });
+      await answerService.submit({
+        roundId: round.id,
+        playerSessionId: session.playerSessionId,
+        roundCategoryId: errada.id,
+        value: "zzz-fora-da-letra",
+      });
+    }
+
+    await roundService.forceStop(round.id);
+    await roundService.closeCollaborativeCorrection(round.id);
+    await roundService.score(round.id);
+
+    const stats = await auth(
+      request(app).get(`/api/reports/category-stats?gameId=${scenario.game.id}`),
+    );
+    expect(stats.status).toBe(200);
+    const byCategory = Object.fromEntries(stats.body.map((item) => [item.category, item]));
+    expect(byCategory[certa.name]).toMatchObject({ answers: 3, filled: 3, valid: 3, accuracyRate: 1 });
+    expect(byCategory[errada.name]).toMatchObject({ answers: 3, filled: 3, valid: 0, accuracyRate: 0 });
+    // Ordenado por taxa de acerto crescente: a categoria com melhor
+    // desempenho ("certa", 100%) nunca aparece antes de uma com pior.
+    const accuracyRates = stats.body.map((item) => item.accuracyRate);
+    expect(accuracyRates).toEqual([...accuracyRates].sort((a, b) => a - b));
+    expect(stats.body.at(-1).category).toBe(certa.name);
   });
 });

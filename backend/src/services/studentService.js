@@ -55,6 +55,30 @@ export const studentService = {
     const result = await studentRepository.createMany(classId, students);
     return { created: result.count };
   },
+
+  /**
+   * Historico do proprio aluno, por matricula (mesmo modelo de confianca
+   * do identify de sala, spec 6: so a matricula, sem senha). Publico por
+   * desenho — nao exige token de professor nem sessao de sala.
+   */
+  async historyByRegistration(registrationNumber) {
+    const student = await studentService.findByRegistration(registrationNumber);
+    if (!student) throw notFound("Matrícula não encontrada. Verifique o número informado.");
+    const results = await studentRepository.gameHistory(student.id);
+    return {
+      student: { name: student.name, registrationNumber: student.registrationNumber },
+      results: results.map((result) => ({
+        id: result.id,
+        gameName: result.game.name,
+        discipline: result.game.class?.discipline ?? null,
+        className: result.game.class?.name ?? null,
+        finishedAt: result.game.finishedAt,
+        score: result.score,
+        position: result.position,
+        medal: result.medal,
+      })),
+    };
+  },
 };
 
 export default studentService;

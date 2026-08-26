@@ -21,6 +21,16 @@ export const reportController = {
     });
     res.json(results);
   }),
+
+  categoryStats: asyncHandler(async (req, res) => {
+    const { discipline, classId, gameId } = req.query;
+    const stats = await reportService.categoryStats({
+      discipline: discipline || undefined,
+      classId: toInt(classId),
+      gameId: toInt(gameId),
+    });
+    res.json(stats);
+  }),
 };
 
 export default reportController;

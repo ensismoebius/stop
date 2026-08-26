@@ -5,6 +5,7 @@ import useAutoFullscreen from "./hooks/useAutoFullscreen.js";
 import HomePage from "./pages/HomePage.jsx";
 import JoinPage from "./pages/JoinPage.jsx";
 import StudentGamePage from "./pages/StudentGamePage.jsx";
+import StudentHistoryPage from "./pages/StudentHistoryPage.jsx";
 import TeacherDashboardPage from "./pages/TeacherDashboardPage.jsx";
 import PublicScreenPage from "./pages/PublicScreenPage.jsx";
 
@@ -25,6 +26,8 @@ export function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/join/:code" element={<JoinPage />} />
             <Route path="/play" element={<StudentGamePage />} />
+            <Route path="/historico" element={<StudentHistoryPage />} />
+            <Route path="/historico/:registrationNumber" element={<StudentHistoryPage />} />
             <Route path="/teacher" element={<TeacherDashboardPage />} />
             <Route path="/screen" element={<PublicScreenPage />} />
             <Route path="/screen/:code" element={<PublicScreenPage />} />
