@@ -270,6 +270,69 @@ describe("AnswerEditor", () => {
     expect(screen.getByText("A resposta é salva automaticamente.")).toBeInTheDocument();
   });
 
+  it("with letterRule CONTAINS, shows a placeholder saying 'Contém'", () => {
+    render(
+      <AnswerEditor
+        category={category}
+        value=""
+        letter="A"
+        letterRule="CONTAINS"
+        disabled={false}
+        onChange={vi.fn()}
+        onCommit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByPlaceholderText("Contém A...")).toBeInTheDocument();
+  });
+
+  it("with letterRule CONTAINS, accepts an answer that contains the letter without starting with it", () => {
+    render(
+      <AnswerEditor
+        category={category}
+        value="Banana"
+        letter="A"
+        letterRule="CONTAINS"
+        disabled={false}
+        onChange={vi.fn()}
+        onCommit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("A resposta é salva automaticamente.")).toBeInTheDocument();
+  });
+
+  it("with letterRule CONTAINS, warns when the answer does not contain the letter anywhere", () => {
+    render(
+      <AnswerEditor
+        category={category}
+        value="Kiwi"
+        letter="A"
+        letterRule="CONTAINS"
+        disabled={false}
+        onChange={vi.fn()}
+        onCommit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Atenção: a resposta não contém a letra A.")).toBeInTheDocument();
+  });
+
+  it("defaults to STARTS_WITH behavior when letterRule is not provided", () => {
+    render(
+      <AnswerEditor
+        category={category}
+        value="Banana"
+        letter="A"
+        disabled={false}
+        onChange={vi.fn()}
+        onCommit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Atenção: a resposta não começa com a letra A.")).toBeInTheDocument();
+  });
+
   it("refocuses when the category changes", () => {
     const { rerender } = render(
       <AnswerEditor

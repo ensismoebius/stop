@@ -53,7 +53,20 @@ describe("RoundControl", () => {
     await user.type(durationInput, "60");
     await user.click(screen.getByRole("button", { name: "Criar rodada" }));
 
-    expect(onCreateRound).toHaveBeenCalledWith({ categorySetId: 2, durationSeconds: 60 });
+    expect(onCreateRound).toHaveBeenCalledWith({ categorySetId: 2, durationSeconds: 60, letterRule: "STARTS_WITH" });
+  });
+
+  it("lets the teacher choose the CONTAINS letter rule when creating a round", async () => {
+    const user = userEvent.setup();
+    const onCreateRound = vi.fn();
+    render(<RoundControl {...baseProps({ onCreateRound })} />);
+
+    await user.selectOptions(screen.getByLabelText("Regra da letra"), "CONTAINS");
+    await user.click(screen.getByRole("button", { name: "Criar rodada" }));
+
+    expect(onCreateRound).toHaveBeenCalledWith(
+      expect.objectContaining({ letterRule: "CONTAINS" }),
+    );
   });
 
   it("disables the create-round action while disabled or busy", () => {
@@ -217,7 +230,7 @@ describe("RoundControl", () => {
 
     expect(screen.getByText(/Pontuação de/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "PRÓXIMA RODADA →" }));
-    expect(onNextRound).toHaveBeenCalledWith({ categorySetId: 1, durationSeconds: 120 });
+    expect(onNextRound).toHaveBeenCalledWith({ categorySetId: 1, durationSeconds: 120, letterRule: "STARTS_WITH" });
   });
 
   it("renders nothing for an unrecognised status", () => {

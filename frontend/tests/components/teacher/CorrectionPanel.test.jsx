@@ -11,15 +11,15 @@ function makeGrid(overrides = {}) {
         playerSessionId: "p1",
         name: "Ana",
         answers: [
-          { id: "a1", roundCategoryId: "c1", value: "Ariranha", reviewState: "PENDING", startsWithLetter: true, duplicated: false },
-          { id: "a2", roundCategoryId: "c2", value: "", reviewState: "BLANK", startsWithLetter: true, duplicated: false },
+          { id: "a1", roundCategoryId: "c1", value: "Ariranha", reviewState: "PENDING", matchesLetter: true, duplicated: false },
+          { id: "a2", roundCategoryId: "c2", value: "", reviewState: "BLANK", matchesLetter: true, duplicated: false },
         ],
       },
       {
         playerSessionId: "p2",
         name: "Beto",
         answers: [
-          { id: "a3", roundCategoryId: "c1", value: "Arara", reviewState: "VALID", startsWithLetter: true, duplicated: true },
+          { id: "a3", roundCategoryId: "c1", value: "Arara", reviewState: "VALID", matchesLetter: true, duplicated: true },
         ],
       },
     ],
@@ -60,7 +60,7 @@ describe("CorrectionPanel", () => {
               playerSessionId: "p1",
               name: "Ana",
               answers: [
-                { id: "a1", roundCategoryId: "c1", value: "Xyz", reviewState: "VALID", startsWithLetter: false, duplicated: true },
+                { id: "a1", roundCategoryId: "c1", value: "Xyz", reviewState: "VALID", matchesLetter: false, duplicated: true },
               ],
             },
           ],
@@ -122,16 +122,16 @@ describe("CorrectionPanel", () => {
           playerSessionId: "p1",
           name: "Ana",
           answers: [
-            { id: "a1", roundCategoryId: "c1", value: "Ariranha", reviewState: "PENDING", startsWithLetter: true, duplicated: false },
-            { id: "a2", roundCategoryId: "c2", value: "Abacaxi", reviewState: "BLANK", startsWithLetter: true, duplicated: false },
+            { id: "a1", roundCategoryId: "c1", value: "Ariranha", reviewState: "PENDING", matchesLetter: true, duplicated: false },
+            { id: "a2", roundCategoryId: "c2", value: "Abacaxi", reviewState: "BLANK", matchesLetter: true, duplicated: false },
           ],
         },
         {
           playerSessionId: "p2",
           name: "Beto",
           answers: [
-            { id: "a3", roundCategoryId: "c1", value: "Arara", reviewState: "VALID", startsWithLetter: true, duplicated: true },
-            { id: "a4", roundCategoryId: "c2", value: "Ameixa", reviewState: "VALID", startsWithLetter: true, duplicated: false },
+            { id: "a3", roundCategoryId: "c1", value: "Arara", reviewState: "VALID", matchesLetter: true, duplicated: true },
+            { id: "a4", roundCategoryId: "c2", value: "Ameixa", reviewState: "VALID", matchesLetter: true, duplicated: false },
           ],
         },
       ],

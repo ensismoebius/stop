@@ -11,15 +11,15 @@ function makeGrid(overrides = {}) {
         id: "c1",
         name: "Animal",
         groups: [
-          { normalizedValue: "arara", value: "Arara", count: 2, reviewState: "PENDING", startsWithLetter: true },
-          { normalizedValue: "ariranha", value: "Ariranha", count: 1, reviewState: "MIXED", startsWithLetter: false },
-          { normalizedValue: "", value: "", count: 3, reviewState: "BLANK", startsWithLetter: true },
+          { normalizedValue: "arara", value: "Arara", count: 2, reviewState: "PENDING", matchesLetter: true },
+          { normalizedValue: "ariranha", value: "Ariranha", count: 1, reviewState: "MIXED", matchesLetter: false },
+          { normalizedValue: "", value: "", count: 3, reviewState: "BLANK", matchesLetter: true },
         ],
       },
       {
         id: "c2",
         name: "Fruta",
-        groups: [{ normalizedValue: "abacaxi", value: "Abacaxi", count: 1, reviewState: "VALID", startsWithLetter: true }],
+        groups: [{ normalizedValue: "abacaxi", value: "Abacaxi", count: 1, reviewState: "VALID", matchesLetter: true }],
       },
     ],
     ...overrides,
@@ -77,7 +77,7 @@ describe("GroupedCorrectionPanel", () => {
             {
               id: "c1",
               name: "Animal",
-              groups: [{ normalizedValue: "arara", value: "Arara", count: 2, reviewState: "PENDING", startsWithLetter: true, answerIds: ["a1", "a2"] }],
+              groups: [{ normalizedValue: "arara", value: "Arara", count: 2, reviewState: "PENDING", matchesLetter: true, answerIds: ["a1", "a2"] }],
             },
           ],
         })}
@@ -101,8 +101,8 @@ describe("GroupedCorrectionPanel", () => {
               id: "c1",
               name: "Animal",
               groups: [
-                { normalizedValue: "arara", value: "Arara", count: 1, reviewState: "PENDING", startsWithLetter: true, answerIds: ["a1"] },
-                { normalizedValue: "ariranha", value: "Ariranha", count: 1, reviewState: "PENDING", startsWithLetter: true, answerIds: ["a2"] },
+                { normalizedValue: "arara", value: "Arara", count: 1, reviewState: "PENDING", matchesLetter: true, answerIds: ["a1"] },
+                { normalizedValue: "ariranha", value: "Ariranha", count: 1, reviewState: "PENDING", matchesLetter: true, answerIds: ["a2"] },
               ],
             },
           ],
@@ -130,12 +130,12 @@ describe("GroupedCorrectionPanel", () => {
             {
               id: "c1",
               name: "Animal",
-              groups: [{ normalizedValue: "arara", value: "Arara", count: 1, reviewState: "PENDING", startsWithLetter: true, answerIds: ["a1"] }],
+              groups: [{ normalizedValue: "arara", value: "Arara", count: 1, reviewState: "PENDING", matchesLetter: true, answerIds: ["a1"] }],
             },
             {
               id: "c2",
               name: "Fruta",
-              groups: [{ normalizedValue: "abacaxi", value: "Abacaxi", count: 1, reviewState: "PENDING", startsWithLetter: true, answerIds: ["a2"] }],
+              groups: [{ normalizedValue: "abacaxi", value: "Abacaxi", count: 1, reviewState: "PENDING", matchesLetter: true, answerIds: ["a2"] }],
             },
           ],
         })}
@@ -163,7 +163,7 @@ describe("GroupedCorrectionPanel", () => {
             {
               id: "c1",
               name: "Animal",
-              groups: [{ normalizedValue: "ghost", value: "", count: 1, reviewState: "VALID", startsWithLetter: true }],
+              groups: [{ normalizedValue: "ghost", value: "", count: 1, reviewState: "VALID", matchesLetter: true }],
             },
           ],
         })}
@@ -179,7 +179,7 @@ describe("GroupedCorrectionPanel", () => {
       <GroupedCorrectionPanel
         grid={makeGrid({
           categories: [
-            { id: "c1", name: "Animal", groups: [{ normalizedValue: "", value: "", count: 3, reviewState: "BLANK", startsWithLetter: true }] },
+            { id: "c1", name: "Animal", groups: [{ normalizedValue: "", value: "", count: 3, reviewState: "BLANK", matchesLetter: true }] },
           ],
         })}
         onReviewGroup={vi.fn()}
