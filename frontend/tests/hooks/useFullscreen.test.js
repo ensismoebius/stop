@@ -96,6 +96,17 @@ describe("useFullscreen", () => {
     expect(exit).toHaveBeenCalledTimes(1);
   });
 
+  it("exit() falls back to webkitExitFullscreen when exitFullscreen is absent", async () => {
+    const exit = vi.fn(() => Promise.resolve());
+    document.webkitExitFullscreen = exit;
+    document.fullscreenElement = document.documentElement;
+    const { result } = renderHook(() => useFullscreen());
+    await act(async () => {
+      await result.current.exit();
+    });
+    expect(exit).toHaveBeenCalledTimes(1);
+  });
+
   it("exit() no-ops when not currently fullscreen", async () => {
     const exit = vi.fn(() => Promise.resolve());
     document.exitFullscreen = exit;

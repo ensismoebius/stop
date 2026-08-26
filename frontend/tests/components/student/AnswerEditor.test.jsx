@@ -254,6 +254,22 @@ describe("AnswerEditor", () => {
     expect(screen.getByRole("textbox")).toBeDisabled();
   });
 
+  it("treats a null/undefined value the same as an empty string", () => {
+    render(
+      <AnswerEditor
+        category={category}
+        value={null}
+        letter="A"
+        disabled={false}
+        onChange={vi.fn()}
+        onCommit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    expect(screen.getByText("A resposta é salva automaticamente.")).toBeInTheDocument();
+  });
+
   it("refocuses when the category changes", () => {
     const { rerender } = render(
       <AnswerEditor

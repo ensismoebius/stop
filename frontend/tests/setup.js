@@ -50,4 +50,12 @@ for (const prop of ["localStorage", "sessionStorage"]) {
   }
 }
 
+// jsdom does not implement layout, so `Element.prototype.scrollIntoView` is
+// missing entirely — any component that calls it (e.g. focus-and-scroll
+// navigation helpers) would throw "scrollIntoView is not a function" the
+// moment a test exercises that path. Stub it as a no-op.
+if (typeof window !== "undefined" && !window.HTMLElement.prototype.scrollIntoView) {
+  window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
 import "@testing-library/jest-dom/vitest";

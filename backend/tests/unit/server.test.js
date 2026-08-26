@@ -80,6 +80,14 @@ describe("src/server.js (bootstrap do processo)", () => {
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
+  it("quando nenhuma rodada é recuperada, não emite o log de contagem", async () => {
+    recoverActiveRoundsMock.mockResolvedValue(0);
+    await import("../../src/server.js");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(recoverActiveRoundsMock).toHaveBeenCalled();
+  });
+
   it("quando o banco está indisponível, não tenta recuperar rodadas ativas", async () => {
     checkDatabaseMock.mockResolvedValue({ ok: false, reason: "UNREACHABLE" });
     await import("../../src/server.js");

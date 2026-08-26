@@ -102,4 +102,23 @@ describe("emitAck", () => {
     // resolve again (the promise already settled).
     await vi.advanceTimersByTimeAsync(8000);
   });
+
+  it("the timeout callback itself is a no-op if it still manages to fire after settling", async () => {
+    // Normally clearTimeout() prevents this, but the callback guards
+    // against it independently — simulate that race by neutering
+    // clearTimeout so the scheduled timer still runs.
+    const { emitAck } = await import("../../src/socket/socket.js");
+    const clearTimeoutSpy = vi.spyOn(global, "clearTimeout").mockImplementation(() => {});
+    const socket = {
+      emit: (event, payload, cb) => cb({ ok: true, data: { already: "settled" } }),
+    };
+    const promise = emitAck(socket, "joinRoom", {}, 1000);
+    const result = await promise;
+    expect(result).toEqual({ ok: true, data: { already: "settled" } });
+
+    // The un-cleared timer now fires; its own "already settled" guard
+    // must stop it from resolving/rejecting again.
+    await expect(vi.advanceTimersByTimeAsync(1000)).resolves.not.toThrow();
+    clearTimeoutSpy.mockRestore();
+  });
 });

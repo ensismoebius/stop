@@ -81,4 +81,43 @@ describe("lib/logger", () => {
     expect(logSpy).not.toHaveBeenCalled();
     vi.unstubAllEnvs();
   });
+
+  it("sem LOG_LEVEL definido, usa 'error' dentro do ambiente de teste (NODE_ENV=test)", async () => {
+    delete process.env.LOG_LEVEL;
+    vi.resetModules();
+    vi.stubEnv("NODE_ENV", "test");
+    const logger = await loadLogger();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    logger.warn("abaixo do limite, descartado");
+    logger.error("no limite, aparece");
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    vi.unstubAllEnvs();
+  });
+
+  it("um LOG_LEVEL desconhecido cai no fallback 'info'", async () => {
+    process.env.LOG_LEVEL = "verbose-inexistente";
+    const logger = await loadLogger();
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const debugAsLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    logger.info("dentro do limite (fallback info)");
+    logger.debug("acima do limite (fallback info), descartado");
+
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    expect(debugAsLogSpy).not.toHaveBeenCalled();
+  });
+
+  it("mensagens de debug com metadado também usam console.log (nunca console.debug)", async () => {
+    process.env.LOG_LEVEL = "debug";
+    const logger = await loadLogger();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const meta = { detail: "y" };
+    logger.debug("com meta", meta);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("DEBUG com meta"), meta);
+  });
 });

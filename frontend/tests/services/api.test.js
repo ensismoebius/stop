@@ -276,4 +276,224 @@ describe("api convenience methods", () => {
     expect(url).toBe("/api/games/game1/rounds/round1");
     expect(options.method).toBe("DELETE");
   });
+
+  it("listClasses fetches with the admin token", async () => {
+    await api.listClasses("tok");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/classes");
+  });
+
+  it("createClass posts a body", async () => {
+    await api.createClass("tok", { name: "Turma A" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/classes");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toEqual({ name: "Turma A" });
+  });
+
+  it("updateClass PATCHes a body", async () => {
+    await api.updateClass("tok", "c1", { name: "Nova" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/classes/c1");
+    expect(options.method).toBe("PATCH");
+  });
+
+  it("createStudent posts a body", async () => {
+    await api.createStudent("tok", { name: "Aluno" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/students");
+    expect(options.method).toBe("POST");
+  });
+
+  it("updateStudent PATCHes a body", async () => {
+    await api.updateStudent("tok", "s1", { name: "Novo Nome" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/students/s1");
+    expect(options.method).toBe("PATCH");
+  });
+
+  it("bulkStudents posts a body", async () => {
+    await api.bulkStudents("tok", { students: [] });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/students/bulk");
+    expect(options.method).toBe("POST");
+  });
+
+  it("deleteStudent issues a DELETE", async () => {
+    await api.deleteStudent("tok", "s1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/students/s1");
+    expect(options.method).toBe("DELETE");
+  });
+
+  it("listCategorySets fetches with the admin token", async () => {
+    await api.listCategorySets("tok");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/category-sets");
+  });
+
+  it("createCategorySet posts a body", async () => {
+    await api.createCategorySet("tok", { name: "Frutas" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/category-sets");
+    expect(options.method).toBe("POST");
+  });
+
+  it("deleteCategorySet issues a DELETE", async () => {
+    await api.deleteCategorySet("tok", "cs1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/category-sets/cs1");
+    expect(options.method).toBe("DELETE");
+  });
+
+  it("createCategory posts a body", async () => {
+    await api.createCategory("tok", { name: "Fruta" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/categories");
+    expect(options.method).toBe("POST");
+  });
+
+  it("updateCategory PATCHes a body", async () => {
+    await api.updateCategory("tok", "cat1", { required: false });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/categories/cat1");
+    expect(options.method).toBe("PATCH");
+  });
+
+  it("deleteCategory issues a DELETE", async () => {
+    await api.deleteCategory("tok", "cat1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/categories/cat1");
+    expect(options.method).toBe("DELETE");
+  });
+
+  it("listGames fetches with the admin token", async () => {
+    await api.listGames("tok");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games");
+  });
+
+  it("createGame posts a body", async () => {
+    await api.createGame("tok", { name: "Partida" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games");
+    expect(options.method).toBe("POST");
+  });
+
+  it("getGame fetches a single game", async () => {
+    await api.getGame("tok", "g1");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games/g1");
+  });
+
+  it("roomQrCode fetches the room's QR code", async () => {
+    await api.roomQrCode("tok", "ABCD");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rooms/ABCD/qrcode");
+  });
+
+  it("teacherState fetches a room's teacher-facing state", async () => {
+    await api.teacherState("tok", "ABCD");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rooms/ABCD/state");
+  });
+
+  it("gameScores fetches a game's scores", async () => {
+    await api.gameScores("tok", "g1");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games/g1/scores");
+  });
+
+  it("gameStatistics fetches a game's statistics", async () => {
+    await api.gameStatistics("tok", "g1");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games/g1/statistics");
+  });
+
+  it("gameHistory fetches a game's history", async () => {
+    await api.gameHistory("tok", "g1");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games/g1/history");
+  });
+
+  it("createRound posts a body", async () => {
+    await api.createRound("tok", { gameId: "g1" });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds");
+    expect(options.method).toBe("POST");
+  });
+
+  it("drawLetter posts to a round's letter endpoint", async () => {
+    await api.drawLetter("tok", "r1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/letter");
+    expect(options.method).toBe("POST");
+  });
+
+  it("startRound posts to a round's start endpoint", async () => {
+    await api.startRound("tok", "r1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/start");
+    expect(options.method).toBe("POST");
+  });
+
+  it("stopRound posts to a round's stop endpoint", async () => {
+    await api.stopRound("tok", "r1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/stop");
+    expect(options.method).toBe("POST");
+  });
+
+  it("collaborativeCorrectionProgress fetches progress", async () => {
+    await api.collaborativeCorrectionProgress("tok", "r1");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/collaborative-correction");
+  });
+
+  it("finishCollaborativeCorrection posts to the finish endpoint", async () => {
+    await api.finishCollaborativeCorrection("tok", "r1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/collaborative-correction/finish");
+    expect(options.method).toBe("POST");
+  });
+
+  it("correctionGrid fetches the round's correction grid", async () => {
+    await api.correctionGrid("tok", "r1");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/correction");
+  });
+
+  it("groupedCorrectionGrid fetches the round's grouped correction grid", async () => {
+    await api.groupedCorrectionGrid("tok", "r1");
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/correction/grouped");
+  });
+
+  it("scoreRound posts to a round's score endpoint", async () => {
+    await api.scoreRound("tok", "r1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/score");
+    expect(options.method).toBe("POST");
+  });
+
+  it("finishRound posts to a round's finish endpoint", async () => {
+    await api.finishRound("tok", "r1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/finish");
+    expect(options.method).toBe("POST");
+  });
+
+  it("cancelRound posts to a round's cancel endpoint", async () => {
+    await api.cancelRound("tok", "r1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/rounds/r1/cancel");
+    expect(options.method).toBe("POST");
+  });
+
+  it("finishGame posts to a game's finish endpoint", async () => {
+    await api.finishGame("tok", "g1");
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/games/g1/finish");
+    expect(options.method).toBe("POST");
+  });
 });

@@ -151,6 +151,34 @@ describe("AvatarPicker", () => {
     readSpy.mockRestore();
   });
 
+  it("clicking 'Tirar foto' opens the hidden file picker", async () => {
+    Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+    const { container } = render(<AvatarPicker value={null} onChange={vi.fn()} />);
+    const fileInput = container.querySelector(".avatar-picker__file-input");
+    const clickSpy = vi.spyOn(fileInput, "click").mockImplementation(() => {});
+    await userEvent.setup().click(screen.getByText("📷 Tirar foto"));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to a generic message when the processing error has no message", async () => {
+    Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+    window.Image = SuccessImage;
+    // Force resizePhoto's promise executor to throw synchronously with a
+    // non-Error value, so the caught rejection has no `.message`.
+    const readSpy = vi
+      .spyOn(FileReader.prototype, "readAsDataURL")
+      .mockImplementation(() => {
+        throw { code: "WEIRD_FAILURE" };
+      });
+    const { container } = render(<AvatarPicker value={null} onChange={vi.fn()} />);
+    const fileInput = container.querySelector(".avatar-picker__file-input");
+    const file = new File(["fake-image-bytes"], "photo.jpg", { type: "image/jpeg" });
+
+    await userEvent.setup().upload(fileInput, file);
+    expect(await screen.findByText("Falha ao processar a foto")).toBeInTheDocument();
+    readSpy.mockRestore();
+  });
+
   it("does nothing when the file input change event carries no file", () => {
     Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
     const onChange = vi.fn();
