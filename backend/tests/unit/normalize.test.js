@@ -66,4 +66,10 @@ describe("normalizeLetter", () => {
     expect(normalizeLetter("á")).toBe("A");
     expect(normalizeLetter(" r ")).toBe("R");
   });
+
+  it("devolve vazio para valores nulos/vazios", () => {
+    expect(normalizeLetter(null)).toBe("");
+    expect(normalizeLetter(undefined)).toBe("");
+    expect(normalizeLetter("")).toBe("");
+  });
 });

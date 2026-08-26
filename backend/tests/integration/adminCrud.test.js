@@ -304,5 +304,36 @@ describe("superfície administrativa ainda não coberta (CRUD completo das rotas
       const theme = response.body.byTheme[0];
       expect(theme.validAnswers).toBeGreaterThan(0);
     });
+
+    it("contabiliza eliminações e quem deu STOP por aluno", async () => {
+      const [joao, maria] = await joinAllStudents(scenario);
+      const round = await startedRoundFixture(scenario);
+      for (const category of round.categories) {
+        await answerService.submit({
+          roundId: round.id,
+          playerSessionId: maria.playerSessionId,
+          roundCategoryId: category.id,
+          value: `${round.letter}${category.id}`,
+        });
+      }
+      await roundService.eliminate({ roundId: round.id, playerSessionId: joao.playerSessionId });
+      await roundService.requestStop({ roundId: round.id, playerSessionId: maria.playerSessionId });
+      await roundService.closeCollaborativeCorrection(round.id);
+      await roundService.score(round.id);
+
+      const response = await auth(request(app).get(`/api/games/${scenario.game.id}/statistics`));
+      expect(response.status).toBe(200);
+      expect(response.body.totals.eliminations).toBe(1);
+      const mariaStats = response.body.byStudent.find((s) => s.studentId === maria.student.id);
+      expect(mariaStats.stops).toBe(1);
+    });
+
+    it("uma partida sem nenhuma rodada jogada tem médias e taxas nulas/zeradas", async () => {
+      await roundService.create({ gameId: scenario.game.id, categorySetId: scenario.categorySet.id });
+      const response = await auth(request(app).get(`/api/games/${scenario.game.id}/statistics`));
+      expect(response.status).toBe(200);
+      expect(response.body.totals.fillRate).toBe(0);
+      expect(response.body.totals.averageSecondsToStop).toBeNull();
+    });
   });
 });

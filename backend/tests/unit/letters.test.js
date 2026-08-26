@@ -41,4 +41,8 @@ describe("sorteio de letras (spec 15 e 16)", () => {
     const { letter } = drawLetter({ pool: "AB", usedLetters: ["Z", "A"] });
     expect(letter).toBe("B");
   });
+
+  it("aceita o pool como array, alem de string", () => {
+    expect(parseLetterPool(["a", "B", "1", "c"])).toEqual(["A", "B", "C"]);
+  });
 });

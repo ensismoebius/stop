@@ -60,6 +60,14 @@ describe("pontuacao 10/5/0 (spec 19)", () => {
     expect(scored.get(2).score).toBe(10);
   });
 
+  it("calcula normalizedValue a partir de value quando nao informado", () => {
+    const answers = [
+      { id: 1, playerSessionId: 10, roundCategoryId: 1, value: "  React  ", reviewState: "VALID" },
+    ];
+    const scored = scoreAnswers(answers);
+    expect(scored.get(1).score).toBe(POINTS.UNIQUE);
+  });
+
   it("soma a pontuacao por jogador", () => {
     const answers = [
       answer(1, 10, "React", "VALID", 1),

@@ -63,6 +63,11 @@ describe("maquina de estados da rodada (spec 32)", () => {
     expect(isClosed(ROUND_STATUS.PLAYING)).toBe(false);
   });
 
+  it("um status desconhecido nunca permite transicao e nao tem proximos estados", () => {
+    expect(canTransition("UNKNOWN", ROUND_STATUS.READY)).toBe(false);
+    expect(nextStates("UNKNOWN")).toEqual([]);
+  });
+
   it("somente jogador PLAYING e elegivel", () => {
     expect(isEligible("PLAYING")).toBe(true);
     expect(isEligible("ELIMINATED")).toBe(false);

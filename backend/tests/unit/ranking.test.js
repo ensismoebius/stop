@@ -22,4 +22,14 @@ describe("ranking (spec 42)", () => {
     // Posicao seguinte pula, sem usar ordem de chegada como desempate.
     expect(ranking[2].position).toBe(3);
   });
+
+  it("usa string vazia no desempate quando o nome esta ausente", () => {
+    const ranking = buildRanking([
+      { studentId: 1, name: undefined, total: 10 },
+      { studentId: 2, name: "Ana", total: 10 },
+    ]);
+    // "" vem antes de "Ana" no localeCompare pt-BR.
+    expect(ranking[0].studentId).toBe(1);
+    expect(ranking[1].studentId).toBe(2);
+  });
 });

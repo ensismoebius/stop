@@ -1,5 +1,5 @@
-import { act, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import PublicScreenPage from "../../src/pages/PublicScreenPage.jsx";
@@ -143,24 +143,23 @@ describe("PublicScreenPage", () => {
     expect(screen.getByTestId("game-status")).toHaveTextContent("none");
   });
 
-  it("treats CREATED and READY rounds as still waiting for players", () => {
+  it("treats a CREATED round as still waiting for players", () => {
     socketReturn = { connected: true, state: { round: { status: "CREATED" } } };
-    const { rerender } = renderPage("/screen/STOP-1");
+    renderPage("/screen/STOP-1");
     expect(screen.getByText("STOP-1")).toBeInTheDocument();
     expect(screen.queryByTestId("theme-display")).not.toBeInTheDocument();
-
-    socketReturn = { connected: true, state: { round: { status: "READY" } } };
-    rerender(
-      <MemoryRouter initialEntries={["/screen/STOP-1"]}>
-        <Routes>
-          <Route path="/screen/:code" element={<PublicScreenPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
   });
 
-  it("shows theme/letter/countdown once the round leaves the waiting phases (PLAYING)", () => {
+  it("treats a READY round as still waiting for players", () => {
+    socketReturn = { connected: true, state: { round: { status: "READY" } } };
+    renderPage("/screen/STOP-1");
+    expect(screen.getByText("STOP-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("theme-display")).not.toBeInTheDocument();
+  });
+
+  it("shows theme/letter/countdown once the round leaves the waiting phases (PLAYING), plus the small footer QR", async () => {
     useCountdownMock.mockReturnValue(42);
+    api.roomQrCode.mockResolvedValue({ dataUrl: "data:img", url: "http://x" });
     socketReturn = {
       connected: true,
       state: {
@@ -179,6 +178,33 @@ describe("PublicScreenPage", () => {
     expect(screen.getByTestId("countdown")).toHaveTextContent("42");
     expect(screen.getByTestId("game-status")).toHaveTextContent("PLAYING");
     expect(screen.getByTestId("player-count")).toHaveTextContent("5/8/1");
+    // Outside the lobby, the small footer QR appears once it has loaded.
+    expect(
+      await screen.findByRole("img", { name: "QR Code de entrada da sala STOP-1" }),
+    ).toHaveAttribute("src", "data:img");
+  });
+
+  it("re-syncs the clock whenever the view carries a serverTime", () => {
+    socketReturn = {
+      connected: true,
+      state: { round: { status: "PLAYING" }, serverTime: "2026-01-01T00:00:00Z" },
+    };
+    renderPage("/screen/STOP-1");
+    expect(screen.getByTestId("game-status")).toHaveTextContent("PLAYING");
+  });
+
+  it("plays the FINAL_SECONDS cue once per second in the last 10 seconds while playing", () => {
+    useCountdownMock.mockReturnValue(5);
+    socketReturn = { connected: true, state: { round: { status: "PLAYING", endsAt: "later" } } };
+    renderPage("/screen/STOP-1");
+    expect(audioMock.play).toHaveBeenCalledWith("FINAL_SECONDS");
+  });
+
+  it("does not beep when not playing, past 10s, or at/under 0s", () => {
+    useCountdownMock.mockReturnValue(15);
+    socketReturn = { connected: true, state: { round: { status: "PLAYING", endsAt: "later" } } };
+    renderPage("/screen/STOP-1");
+    expect(audioMock.play).not.toHaveBeenCalledWith("FINAL_SECONDS");
   });
 
   it("falls back to connectedPlayers/0/0 when the richer player-count fields are absent", () => {
@@ -237,25 +263,21 @@ describe("PublicScreenPage", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("shows 'STOP de <name>' only when there is a first stopper and the round isn't PLAYING", () => {
+  it("shows 'STOP de <name>' when there is a first stopper and the round isn't PLAYING", () => {
     socketReturn = {
       connected: true,
       state: { round: { status: "STOPPED", firstStopperName: "Ana" } },
     };
-    const { rerender } = renderPage("/screen/STOP-1");
+    renderPage("/screen/STOP-1");
     expect(screen.getByText("STOP de Ana")).toBeInTheDocument();
+  });
 
+  it("hides 'STOP de <name>' while the round is still PLAYING", () => {
     socketReturn = {
       connected: true,
       state: { round: { status: "PLAYING", firstStopperName: "Ana" } },
     };
-    rerender(
-      <MemoryRouter initialEntries={["/screen/STOP-1"]}>
-        <Routes>
-          <Route path="/screen/:code" element={<PublicScreenPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderPage("/screen/STOP-1");
     expect(screen.queryByText("STOP de Ana")).not.toBeInTheDocument();
   });
 
@@ -319,6 +341,17 @@ describe("PublicScreenPage", () => {
     expect(screen.getByTestId("connection-badge")).toHaveTextContent("offline");
     await user.click(screen.getByRole("button", { name: "🔊" }));
     expect(audioMock.toggle).toHaveBeenCalled();
+  });
+
+  it("shows the muted icon in the footer when audio is disabled", () => {
+    audioMock.enabled = false;
+    try {
+      socketReturn = { connected: true, state: { round: { status: "PLAYING" } } };
+      renderPage("/screen/STOP-1");
+      expect(screen.getByRole("button", { name: "🔇" })).toBeInTheDocument();
+    } finally {
+      audioMock.enabled = true;
+    }
   });
 
   it("falls back to the REST publicState snapshot when there is no socket state yet", async () => {
