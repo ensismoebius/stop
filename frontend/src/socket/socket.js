@@ -54,4 +54,31 @@ export function emitAck(socket, event, payload, timeout = 8000) {
   });
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** operationId único por comando idempotente (spec 3.1). */
+export function createOperationId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `op-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/**
+ * Comando idempotente (spec 3.1): anexa um `operationId` ao payload e, se o
+ * ack não vier (TIMEOUT — ack perdido ou resposta atrasada), reenvia com o
+ * MESMO id. O servidor desduplica por `(roomId, operationId)` e devolve o
+ * resultado gravado, então o reenvio nunca executa o efeito duas vezes.
+ */
+export function emitCommand(socket, event, payload, { timeout = 8000, retryDelay = 400 } = {}) {
+  const body = { ...payload, operationId: createOperationId() };
+  const attempt = async () => {
+    const response = await emitAck(socket, event, body, timeout);
+    if (response.ok || response.error?.code !== "TIMEOUT") return response;
+    await sleep(retryDelay);
+    return emitAck(socket, event, body, timeout);
+  };
+  return attempt();
+}
+
 export default createSocket;

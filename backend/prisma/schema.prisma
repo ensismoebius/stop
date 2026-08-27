@@ -179,10 +179,50 @@ model Room {
   status    RoomStatus @default(OPEN)
   createdAt DateTime   @default(now())
 
-  game     Game            @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  sessions PlayerSession[]
+  /// Contador monotônico do número de mudanças autoritativas da sala
+  /// (baseline). Combinado com `stateVersion` forma o par
+  /// `(roomEpoch, stateVersion)` que o cliente usa para ordenar estados
+  /// (spec "Implementacao 2.1"). Uma nova sessão de sala (novo jogo da
+  /// mesma turma) começa com epoch 1; a monotonicidade do par é o que
+  /// garante que um estado antigo jamais sobrescreva um novo no cliente.
+  roomEpoch Int @default(1)
+
+  /// Versão incremental da última publicação de estado da sala — incrementada
+  /// a cada difusão autoritativa (`stateVersion: { increment: 1 }`, sábio).
+  /// Persistida no banco (não só em memória) para que um restart do servidor
+  /// não rebaixe a versão que os clientes já adotaram. `Int` (2^31 mudanças)
+  /// é mais que suficiente para uma sala de aula; evitamos `BigInt` para não
+  /// arrastar `JSON.stringify` para o cliente.
+  stateVersion Int @default(0)
+
+  game       Game                  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  sessions    PlayerSession[]
+  operations  ProcessedOperation[]
 
   @@index([gameId])
+}
+
+/// Comandos de escrita já processados (idempotência — spec 3.1). O cliente
+/// gera um `operationId` (UUID) por comando; a chave `(roomId, id)` faz com
+/// que um reenvio do mesmo comando (ack perdido, retry após timeout) seja
+/// respondido a partir do `responseJson` gravado, em vez de reexecutado.
+/// `PENDING` = em processamento; `DONE` = resultado gravado; `FAILED` =
+/// a execução lançou erro (o cliente pode reexecutar com o mesmo id — o
+/// registro é substituído).
+model ProcessedOperation {
+  id              String   @db.VarChar(64)
+  roomId          Int
+  playerSessionId Int?
+  command         String   @db.VarChar(40)
+  status          String   @db.VarChar(20)
+  responseJson    Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, id])
+  @@index([playerSessionId])
 }
 
 model PlayerSession {

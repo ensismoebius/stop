@@ -5,11 +5,13 @@ import {
   socketAnswerSchema,
   socketFullscreenSchema,
   socketJoinRoomSchema,
+  socketReadySchema,
   socketRoundSchema,
   socketTelemetrySchema,
   socketIdentifySchema,
   socketReviewSchema,
   socketEmojiSchema,
+  socketHeartbeatSchema,
 } from "../validators/schemas.js";
 import { authenticateJoin } from "./socketAuth.js";
 import * as realtime from "./realtime.js";
@@ -17,8 +19,12 @@ import answerService from "../services/answerService.js";
 import roundService from "../services/roundService.js";
 import roomService from "../services/roomService.js";
 import viewService from "../services/viewService.js";
+import roomState from "../services/room/roomState.js";
+import roomRepository from "../repositories/roomRepository.js";
 import playerSessionRepository from "../repositories/playerSessionRepository.js";
 import telemetryRepository from "../repositories/telemetryRepository.js";
+import { recordClientSync, dropClientSync, syncStats as syncStatsFor } from "./syncRegistry.js";
+import claimOperation from "../services/operations.js";
 
 function toErrorPayload(error) {
   if (error instanceof AppError) {
@@ -31,9 +37,19 @@ function toErrorPayload(error) {
 /**
  * Envolve um handler: valida o payload, responde pelo ack e emite `error`
  * ao cliente em caso de falha. Nunca derruba a conexao.
+ *
+ * Com `options.idempotent`, o `operationId` é extraído do payload ANTES da
+ * validação (zod por padrão descarta chaves desconhecidas) e o comando é
+ * executado via `claimOperation`: um reenvio com o mesmo id devolve o
+ * resultado gravado em vez de reexecutar (spec 3.1). Sem `operationId`
+ * cai no caminho antigo — compatível com clientes legados.
  */
-function wrap(socket, schema, fn) {
+function wrap(socket, schema, fn, options = {}) {
   return async (payload, ack) => {
+    const operationId =
+      options.idempotent && typeof payload?.operationId === "string" && payload.operationId.trim()
+        ? payload.operationId.trim()
+        : null;
     const parsed = schema ? parseSocketPayload(schema, payload) : { ok: true, data: payload };
     if (!parsed.ok) {
       const error = { code: "BAD_PAYLOAD", message: "Dados inválidos", details: parsed.issues };
@@ -42,7 +58,21 @@ function wrap(socket, schema, fn) {
       return;
     }
     try {
-      const result = await fn(socket, parsed.data);
+      let result;
+      if (operationId) {
+        const context = requireContext(socket);
+        result = await claimOperation(
+          {
+            operationId,
+            roomId: context.room.id,
+            playerSessionId: context.session?.id ?? null,
+            command: options.command,
+          },
+          () => fn(socket, parsed.data),
+        );
+      } else {
+        result = await fn(socket, parsed.data);
+      }
       if (typeof ack === "function") ack({ ok: true, data: result ?? null });
     } catch (error) {
       const payloadError = toErrorPayload(error);
@@ -75,7 +105,12 @@ async function handlePlayerJoin(client, context, code) {
   await client.join(realtime.rooms.player(context.session.id));
   await playerSessionRepository.markConnected(context.session.id, client.id);
 
-  const state = await viewService.playerState(context.session.id);
+  // O ack de entrada carrega a posição (roomEpoch, stateVersion) corrente:
+  // é o primeiro estado que o barreira de sincronização do cliente adota.
+  const state = await viewService.playerState(
+    context.session.id,
+    await roomRepository.getVersion(context.room.id),
+  );
   client.emit("roomState", state);
   realtime.toTeachers(code, "playerJoined", {
     playerSessionId: context.session.id,
@@ -98,15 +133,18 @@ async function handleJoinRoom(client, data) {
 
   if (context.role === "player") return handlePlayerJoin(client, context, code);
 
+  const version = await roomRepository.getVersion(context.room.id);
+
   if (context.role === "teacher") {
     await client.join(realtime.rooms.teachers(code));
-    const state = await viewService.teacherState(code);
+    const state = await viewService.teacherState(code, { version });
+    state.syncStats = syncStatsFor(context.room.code, version);
     client.emit("roomState", state);
     return state;
   }
 
   await client.join(realtime.rooms.screens(code));
-  const state = await viewService.publicState(code);
+  const state = await viewService.publicState(code, { version });
   client.emit("roomState", state);
   return state;
 }
@@ -123,6 +161,7 @@ async function handleDisconnect(socket, reason) {
       playerSessionId: context.session.id,
       payload: { reason },
     });
+    dropClientSync(context);
     realtime.toTeachers(context.room.code, "playerLeft", {
       playerSessionId: context.session.id,
       reason,
@@ -234,29 +273,95 @@ async function handleTelemetry(client, data) {
   return { recorded: true };
 }
 
-/** Reconexao: o cliente pede o estado autoritativo (spec 45). */
-async function handleRequestState(client) {
+/**
+ * Reconexão: o cliente pede o estado autoritativo (spec 45), enviando a
+ * posição `(roomEpoch, stateVersion)` que já adotou.
+ *
+ *  - Mesma posição (ou mais nova) → `CURRENT`: nada novo a enviar, o
+ *    cliente permanece no que já tem (economia de banda no watchdog de
+ *    dezenas de alunos em fases de espera).
+ *  - Posição antiga / não informada → `ROOM_STATE`: o snapshot autoritativo
+ *    completo, com as versões anexadas, para a barreira adotar.
+ */
+async function handleRequestState(client, request) {
   const context = requireContext(client);
-  if (context.role === "player") return viewService.playerState(context.session.id);
-  if (context.role === "teacher") return viewService.teacherState(context.room.code);
-  return viewService.publicState(context.room.code);
+  const snapshot = await roomState.getCurrent(context.room.code);
+  const current = snapshot
+    ? { roomEpoch: snapshot.roomEpoch, stateVersion: snapshot.stateVersion }
+    : await roomRepository.getVersion(context.room.id);
+
+  let clientPosition = null;
+  if (request && typeof request.roomEpoch === "number" && typeof request.stateVersion === "number") {
+    clientPosition = { roomEpoch: request.roomEpoch, stateVersion: request.stateVersion };
+  }
+  // Best-effort: só é útil para o monitor do professor quando o cliente
+  // reporta posição; sem posição = acabou de entrar, não registra.
+  if (clientPosition) recordClientSync(context, clientPosition);
+
+  if (
+    clientPosition &&
+    snapshot &&
+    clientPosition.roomEpoch === snapshot.roomEpoch &&
+    clientPosition.stateVersion >= snapshot.stateVersion
+  ) {
+    return {
+      status: "CURRENT",
+      roomEpoch: snapshot.roomEpoch,
+      stateVersion: snapshot.stateVersion,
+      serverTime: new Date().toISOString(),
+    };
+  }
+
+  const state = roomState.roleStateFor(context, snapshot);
+  const serverTime = new Date().toISOString();
+  if (!state) return { status: "ROOM_STATE", roomEpoch: current.roomEpoch, stateVersion: current.stateVersion, serverTime };
+  return { ...state, status: "ROOM_STATE", serverTime };
+}
+
+/**
+ * Heartbeat da aplicação (spec 8.3): o cliente reporta a posição que
+ * adotou; o servidor devolve a posição autoritativa corrente. Sem troca
+ * de estado — só "CURRENT" ou "você está atrás, peça o estado".
+ */
+async function handleApplicationHeartbeat(client, request) {
+  const context = requireContext(client);
+  const position = await roomRepository.getVersion(context.room.id);
+  let clientPosition = null;
+  let stale = false;
+  if (request && typeof request.roomEpoch === "number" && typeof request.stateVersion === "number") {
+    clientPosition = { roomEpoch: request.roomEpoch, stateVersion: request.stateVersion };
+    stale =
+      clientPosition.roomEpoch < position.roomEpoch ||
+      (clientPosition.roomEpoch === position.roomEpoch && clientPosition.stateVersion < position.stateVersion);
+  }
+  if (clientPosition) recordClientSync(context, clientPosition);
+  return {
+    serverTime: new Date().toISOString(),
+    roomEpoch: position.roomEpoch,
+    stateVersion: position.stateVersion,
+    stale,
+  };
 }
 
 export function registerHandlers(io, socket) {
   /** Registra um evento validado no socket corrente. */
-  const on = (event, schema, fn) => socket.on(event, wrap(socket, schema, fn));
+  const on = (event, schema, fn, options = {}) =>
+    socket.on(event, wrap(socket, schema, fn, { ...options, command: options.command ?? event }));
 
   on("joinRoom", socketJoinRoomSchema, handleJoinRoom);
   on("identifyStudent", socketIdentifySchema, handleIdentifyStudent);
-  on("ready", null, handleReady);
+  // Comandos de escrita com idempotência (spec 3.1): o cliente gera um
+  // `operationId` e o servidor desduplica reenvios (ack perdido / retry).
+  on("ready", socketReadySchema, handleReady, { idempotent: true });
   on("sendEmoji", socketEmojiSchema, handleSendEmoji);
-  on("submitAnswer", socketAnswerSchema, handleSubmitAnswer);
-  on("updateAnswer", socketAnswerSchema, handleSubmitAnswer);
-  on("requestStop", socketRoundSchema, handleRequestStop);
-  on("fullscreenExited", socketFullscreenSchema, handleFullscreenExited);
-  on("submitReview", socketReviewSchema, handleSubmitReview);
+  on("submitAnswer", socketAnswerSchema, handleSubmitAnswer, { idempotent: true });
+  on("updateAnswer", socketAnswerSchema, handleSubmitAnswer, { idempotent: true });
+  on("requestStop", socketRoundSchema, handleRequestStop, { idempotent: true });
+  on("fullscreenExited", socketFullscreenSchema, handleFullscreenExited, { idempotent: true });
+  on("submitReview", socketReviewSchema, handleSubmitReview, { idempotent: true });
   on("telemetry", socketTelemetrySchema, handleTelemetry);
   on("requestState", null, handleRequestState);
+  on("applicationHeartbeat", socketHeartbeatSchema, handleApplicationHeartbeat);
 
   socket.on("disconnect", (reason) => handleDisconnect(socket, reason));
 }

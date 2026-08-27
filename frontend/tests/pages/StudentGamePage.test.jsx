@@ -15,6 +15,9 @@ vi.mock("../../src/services/api.js", () => ({
 vi.mock("../../src/socket/socket.js", () => ({
   createSocket: vi.fn(() => ({ emit: vi.fn(), on: vi.fn() })),
   emitAck: vi.fn(),
+  // Idempotência roda na página via emitCommand; o shim simplesmente repassa
+  // para o emitAck mockado para os testes continuarem spyando o envio.
+  emitCommand: (socket, event, payload) => emitAck(socket, event, payload),
 }));
 
 // --- useRoomSocket: a real-stateful stand-in (backed by React state so
@@ -402,7 +405,11 @@ describe("StudentGamePage", () => {
     act(() => lastHandlers.reviewAssigned({ reviews: [{ reviewId: "r1", value: "x" }] }));
     await user.click(screen.getByRole("button", { name: "decide-valid" }));
     await waitFor(() =>
-      expect(emitAck).toHaveBeenCalledWith(expect.anything(), "submitReview", { reviewId: "r1", decision: "VALID" }),
+      expect(emitAck).toHaveBeenCalledWith(
+        expect.anything(),
+        "submitReview",
+        expect.objectContaining({ reviewId: "r1", decision: "VALID" }),
+      ),
     );
 
     act(() => lastHandlers.reviewCompleted({ reviewId: "r1" }));
@@ -613,7 +620,7 @@ describe("StudentGamePage", () => {
     await waitFor(() => expect(fullscreenMock.enter).toHaveBeenCalled());
     expect(audioMock.unlock).toHaveBeenCalled();
     await waitFor(() =>
-      expect(emitAck).toHaveBeenCalledWith(expect.anything(), "ready", {}),
+      expect(emitAck).toHaveBeenCalledWith(expect.anything(), "ready", expect.objectContaining({})),
     );
   });
 
@@ -884,7 +891,7 @@ describe("StudentGamePage", () => {
 
     act(() => document.dispatchEvent(new Event("pointerdown", { bubbles: true })));
     await waitFor(() => expect(fullscreenMock.enter).toHaveBeenCalled());
-    expect(emitAck).not.toHaveBeenCalledWith(expect.anything(), "ready", {});
+    expect(emitAck).not.toHaveBeenCalledWith(expect.anything(), "ready", expect.anything());
   });
 
   it("does not report fullscreenExited without a live socket", () => {

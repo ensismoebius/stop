@@ -2,6 +2,10 @@ import { z } from "zod";
 
 const id = z.coerce.number().int().positive();
 const trimmed = (max) => z.string().trim().min(1).max(max);
+// operationId: UUID gerado pelo cliente por comando (spec 3.1). Optional de
+// proposito — clientes antigos/reconexoes sem retry ainda funcionam; quando
+// presente, o wrap desduplica via ProcessedOperation.
+const operationId = z.string().trim().min(1).max(64);
 
 export const loginSchema = z.object({
   email: z.string().trim().email().max(180),
@@ -130,23 +134,31 @@ export const socketIdentifySchema = z.object({
   registrationNumber: trimmed(40),
 });
 
+/** `ready` é idempotente (spec 3.1): so traz o operationId opcional. */
+export const socketReadySchema = z.object({
+  operationId: operationId.optional(),
+});
+
 export const socketAnswerSchema = z.object({
   roundId: id,
   roundCategoryId: id,
   value: z.string().max(120),
+  operationId: operationId.optional(),
 });
 
-export const socketRoundSchema = z.object({ roundId: id });
+export const socketRoundSchema = z.object({ roundId: id, operationId: operationId.optional() });
 
 export const socketFullscreenSchema = z.object({
   roundId: id,
   reason: z.string().trim().max(60).optional(),
+  operationId: operationId.optional(),
 });
 
 /** Decisao do aluno na correcao colaborativa (enhancements.md secao 45). */
 export const socketReviewSchema = z.object({
   reviewId: id,
   decision: z.enum(["VALID", "INVALID"]),
+  operationId: operationId.optional(),
 });
 
 /** Conjunto fixo: rapido de tocar, facil de moderar, sem texto livre. */
@@ -160,6 +172,13 @@ export const socketTelemetrySchema = z.object({
   roundId: id.optional(),
   type: trimmed(40),
   payload: z.record(z.unknown()).optional(),
+});
+
+/** Heartbeat da aplicação: posição `(roomEpoch, stateVersion)` do cliente. */
+export const socketHeartbeatSchema = z.object({
+  roomEpoch: z.number().int().min(0).optional(),
+  stateVersion: z.number().int().min(0).optional(),
+  sentAt: z.number().int().optional(),
 });
 
 export default {

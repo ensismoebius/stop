@@ -1,6 +1,8 @@
 import asyncHandler from "../lib/asyncHandler.js";
 import roomService from "../services/roomService.js";
 import viewService from "../services/viewService.js";
+import roomRepository from "../repositories/roomRepository.js";
+import { syncStats } from "../sockets/syncRegistry.js";
 
 function baseUrlFromRequest(req) {
   const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
@@ -33,17 +35,26 @@ export const roomController = {
     res.status(201).json(await roomService.join(req.params.code, req.body.registrationNumber)),
   ),
 
-  teacherState: asyncHandler(async (req, res) =>
-    res.json(await viewService.teacherState(req.params.code)),
-  ),
+  teacherState: asyncHandler(async (req, res) => {
+    const version = await roomRepository.getVersion((await roomService.getByCode(req.params.code)).id);
+    const state = await viewService.teacherState(req.params.code, { version });
+    state.syncStats = syncStats(req.params.code, {
+      totalConnected: state.players.filter((player) => player.connected).length,
+      currentEpoch: version.roomEpoch,
+      currentVersion: version.stateVersion,
+    });
+    return res.json(state);
+  }),
 
-  publicState: asyncHandler(async (req, res) =>
-    res.json(await viewService.publicState(req.params.code)),
-  ),
+  publicState: asyncHandler(async (req, res) => {
+    const version = await roomRepository.getVersion((await roomService.getByCode(req.params.code)).id);
+    return res.json(await viewService.publicState(req.params.code, { version }));
+  }),
 
-  playerState: asyncHandler(async (req, res) =>
-    res.json(await viewService.playerState(req.playerSession.id)),
-  ),
+  playerState: asyncHandler(async (req, res) => {
+    const version = await roomRepository.getVersion(req.playerSession.roomId);
+    return res.json(await viewService.playerState(req.playerSession.id, version));
+  }),
 
   close: asyncHandler(async (req, res) =>
     res.json(await roomService.setStatus(req.params.code, "CLOSED")),

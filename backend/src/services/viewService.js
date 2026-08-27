@@ -48,6 +48,21 @@ const LETTER_REVEALED_STATUSES = [
   "FINISHED",
 ];
 
+/**
+ * Anexa a posição `(roomEpoch, stateVersion)` a uma projeção — o par que o
+ * cliente usa para ordenar/adotar estados autoritativos (spec). Sem versão
+ * (chamadas que optaram por não passar `version`) devolve a projeção como
+ * está, preservando o comportamento de chamadas internas antigas.
+ */
+function withVersion(state, version) {
+  if (!version) return state;
+  return {
+    ...state,
+    roomEpoch: version.roomEpoch,
+    stateVersion: version.stateVersion,
+  };
+}
+
 /** Monta o round como o aluno deve ve-lo: letra oculta antes da revelacao. */
 function roundForPlayer(round) {
   const summary = roundSummary(round);
@@ -167,34 +182,37 @@ export const viewService = {
       ? round.categories.filter((category) => category.required).length
       : 0;
 
-    return {
-      room: { id: room.id, code: room.code, status: room.status },
-      game: {
-        id: room.game.id,
-        name: room.game.name,
-        status: room.game.status,
-        className: room.game.class?.name ?? null,
+    return withVersion(
+      {
+        room: { id: room.id, code: room.code, status: room.status },
+        game: {
+          id: room.game.id,
+          name: room.game.name,
+          status: room.game.status,
+          className: room.game.class?.name ?? null,
+        },
+        round: roundSummary(round),
+        serverTime: new Date().toISOString(),
+        requiredCount,
+        players: room.sessions.map((session) => {
+          const participant = participantBySession.get(session.id);
+          return {
+            playerSessionId: session.id,
+            studentId: session.studentId,
+            name: session.student.name,
+            registrationNumber: session.student.registrationNumber,
+            avatarUrl: session.student.avatarUrl,
+            connected: Boolean(session.socketId),
+            roomStatus: session.status,
+            roundStatus: participant?.status ?? null,
+            filled: filled.get(session.id) ?? 0,
+            roundScore: participant?.roundScore ?? 0,
+          };
+        }),
+        ranking: ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId),
       },
-      round: roundSummary(round),
-      serverTime: new Date().toISOString(),
-      requiredCount,
-      players: room.sessions.map((session) => {
-        const participant = participantBySession.get(session.id);
-        return {
-          playerSessionId: session.id,
-          studentId: session.studentId,
-          name: session.student.name,
-          registrationNumber: session.student.registrationNumber,
-          avatarUrl: session.student.avatarUrl,
-          connected: Boolean(session.socketId),
-          roomStatus: session.status,
-          roundStatus: participant?.status ?? null,
-          filled: filled.get(session.id) ?? 0,
-          roundScore: participant?.roundScore ?? 0,
-        };
-      }),
-      ranking: ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId),
-    };
+      ctx.version,
+    );
   },
 
   /** Estado da TV/projetor: sem dados privados dos alunos (spec 4.3). */
@@ -208,18 +226,21 @@ export const viewService = {
           : [];
     const activePlayers = participants.filter((p) => p.status === "PLAYING").length;
 
-    return {
-      room: { code: room.code, status: room.status },
-      game: { name: room.game.name, className: room.game.class?.name ?? null, status: room.game.status },
-      round: roundSummary(round),
-      serverTime: new Date().toISOString(),
-      connectedPlayers: room.sessions.filter((session) => Boolean(session.socketId)).length,
-      totalPlayers: room.sessions.length,
-      activePlayers,
-      submittedPlayers: participants.filter((p) => p.status === "SUBMITTED").length,
-      eliminatedPlayers: participants.filter((p) => p.status === "ELIMINATED").length,
-      ranking: ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId),
-    };
+    return withVersion(
+      {
+        room: { code: room.code, status: room.status },
+        game: { name: room.game.name, className: room.game.class?.name ?? null, status: room.game.status },
+        round: roundSummary(round),
+        serverTime: new Date().toISOString(),
+        connectedPlayers: room.sessions.filter((session) => Boolean(session.socketId)).length,
+        totalPlayers: room.sessions.length,
+        activePlayers,
+        submittedPlayers: participants.filter((p) => p.status === "SUBMITTED").length,
+        eliminatedPlayers: participants.filter((p) => p.status === "ELIMINATED").length,
+        ranking: ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId),
+      },
+      ctx.version,
+    );
   },
 
   /**
@@ -292,31 +313,34 @@ export const viewService = {
         const answers = answersByPlayer.get(session.id) ?? [];
         return [
           session.id,
-          {
-            playerSessionId: session.id,
-            student: session.student,
-            room: { code: room.code, status: room.status },
-            game: { id: room.game.id, name: room.game.name, status: room.game.status },
-            roomStatus: session.status,
-            roundStatus: participant?.status ?? null,
-            round: roundForPlayers,
-            serverTime,
-            answers: answers.map((answer) => ({
-              roundCategoryId: answer.roundCategoryId,
-              value: answer.value,
-            })),
-            reviews: reviewsByGrader.get(session.id) ?? [],
-            ranking,
-            canAnswer:
-              Boolean(round) && round.status === "PLAYING" && participant?.status === "PLAYING",
-          },
+          withVersion(
+            {
+              playerSessionId: session.id,
+              student: session.student,
+              room: { code: room.code, status: room.status },
+              game: { id: room.game.id, name: room.game.name, status: room.game.status },
+              roomStatus: session.status,
+              roundStatus: participant?.status ?? null,
+              round: roundForPlayers,
+              serverTime,
+              answers: answers.map((answer) => ({
+                roundCategoryId: answer.roundCategoryId,
+                value: answer.value,
+              })),
+              reviews: reviewsByGrader.get(session.id) ?? [],
+              ranking,
+              canAnswer:
+                Boolean(round) && round.status === "PLAYING" && participant?.status === "PLAYING",
+            },
+            ctx.version,
+          ),
         ];
       }),
     );
   },
 
   /** Estado do aluno: apenas a propria rodada e as proprias respostas. */
-  async playerState(playerSessionId) {
+  async playerState(playerSessionId, version = null) {
     const session = await prisma.playerSession.findUnique({
       where: { id: playerSessionId },
       include: {
@@ -341,26 +365,29 @@ export const viewService = {
       round.status === "SCORED" ||
       round.status === "FINISHED";
 
-    return {
-      playerSessionId: session.id,
-      student: session.student,
-      room: { code: session.room.code, status: session.room.status },
-      game: { id: session.room.game.id, name: session.room.game.name, status: session.room.game.status },
-      roomStatus: session.status,
-      roundStatus: participant?.status ?? null,
-      round: roundForPlayer(round),
-      reviews,
-      ranking: showRanking ? await loadRanking(session.room.gameId) : [],
-      serverTime: new Date().toISOString(),
-      answers: answers.map((answer) => ({
-        roundCategoryId: answer.roundCategoryId,
-        value: answer.value,
-      })),
-      canAnswer:
-        Boolean(round) &&
-        round.status === "PLAYING" &&
-        participant?.status === "PLAYING",
-    };
+    return withVersion(
+      {
+        playerSessionId: session.id,
+        student: session.student,
+        room: { code: session.room.code, status: session.room.status },
+        game: { id: session.room.game.id, name: session.room.game.name, status: session.room.game.status },
+        roomStatus: session.status,
+        roundStatus: participant?.status ?? null,
+        round: roundForPlayer(round),
+        reviews,
+        ranking: showRanking ? await loadRanking(session.room.gameId) : [],
+        serverTime: new Date().toISOString(),
+        answers: answers.map((answer) => ({
+          roundCategoryId: answer.roundCategoryId,
+          value: answer.value,
+        })),
+        canAnswer:
+          Boolean(round) &&
+          round.status === "PLAYING" &&
+          participant?.status === "PLAYING",
+      },
+      version,
+    );
   },
 };
 

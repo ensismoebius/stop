@@ -6,7 +6,7 @@ import { useServerClock, useCountdown } from "../hooks/useServerClock.js";
 import useFullscreen from "../hooks/useFullscreen.js";
 import useAudio from "../hooks/useAudio.js";
 import useEmojiBursts from "../hooks/useEmojiBursts.js";
-import { emitAck } from "../socket/socket.js";
+import { emitAck, emitCommand } from "../socket/socket.js";
 import api from "../services/api.js";
 import GameHeader from "../components/student/GameHeader.jsx";
 import CategoryList from "../components/student/CategoryList.jsx";
@@ -23,18 +23,15 @@ import Avatar from "../components/common/Avatar.jsx";
 const SYNC_DELAY = 450;
 const MEDAL_BY_POSITION = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
-// Watchdog (fixme.md #1): a cada este intervalo de silencio nas fases de
-// espera o cliente pede o estado de novo. 3s — no limite do intervalo de
+// Watchdog (baseline: recuperação). Base de 3s — no limite do intervalo de
 // heartbeat (15s) fica uma espera longa demais para a turma; aqui a
-// recuperacao de um push perdido sai em ~3s. 30 alunos vigiando = ~10 req/s
-// na fase de espera, aceitavel como rede de seguranca (a chegada dos eventos
-// nomeados de transicao ja cobre o caso comum, entao o watchdog periodico
-// quase nunca precisa disparar).
+// recuperação de um push perdido sai em ~3s.
 const WATCHDOG_STALE_MS = 3_000;
-
-// Fases em que NAO ha digitação em curso e um push perdido deixa o aluno
-// preso. `""` = ainda nao ha rodada ("Aguardando jogadores").
-const WATCHDOG_IDLE_STATUSES = ["", "CREATED", "READY", "STARTING"];
+// Jitter aleatório reparte os pedidos de 30+ alunos vigiando ao mesmo tempo
+// (semancha o "thundering herd"); backoff limitado evita martelar o servidor
+// quando a rede está degradada.
+const WATCHDOG_JITTER_MS = 3_000;
+const WATCHDOG_MAX_MS = 12_000;
 
 // Eventos nomeados que implicam mudanca de estado da rodada. O `roomState`
 // que os acompanha e fire-and-forget: um aluno pode receber o evento
@@ -248,7 +245,7 @@ function useStudentConnection(player, handlers, applyState) {
   const socketRef = useRef(null);
   const lastStateAtRef = useRef(Date.now());
   const refreshRef = useRef(async () => null);
-  const { socket, connected, state, setState } = useRoomSocket({
+  const { socket, connected, state, setState, refresh: hookRefresh, adoptState, syncStatus } = useRoomSocket({
     roomCode: player?.room?.code,
     role: "player",
     playerToken: player?.playerToken,
@@ -257,14 +254,16 @@ function useStudentConnection(player, handlers, applyState) {
   socketRef.current = socket;
 
   /**
-   * Busca o estado autoritativo sob demanda (spec 45). Desde fixme.md #1,
-   * SUBSTITUI o estado compartilhado (nao so o derivado via `applyState`):
-   * sem isso, um cliente que perdeu o push de PLAYING continuaria vendo
-   * `round.status` antigo (CREATED/READY) e nunca sairia da tela de espera.
-   * Adota a versao mais nova pelo `serverTime` para nunca regredir um
-   * `roomState` recebido no meio do voo.
+   * Busca o estado autoritativo sob demanda (spec 45). Em produção delega
+   * para o `refresh` versionado do useRoomSocket: o servidor responde
+   * `CURRENT` quando o cliente já está em dia (custo ~zero) e `ROOM_STATE`
+   * quando ele ficou para trás — e a barreira (`applyAuthoritativeState`)
+   * garante que um estado mais novo recebido no meio do voo nunca regrede.
+   * O fallback abaixo preserva o comportamento histórico (heurística de
+   * `serverTime`) e existe só para ambientes que mockam o hook.
    */
   const refresh = useCallback(async () => {
+    if (hookRefresh) return hookRefresh();
     const socket = socketRef.current;
     if (!socket) return null;
     const response = await emitAck(socket, "requestState", {});
@@ -278,7 +277,7 @@ function useStudentConnection(player, handlers, applyState) {
       applyState(response.data);
     }
     return response;
-  }, [applyState, setState]);
+  }, [hookRefresh, applyState, setState]);
   refreshRef.current = refresh;
 
   // Marca quando o servidor confirmou um estado (push ou ack) pela ultima
@@ -287,27 +286,42 @@ function useStudentConnection(player, handlers, applyState) {
     if (state) lastStateAtRef.current = Date.now();
   }, [state]);
 
-  // Watchdog periodico (fixme.md #1): enquanto a rodada nao comecou, se
-  // nenhum estado chega ha WATCHDOG_STALE_MS, pede de novo. Se ate o
-  // pedido nao for respondido, a conexao esta meia-aberta (fixme.md #3):
-  // derruba e reconecta de forma limpa — o `joinRoom` do reconectar
-  // reentrega o estado autoritativo. Fases de jogo ficam de fora: ali o
-  // `answers` do servidor por cima do que o aluno digita seria perda de
-  // dado, e os eventos nomeados de transicao ja cobrem o caso.
+  // Watchdog de recuperacao (fixme.md #1, spec 46/47): independente de fase
+  // da rodada — roda sempre, nao so na espera. Com requestState versionado
+  // (respota CURRENT quando nada mudou), perguntar durante o jogo é barato e
+  // detecta socket meia-aberta (fixme.md #3) mesmo na fase em que os eventos
+  // nomeados de transicao nao chegam. Jitter aleatorio reparte os pedidos da
+  // turma; em falha, backoff exponencial limitado + reconexao limpa — o
+  // `joinRoom` do reconectar reentrega o estado autoritativo.
   useEffect(() => {
     if (!connected || !state) return undefined;
-    const roundStatus = state?.round?.status ?? "";
-    if (!WATCHDOG_IDLE_STATUSES.includes(roundStatus)) return undefined;
-    const timer = setInterval(async () => {
-      if (Date.now() - lastStateAtRef.current < WATCHDOG_STALE_MS) return;
+    let timer;
+    let backoffMs = WATCHDOG_STALE_MS;
+    const schedule = () => {
+      const jitter = Math.floor(Math.random() * (WATCHDOG_JITTER_MS + 1));
+      const delay = Math.min(backoffMs + jitter, WATCHDOG_MAX_MS);
+      timer = setTimeout(run, delay);
+    };
+    const run = async () => {
+      if (Date.now() - lastStateAtRef.current < WATCHDOG_STALE_MS) {
+        schedule();
+        return;
+      }
       const response = await refresh();
       const instance = socketRef.current;
-      if (!response?.ok && instance?.connected) {
-        instance.disconnect();
-        instance.connect();
+      if (response?.ok) {
+        backoffMs = WATCHDOG_STALE_MS;
+      } else {
+        backoffMs = Math.min(backoffMs * 2, WATCHDOG_MAX_MS);
+        if (instance?.connected) {
+          instance.disconnect();
+          instance.connect();
+        }
       }
-    }, WATCHDOG_STALE_MS);
-    return () => clearInterval(timer);
+      schedule();
+    };
+    schedule();
+    return () => clearTimeout(timer);
   }, [connected, state, refresh]);
 
   // Primeira pintura por REST, antes do handshake do WebSocket (spec 45).
@@ -316,13 +330,17 @@ function useStudentConnection(player, handlers, applyState) {
     api
       .playerState(player.room.code, player.playerToken)
       .then((data) => {
-        setState((current) => current ?? data);
-        applyState(data);
+        if (!data) return;
+        if (adoptState) adoptState(data);
+        else {
+          setState((current) => current ?? data);
+          applyState(data);
+        }
       })
       .catch(() => {});
-  }, [state, player?.room?.code, player?.playerToken, setState, applyState]);
+  }, [state, player?.room?.code, player?.playerToken, setState, applyState, adoptState]);
 
-  return { socket, connected, state, socketRef, refresh };
+  return { socket, connected, state, socketRef, refresh, syncStatus };
 }
 
 /** Deriva fase/categorias/contadores da rodada atual e toca o beep dos últimos segundos. */
@@ -368,7 +386,7 @@ function useStudentFullscreenFlow({ clear, navigate, round, state, socketRef, so
     // servidor elimina o aluno so daquela rodada, avisa via `playerEliminated`
     // e o aluno continua na tela do jogo, apto a jogar a proxima rodada.
     if (socketInstance && round && round.status === "PLAYING" && state?.roundStatus === "PLAYING") {
-      emitAck(socketInstance, "fullscreenExited", { roundId: round.id });
+      emitCommand(socketInstance, "fullscreenExited", { roundId: round.id });
     }
   }, [round, state?.roundStatus, socketRef]);
 
@@ -381,7 +399,7 @@ function useStudentFullscreenFlow({ clear, navigate, round, state, socketRef, so
     // Identificado e pronto para a rodada (spec 7): sem isso o professor so
     // ve WAITING ate a rodada comecar, mesmo com o aluno ja na tela do jogo.
     const socketInstance = socketRef.current;
-    if (socketInstance) emitAck(socketInstance, "ready", {});
+    if (socketInstance) emitCommand(socketInstance, "ready", {});
   }, [audio, fullscreen, socketRef]);
 
   // Sem botao "Entrar na partida": o primeiro toque/tecla do aluno nesta
@@ -431,7 +449,7 @@ function useStudentAnswers({ round, categories, answers, setAnswers, currentId, 
       const socketInstance = socketRef.current;
       if (!socketInstance || !round || round.status !== "PLAYING") return;
       const value = answersRef.current[roundCategoryId] ?? "";
-      const response = await emitAck(socketInstance, "submitAnswer", {
+      const response = await emitCommand(socketInstance, "submitAnswer", {
         roundId: round.id,
         roundCategoryId,
         value,
@@ -496,7 +514,7 @@ function useStudentStop({ round, categories, commit, refresh, setFeedback, socke
     try {
       // Garante que tudo foi enviado antes de reivindicar o STOP.
       await Promise.all(categories.map((category) => commit(category.id)));
-      const response = await emitAck(socketInstance, "requestStop", { roundId: round.id });
+      const response = await emitCommand(socketInstance, "requestStop", { roundId: round.id });
       if (response.ok) {
         setFeedback({ kind: "success", message: "Você deu STOP primeiro!" });
       } else {
@@ -521,7 +539,7 @@ function useStudentReviewActions({ socketRef, setCompletedReviewIds, setFeedback
       if (!socketInstance) return;
       setReviewBusy(true);
       try {
-        const response = await emitAck(socketInstance, "submitReview", { reviewId, decision });
+        const response = await emitCommand(socketInstance, "submitReview", { reviewId, decision });
         if (response.ok) {
           setCompletedReviewIds((current) => new Set(current).add(reviewId));
         } else if (response.error?.code !== "TIMEOUT") {
@@ -580,6 +598,20 @@ function StudentStatusArea({ connection, player, feedback, eliminated, phase, fu
           <div className="notice__title">Você foi eliminado desta rodada</div>
           {eliminated.message ??
             "Você saiu da tela cheia.\n\nVocê poderá participar da próxima rodada."}
+        </div>
+      ) : null}
+
+      {(connection.syncStatus === "DEGRADED" || connection.syncStatus === "UNREACHABLE") ? (
+        <div className="notice notice--sync" role="status">
+          <div className="notice__title">Sincronizando com a sala…</div>
+          <p className="muted">Você está fora de sincronia com o jogo. Tudo bem — seu progresso não foi perdido.</p>
+          <button
+            type="button"
+            className="btn btn--block"
+            onClick={() => connection.refresh?.()}
+          >
+            Sincronizar agora
+          </button>
         </div>
       ) : null}
 

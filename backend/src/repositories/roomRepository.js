@@ -31,6 +31,29 @@ export const roomRepository = {
     prisma.room.findMany({ where: { gameId }, orderBy: { createdAt: "desc" } }),
 
   update: (id, data) => prisma.room.update({ where: { id }, data }),
+
+  /** Posição `(roomEpoch, stateVersion)` corrente da sala (não incrementa). */
+  getVersion: (id) =>
+    prisma.room
+      .findUnique({ where: { id }, select: { roomEpoch: true, stateVersion: true } })
+      .then((room) => ({ roomEpoch: room?.roomEpoch ?? 1, stateVersion: room?.stateVersion ?? 0 })),
+
+  /**
+   * Incrementa `stateVersion` de forma atômica e devolve a nova posição.
+   * Dentro de uma transação, o UPDATE com increment tem precedência sobre
+   * leituras concorrentes (bloqueio de linha em MySQL) e o SELECT devolve o
+   * valor já-incrementado — em difusões concorrentes cada uma vê um número
+   * distinto e monotônico.
+   */
+  bumpStateVersion: (id) =>
+    prisma.$transaction(async (tx) => {
+      const room = await tx.room.update({
+        where: { id },
+        data: { stateVersion: { increment: 1 } },
+        select: { roomEpoch: true, stateVersion: true },
+      });
+      return { roomEpoch: room.roomEpoch, stateVersion: room.stateVersion };
+    }),
 };
 
 export default roomRepository;
