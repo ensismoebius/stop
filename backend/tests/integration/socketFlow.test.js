@@ -4,7 +4,7 @@ import { io as createClient } from "socket.io-client";
 import { createApp } from "../../src/app.js";
 import { createSocketServer } from "../../src/sockets/index.js";
 import { createScenario, prisma, resetDatabase, waitForRoundStatus } from "../helpers/fixtures.js";
-import authService from "../../src/services/authService.js";
+import { emitAck, joinTeacher, joinPlayer, joinScreen, createTestClient } from "../helpers/socket.js";
 import roomService from "../../src/services/roomService.js";
 import roundService from "../../src/services/roundService.js";
 
@@ -14,12 +14,6 @@ let url;
 let scenario;
 let clients = [];
 
-function connect() {
-  const client = createClient(url, { transports: ["websocket"], forceNew: true });
-  clients.push(client);
-  return client;
-}
-
 /** Espera um evento especifico com timeout curto. */
 function waitFor(client, event, timeout = 5000) {
   return new Promise((resolve, reject) => {
@@ -27,16 +21,6 @@ function waitFor(client, event, timeout = 5000) {
     client.once(event, (payload) => {
       clearTimeout(timer);
       resolve(payload);
-    });
-  });
-}
-
-function emit(client, event, payload) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timeout no ack de ${event}`)), 5000);
-    client.emit(event, payload, (response) => {
-      clearTimeout(timer);
-      resolve(response);
     });
   });
 }
@@ -69,51 +53,22 @@ async function joinPlayers() {
   const sessions = [];
   for (const student of scenario.students) {
     const session = await roomService.join(scenario.room.code, student.registrationNumber);
-    const client = connect();
-    const ack = await emit(client, "joinRoom", {
-      roomCode: scenario.room.code,
-      role: "player",
-      playerToken: session.playerToken,
-    });
-    expect(ack.ok).toBe(true);
-    sessions.push({ ...session, client });
+    sessions.push(await joinPlayer(url, scenario.room.code, session.playerToken, clients));
   }
   return sessions;
 }
 
-async function joinTeacher() {
-  const { token } = await authService.login({
-    email: "professor@stop.local",
-    password: "stop-admin",
-  });
-  const client = connect();
-  const ack = await emit(client, "joinRoom", {
-    roomCode: scenario.room.code,
-    role: "teacher",
-    adminToken: token,
-  });
-  expect(ack.ok).toBe(true);
-  return { client, token };
-}
-
-async function joinScreen() {
-  const client = connect();
-  const ack = await emit(client, "joinRoom", { roomCode: scenario.room.code, role: "screen" });
-  expect(ack.ok).toBe(true);
-  return client;
-}
-
 describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
   it("recusa entrada de aluno sem token valido (spec 34)", async () => {
-    const client = connect();
-    const semToken = await emit(client, "joinRoom", {
+    const client = createTestClient(url, clients);
+    const semToken = await emitAck(client, "joinRoom", {
       roomCode: scenario.room.code,
       role: "player",
     });
     expect(semToken.ok).toBe(false);
     expect(semToken.error.code).toBe("UNAUTHORIZED");
 
-    const tokenFalso = await emit(client, "joinRoom", {
+    const tokenFalso = await emitAck(client, "joinRoom", {
       roomCode: scenario.room.code,
       role: "player",
       playerToken: "token-inventado",
@@ -122,8 +77,8 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
   });
 
   it("recusa painel do professor sem credencial administrativa", async () => {
-    const client = connect();
-    const response = await emit(client, "joinRoom", {
+    const client = createTestClient(url, clients);
+    const response = await emitAck(client, "joinRoom", {
       roomCode: scenario.room.code,
       role: "teacher",
     });
@@ -132,23 +87,23 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
   });
 
   it("rejeita payload malformado sem derrubar a conexao (spec 53)", async () => {
-    const client = connect();
-    const response = await emit(client, "joinRoom", { roomCode: "" });
+    const client = createTestClient(url, clients);
+    const response = await emitAck(client, "joinRoom", { roomCode: "" });
     expect(response.ok).toBe(false);
     expect(response.error.code).toBe("BAD_PAYLOAD");
     expect(client.connected).toBe(true);
   });
 
   it("nao aceita acoes de jogo antes de entrar na sala", async () => {
-    const client = connect();
-    const response = await emit(client, "requestStop", { roundId: 1 });
+    const client = createTestClient(url, clients);
+    const response = await emitAck(client, "requestStop", { roundId: 1 });
     expect(response.ok).toBe(false);
     expect(response.error.code).toBe("NOT_IN_ROOM");
   });
 
   it("professor cria a rodada, alunos jogam, STOP encerra e o ranking aparece", async () => {
-    const teacher = await joinTeacher();
-    const screen = await joinScreen();
+    const teacher = await joinTeacher(url, scenario.room.code, clients);
+    const screen = await joinScreen(url, scenario.room.code, clients);
     const players = await joinPlayers();
 
     const round = await roundService.create({
@@ -175,7 +130,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     const categories = started[0].round.categories;
     for (const [index, player] of players.entries()) {
       for (const category of categories) {
-        const ack = await emit(player.client, "submitAnswer", {
+        const ack = await emitAck(player.client, "submitAnswer", {
           roundId: round.id,
           roundCategoryId: category.id,
           value: `${letra}resposta${index}${category.id}`,
@@ -184,7 +139,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
       }
     }
 
-    const progresso = await emit(players[0].client, "submitAnswer", {
+    const progresso = await emitAck(players[0].client, "submitAnswer", {
       roundId: round.id,
       roundCategoryId: categories[0].id,
       value: `${letra}eact`,
@@ -194,7 +149,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
 
     const stoppedOnScreen = waitFor(screen, "roundStopped");
     const stoppedOnTeacher = waitFor(teacher.client, "roundStopped");
-    const stopAck = await emit(players[0].client, "requestStop", { roundId: round.id });
+    const stopAck = await emitAck(players[0].client, "requestStop", { roundId: round.id });
     expect(stopAck.ok).toBe(true);
 
     const stopped = await stoppedOnScreen;
@@ -202,7 +157,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     expect((await stoppedOnTeacher).reason).toBe("STOP");
 
     // Depois do STOP nenhuma resposta e aceita (spec 47).
-    const tarde = await emit(players[1].client, "submitAnswer", {
+    const tarde = await emitAck(players[1].client, "submitAnswer", {
       roundId: round.id,
       roundCategoryId: categories[0].id,
       value: "tarde demais",
@@ -219,7 +174,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
   });
 
   it("segundo STOP simultaneo recebe erro do servidor (spec 13)", async () => {
-    await joinTeacher();
+    await joinTeacher(url, scenario.room.code, clients);
     const players = await joinPlayers();
 
     const round = await roundService.create({
@@ -232,7 +187,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
 
     for (const player of players.slice(0, 2)) {
       for (const category of comLetra.categories) {
-        await emit(player.client, "submitAnswer", {
+        await emitAck(player.client, "submitAnswer", {
           roundId: round.id,
           roundCategoryId: category.id,
           value: `${comLetra.letter}${player.playerSessionId}${category.id}`,
@@ -241,15 +196,15 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     }
 
     const [first, second] = await Promise.all([
-      emit(players[0].client, "requestStop", { roundId: round.id }),
-      emit(players[1].client, "requestStop", { roundId: round.id }),
+      emitAck(players[0].client, "requestStop", { roundId: round.id }),
+      emitAck(players[1].client, "requestStop", { roundId: round.id }),
     ]);
     const okCount = [first, second].filter((response) => response.ok).length;
     expect(okCount).toBe(1);
   });
 
   it("saida do fullscreen elimina o aluno e avisa o cliente (spec 24 e 26)", async () => {
-    const teacher = await joinTeacher();
+    const teacher = await joinTeacher(url, scenario.room.code, clients);
     const players = await joinPlayers();
 
     const round = await roundService.create({
@@ -262,7 +217,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
 
     const eliminadoNoAluno = waitFor(players[0].client, "playerEliminated");
     const eliminadoNoProfessor = waitFor(teacher.client, "playerEliminated");
-    const ack = await emit(players[0].client, "fullscreenExited", { roundId: round.id });
+    const ack = await emitAck(players[0].client, "fullscreenExited", { roundId: round.id });
     expect(ack.ok).toBe(true);
 
     const evento = await eliminadoNoAluno;
@@ -270,7 +225,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     expect(evento.message).toContain("eliminado desta rodada");
     expect((await eliminadoNoProfessor).playerSessionId).toBe(players[0].playerSessionId);
 
-    const bloqueado = await emit(players[0].client, "requestStop", { roundId: round.id });
+    const bloqueado = await emitAck(players[0].client, "requestStop", { roundId: round.id });
     expect(bloqueado.ok).toBe(false);
     expect(bloqueado.error.code).toBe("FORBIDDEN");
   });
@@ -285,7 +240,7 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     await roundService.start(round.id);
     await waitForRoundStatus(round.id, "PLAYING");
 
-    await emit(players[0].client, "submitAnswer", {
+    await emitAck(players[0].client, "submitAnswer", {
       roundId: round.id,
       roundCategoryId: comLetra.categories[0].id,
       value: `${comLetra.letter}esposta`,
@@ -293,8 +248,8 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
 
     players[0].client.close();
 
-    const reconectado = connect();
-    const ack = await emit(reconectado, "joinRoom", {
+    const reconectado = createTestClient(url, clients);
+    const ack = await emitAck(reconectado, "joinRoom", {
       roomCode: scenario.room.code,
       role: "player",
       playerToken: players[0].playerToken,
@@ -307,15 +262,15 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
   });
 
   it("reacao em emoji chega para colegas, professor e tela publica (nova feature)", async () => {
-    const teacher = await joinTeacher();
-    const screen = await joinScreen();
+    const teacher = await joinTeacher(url, scenario.room.code, clients);
+    const screen = await joinScreen(url, scenario.room.code, clients);
     const players = await joinPlayers();
 
     const onTeacher = waitFor(teacher.client, "emojiReceived");
     const onScreen = waitFor(screen, "emojiReceived");
     const onOtherPlayer = waitFor(players[1].client, "emojiReceived");
 
-    const ack = await emit(players[0].client, "sendEmoji", { emoji: "🔥" });
+    const ack = await emitAck(players[0].client, "sendEmoji", { emoji: "🔥" });
     expect(ack.ok).toBe(true);
 
     expect((await onTeacher).emoji).toBe("🔥");
@@ -324,26 +279,26 @@ describe("fluxo end-to-end via Socket.IO (spec 60)", () => {
     expect((await onOtherPlayer).playerSessionId).toBeUndefined();
 
     // Emoji fora do conjunto fixo e rejeitado.
-    const invalido = await emit(players[0].client, "sendEmoji", { emoji: "🍕" });
+    const invalido = await emitAck(players[0].client, "sendEmoji", { emoji: "🍕" });
     expect(invalido.ok).toBe(false);
     expect(invalido.error.code).toBe("BAD_PAYLOAD");
 
     // Cooldown: reenviar rapido demais falha em silencio, sem erro (o
     // aluno nao deve ver nenhum aviso por causa disso).
-    const rapido = await emit(players[0].client, "sendEmoji", { emoji: "👍" });
+    const rapido = await emitAck(players[0].client, "sendEmoji", { emoji: "👍" });
     expect(rapido.ok).toBe(true);
     expect(rapido.data.sent).toBe(false);
 
     // So aluno pode reagir, nunca o professor ou a tela publica.
-    const doProfessor = await emit(teacher.client, "sendEmoji", { emoji: "👍" });
+    const doProfessor = await emitAck(teacher.client, "sendEmoji", { emoji: "👍" });
     expect(doProfessor.ok).toBe(false);
     expect(doProfessor.error.code).toBe("FORBIDDEN");
   });
 
   it("a tela publica recebe estado sem dados privados", async () => {
     await joinPlayers();
-    const screen = await joinScreen();
-    const state = await emit(screen, "requestState", {});
+    const screen = await joinScreen(url, scenario.room.code, clients);
+    const state = await emitAck(screen, "requestState", {});
     expect(state.ok).toBe(true);
     expect(state.data.totalPlayers).toBe(3);
     const serialized = JSON.stringify(state.data);

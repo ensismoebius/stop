@@ -4,7 +4,7 @@ import { io as createClient } from "socket.io-client";
 import { createApp } from "../../src/app.js";
 import { createSocketServer } from "../../src/sockets/index.js";
 import { createScenario, prisma, resetDatabase, waitForRoundStatus } from "../helpers/fixtures.js";
-import authService from "../../src/services/authService.js";
+import { emitAck, joinTeacher, joinPlayer, createTestClient } from "../helpers/socket.js";
 import roomService from "../../src/services/roomService.js";
 import roundService from "../../src/services/roundService.js";
 import logger from "../../src/lib/logger.js";
@@ -16,22 +16,6 @@ let ioServer;
 let url;
 let scenario;
 let clients = [];
-
-function connect() {
-  const client = createClient(url, { transports: ["websocket"], forceNew: true });
-  clients.push(client);
-  return client;
-}
-
-function emit(client, event, payload) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timeout no ack de ${event}`)), 5000);
-    client.emit(event, payload, (response) => {
-      clearTimeout(timer);
-      resolve(response);
-    });
-  });
-}
 
 beforeAll(async () => {
   const app = createApp();
@@ -58,30 +42,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function joinPlayer(student) {
-  const session = await roomService.join(scenario.room.code, student.registrationNumber);
-  const client = connect();
-  const ack = await emit(client, "joinRoom", {
-    roomCode: scenario.room.code,
-    role: "player",
-    playerToken: session.playerToken,
-  });
-  expect(ack.ok).toBe(true);
-  return { ...session, client };
-}
-
-async function joinTeacher() {
-  const { token } = await authService.login({ email: "professor@stop.local", password: "stop-admin" });
-  const client = connect();
-  const ack = await emit(client, "joinRoom", { roomCode: scenario.room.code, role: "teacher", adminToken: token });
-  expect(ack.ok).toBe(true);
-  return { client, token };
-}
-
 describe("eventos de socket ainda não exercitados diretamente", () => {
   it("identifyStudent consulta a matrícula antes da confirmação (spec 6)", async () => {
-    const client = connect();
-    const ack = await emit(client, "identifyStudent", {
+    const client = createTestClient(url, clients);
+    const ack = await emitAck(client, "identifyStudent", {
       roomCode: scenario.room.code,
       registrationNumber: scenario.students[0].registrationNumber,
     });
@@ -90,15 +54,15 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
   });
 
   it("ready marca a sessão como pronta e propaga o estado da sala", async () => {
-    const player = await joinPlayer(scenario.students[0]);
-    const ack = await emit(player.client, "ready", {});
+    const player = await joinPlayer(url, scenario.room.code, (await roomService.join(scenario.room.code, scenario.students[0].registrationNumber)).playerToken, clients);
+    const ack = await emitAck(player.client, "ready", {});
     expect(ack.ok).toBe(true);
     expect(ack.data.status).toBe("READY");
   });
 
   it("telemetry grava o evento vindo de qualquer papel conectado (spec 25)", async () => {
-    const player = await joinPlayer(scenario.students[0]);
-    const ack = await emit(player.client, "telemetry", { type: "TAB_HIDDEN" });
+    const player = await joinPlayer(url, scenario.room.code, (await roomService.join(scenario.room.code, scenario.students[0].registrationNumber)).playerToken, clients);
+    const ack = await emitAck(player.client, "telemetry", { type: "TAB_HIDDEN" });
     expect(ack.ok).toBe(true);
     expect(ack.data.recorded).toBe(true);
     const events = await prisma.telemetryEvent.findMany({ where: { type: "TAB_HIDDEN" } });
@@ -106,8 +70,8 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
   });
 
   it("telemetry vinda de um papel sem sessão de aluno (professor) grava playerSessionId nulo", async () => {
-    const teacher = await joinTeacher();
-    const ack = await emit(teacher.client, "telemetry", { type: "TAB_HIDDEN" });
+    const teacher = await joinTeacher(url, scenario.room.code, clients);
+    const ack = await emitAck(teacher.client, "telemetry", { type: "TAB_HIDDEN" });
     expect(ack.ok).toBe(true);
     const event = await prisma.telemetryEvent.findFirst({
       where: { type: "TAB_HIDDEN", roomId: scenario.room.id },
@@ -118,7 +82,10 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
 
   it("submitReview via socket registra a decisão do aluno (spec 9-16, 45)", async () => {
     const players = [];
-    for (const student of scenario.students) players.push(await joinPlayer(student));
+    for (const student of scenario.students) {
+      const session = await roomService.join(scenario.room.code, student.registrationNumber);
+      players.push(await joinPlayer(url, scenario.room.code, session.playerToken, clients));
+    }
 
     const round = await roundService.create({
       gameId: scenario.game.id,
@@ -129,12 +96,12 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     const started = await waitForRoundStatus(round.id, "PLAYING");
     for (const player of players) await fillAllAnswers(started, player.playerSessionId);
 
-    const stopAck = await emit(players[0].client, "requestStop", { roundId: round.id });
+    const stopAck = await emitAck(players[0].client, "requestStop", { roundId: round.id });
     expect(stopAck.ok).toBe(true);
 
     const review = await prisma.answerReview.findFirst({ where: { roundId: round.id } });
     const grader = players.find((p) => p.playerSessionId === review.graderPlayerSessionId);
-    const reviewAck = await emit(grader.client, "submitReview", {
+    const reviewAck = await emitAck(grader.client, "submitReview", {
       reviewId: review.id,
       decision: "VALID",
     });
@@ -146,8 +113,8 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
     vi.spyOn(roomService, "identify").mockRejectedValueOnce(new Error("falha inesperada"));
 
-    const client = connect();
-    const ack = await emit(client, "identifyStudent", {
+    const client = createTestClient(url, clients);
+    const ack = await emitAck(client, "identifyStudent", {
       roomCode: scenario.room.code,
       registrationNumber: scenario.students[0].registrationNumber,
     });
@@ -170,8 +137,8 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     });
     const sessaoDeOutraSala = await roomService.join(outraSala.code, outroAluno.registrationNumber);
 
-    const client = connect();
-    const ack = await emit(client, "joinRoom", {
+    const client = createTestClient(url, clients);
+    const ack = await emitAck(client, "joinRoom", {
       roomCode: scenario.room.code,
       role: "player",
       playerToken: sessaoDeOutraSala.playerToken,
@@ -181,16 +148,16 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
   });
 
   it("requestState devolve a projeção certa para professor e tela pública", async () => {
-    const teacher = await joinTeacher();
-    const stateTeacher = await emit(teacher.client, "requestState", {});
+    const teacher = await joinTeacher(url, scenario.room.code, clients);
+    const stateTeacher = await emitAck(teacher.client, "requestState", {});
     expect(stateTeacher.ok).toBe(true);
     expect(stateTeacher.data.room).toBeTruthy();
     expect(stateTeacher.data.players).toBeDefined();
   });
 
   it("requestState devolve a projeção do próprio aluno quando pedida por um jogador", async () => {
-    const player = await joinPlayer(scenario.students[0]);
-    const statePlayer = await emit(player.client, "requestState", {});
+    const player = await joinPlayer(url, scenario.room.code, (await roomService.join(scenario.room.code, scenario.students[0].registrationNumber)).playerToken, clients);
+    const statePlayer = await emitAck(player.client, "requestState", {});
     expect(statePlayer.ok).toBe(true);
     expect(statePlayer.data.playerSessionId).toBe(player.playerSessionId);
     expect(statePlayer.data.student.name).toBe(scenario.students[0].name);
@@ -202,7 +169,7 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
       new Error("falha simulada ao marcar desconexão"),
     );
 
-    const player = await joinPlayer(scenario.students[0]);
+    const player = await joinPlayer(url, scenario.room.code, (await roomService.join(scenario.room.code, scenario.students[0].registrationNumber)).playerToken, clients);
     player.client.close();
 
     await vi.waitFor(
@@ -216,8 +183,8 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     );
 
     // O servidor continua respondendo normalmente após a falha tratada.
-    const teacher = await joinTeacher();
-    const state = await emit(teacher.client, "requestState", {});
+    const teacher = await joinTeacher(url, scenario.room.code, clients);
+    const state = await emitAck(teacher.client, "requestState", {});
     expect(state.ok).toBe(true);
   });
 
@@ -226,7 +193,7 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     // eslint-disable-next-line prefer-promise-reject-errors
     vi.spyOn(playerSessionRepository, "markDisconnected").mockRejectedValueOnce("motivo sem .message");
 
-    const player = await joinPlayer(scenario.students[0]);
+    const player = await joinPlayer(url, scenario.room.code, (await roomService.join(scenario.room.code, scenario.students[0].registrationNumber)).playerToken, clients);
     player.client.close();
 
     await vi.waitFor(

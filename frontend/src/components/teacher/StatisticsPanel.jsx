@@ -42,29 +42,25 @@ function SummaryStats({ totals }) {
   );
 }
 
-function PerCategoryStats({ byCategory }) {
+function StatsTable({ title, headers, data, keyField, columns }) {
   return (
     <section className="card stack">
-      <h2>Desempenho por categoria</h2>
+      <h2>{title}</h2>
       <div className="table-wrapper">
         <table>
           <thead>
             <tr>
-              <th scope="col">Categoria</th>
-              <th scope="col">Respostas</th>
-              <th scope="col">Preenchidas</th>
-              <th scope="col">Válidas</th>
-              <th scope="col">Pontos</th>
+              {headers.map((header) => (
+                <th key={header} scope="col">{header}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {byCategory.map((entry) => (
-              <tr key={entry.category}>
-                <td>{entry.category}</td>
-                <td>{entry.answers}</td>
-                <td>{entry.filled}</td>
-                <td>{entry.valid}</td>
-                <td>{entry.totalScore}</td>
+            {data.map((entry) => (
+              <tr key={entry[keyField]}>
+                {columns.map((col) => (
+                  <td key={col.key}>{entry[col.key]}</td>
+                ))}
               </tr>
             ))}
           </tbody>
@@ -74,35 +70,39 @@ function PerCategoryStats({ byCategory }) {
   );
 }
 
+function PerCategoryStats({ byCategory }) {
+  return (
+    <StatsTable
+      title="Desempenho por categoria"
+      headers={["Categoria", "Respostas", "Preenchidas", "Válidas", "Pontos"]}
+      data={byCategory}
+      keyField="category"
+      columns={[
+        { key: "category" },
+        { key: "answers" },
+        { key: "filled" },
+        { key: "valid" },
+        { key: "totalScore" },
+      ]}
+    />
+  );
+}
+
 function PerThemeStats({ byTheme }) {
   return (
-    <section className="card stack">
-      <h2>Desempenho por tema</h2>
-      <div className="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Tema</th>
-              <th scope="col">Rodadas</th>
-              <th scope="col">Válidas</th>
-              <th scope="col">Inválidas</th>
-              <th scope="col">Pontos</th>
-            </tr>
-          </thead>
-          <tbody>
-            {byTheme.map((entry) => (
-              <tr key={entry.theme}>
-                <td>{entry.theme}</td>
-                <td>{entry.rounds}</td>
-                <td>{entry.validAnswers}</td>
-                <td>{entry.invalidAnswers}</td>
-                <td>{entry.totalScore}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <StatsTable
+      title="Desempenho por tema"
+      headers={["Tema", "Rodadas", "Válidas", "Inválidas", "Pontos"]}
+      data={byTheme}
+      keyField="theme"
+      columns={[
+        { key: "theme" },
+        { key: "rounds" },
+        { key: "validAnswers" },
+        { key: "invalidAnswers" },
+        { key: "totalScore" },
+      ]}
+    />
   );
 }
 
