@@ -107,6 +107,39 @@ critério nunca dependa de o aluno abrir uma categoria:
 * `CollaborativeCorrection` — quem corrige o colega precisa saber por qual critério
   julgar; "Letra A" sozinho não diz isso.
 
+#### `AnswerEditor` — "Salvar", e a rolagem que o navegador faz sozinho
+
+A resposta é gravada por debounce, no `blur` e ao trocar de categoria (spec 48) — o
+botão do rodapé nunca foi obrigatório para não perder texto. Ainda assim ele **grava
+explicitamente** antes de fechar, em vez de confiar no `blur`:
+
+```jsx
+onClick={() => { onCommit(category.id); onClose(); }}
+```
+
+Se o aluno tocar no botão com o campo já desfocado, o `blur` não acontece — e um
+botão escrito "Salvar" que às vezes não salva é pior do que não ter botão. O rótulo
+também mudou: era **"Voltar"**, que descreve para onde a tela vai e não o que
+acontece com o que foi digitado; quem está com pressa lê "Voltar" e hesita em tocar.
+(O "Voltar" do `FaceBuilder` continua "Voltar" — lá ele de fato só anda um passo
+para trás no assistente.)
+
+**A caixa de resposta aparecia cortada no celular.** O cabeçalho do aluno é
+`position: sticky` e a barra do STOP é `position: fixed`; a rolagem automática que o
+navegador faz ao focar um campo mira a **viewport inteira**, não a faixa livre entre
+os dois — o campo parava atrás do cabeçalho e sobrava só o rodapé do cartão. A
+correção tem duas camadas, e nenhuma das duas basta sozinha:
+
+* `AnswerEditor` rola o **cartão inteiro** para o centro depois de focar
+  (`scrollIntoView({ block: "center" })`) — centralizar não exige saber a altura do
+  cabeçalho, que muda de fase para fase.
+* `.editor` declara `scroll-margin-top/bottom` como rede para as rolagens que o
+  navegador faz por conta própria e que nem passam pelo nosso código — abrir o
+  teclado virtual, por exemplo.
+
+A primeira cobre o foco que **nós** causamos; a segunda, o que o **sistema** causa.
+Ver também [Implantação em sala](implantacao-em-sala.md#4-cabeçalho-sticky--barra-fixed-vs-a-rolagem-automática-do-navegador).
+
 #### Avatar: `FaceBuilder` (assistente) + `lib/face.js`
 
 O aluno **monta** o próprio rosto; não existe mais galeria de avatares prontos.
@@ -129,12 +162,11 @@ O aluno **monta** o próprio rosto; não existe mais galeria de avatares prontos
   (data URL) e é usado por **todas** as telas (ranking, pódio, monitor do professor,
   cabeçalho do aluno).
 
-Três armadilhas visuais que passaram por 660 testes verdes e só apareceram em
-screenshot — todas de CSS, nenhuma de lógica:
+Quatro armadilhas visuais que passaram por centenas de testes verdes e só
+apareceram em screenshot — todas de CSS, nenhuma de lógica:
 
-1. `FaceSvg` embrulha o SVG num `<span>`. `span` é `display: inline`: sem
-   `display:block` + altura, ele colapsa para a altura de linha e o rosto sai
-   cortado na testa. Daí `.face { display:block; width:100%; height:100% }`.
+1. `FaceSvg` embrulha o SVG num `<span>`. `span` é `display: inline`: ele colapsa
+   para a altura de linha e o rosto sai cortado na testa. Daí `.face { display:block }`.
 2. As classes de avatar espalhadas pelo app foram escritas para `<img>` e usam
    `object-fit`, que **não vale para um `<span>`**. `.face` carrega
    `overflow:hidden; border-radius:inherit` para respeitar o recorte redondo de quem
@@ -142,6 +174,36 @@ screenshot — todas de CSS, nenhuma de lógica:
 3. Itens de grid **esticam por padrão, e o stretch ganha do `aspect-ratio`** — as
    miniaturas ficavam baixas e largas, e o rosto quadrado aparecia cortado na linha
    do cabelo. Corrigido com `align-items: start` na grade.
+4. `.face` **não define tamanho** — e isso é contrato, não esquecimento. Ver a
+   seguir.
+
+##### `.face` não dimensiona: quem manda é a classe do lugar
+
+A primeira versão fechava com `.face { width:100%; height:100% }`, o que parecia
+inofensivo — o wrapper preenche quem o hospeda. Só que `.face` mora em `student.css`
+**depois** de `.student__avatar`, no mesmo arquivo: mesma especificidade (uma
+classe), e nesse empate quem vem depois ganha. O avatar de 22px do cabeçalho do
+aluno virava 100% do pai para todo aluno com rosto montado.
+
+O que tornou o bug difícil de ver foi a **ordem de importação**: `teacher.css` e
+`public.css` carregam depois de `student.css`, então o pódio e o monitor do professor
+estavam acidentalmente protegidos, e só o cabeçalho do próprio aluno pagava a conta.
+Um seletor genérico que dimensiona é uma bomba-relógio de cascata — ele só quebra as
+telas cujo CSS carrega antes dele, então o sintoma parece aleatório e específico
+demais para ser cascata.
+
+O contrato agora é explícito, e os comentários em `student.css` o repetem para não
+ser "otimizado" de volta:
+
+| Quem | Responsabilidade |
+| --- | --- |
+| a classe do lugar (`.podium__avatar`, `.student__avatar`, …) | **dimensiona**, sempre |
+| `.face` | só **recorta** — `display:block; overflow:hidden; border-radius:inherit` |
+| `.face > svg` | preenche a largura, altura vem do `viewBox` quadrado (`width:100%; height:auto`) |
+
+Essa divisão faz `.face` funcionar nos dois arranjos que existem no app: quando ela
+própria é o elemento dimensionado, e quando ela vive dentro de um contêiner de
+tamanho fixo.
 
 A galeria fica num painel de rolagem de **altura fixa** (`.wz__panel`), não
 `max-height`: com altura variável, a lista de 45 cabelos empurrava "Voltar/Próximo"
@@ -186,6 +248,15 @@ revela, repete para o 2º, segura mais tempo no 1º e fecha com `FANFARE` + fogo
 CSS; só então a turma inteira aparece no rodapé. A ordem visual dos degraus é a
 olímpica (2º à esquerda, **1º ao centro e mais alto**, 3º à direita), e cada degrau
 recebe uma **lista** — empates são reais aqui, dois alunos em 1º sobem juntos.
+
+Quem carrega a identidade no pódio é o **rosto**, não o degrau: o avatar é o maior
+elemento da cerimônia (`clamp(5rem, 17vh, 11rem)`; o 1º lugar sobe para
+`clamp(6.5rem, 22vh, 14rem)` e troca o aro branco pelo dourado), e os três blocos
+foram encolhidos para o conjunto continuar cabendo em 720p. O valor *preferido* de
+cada `clamp` é `vh`, não `vw`: a tela pública roda em projetor/TV, altura fixa e sem
+rolagem — o eixo que aperta é o vertical, e um pódio que escala pela largura
+transborda por baixo numa tela 21:9. Os limites continuam em `rem` para o rosto não
+sumir num monitor baixo nem virar um pôster num 4K.
 
 Ao testar: cada passo do roteiro só agenda o próximo **depois de renderizar**, então
 avançar o tempo de dois passos de uma vez não funciona — avance pelo maior atraso do

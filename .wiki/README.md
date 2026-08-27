@@ -4,10 +4,22 @@ Referência técnica do projeto — como as peças se encaixam, por que certas d
 foram tomadas e quais armadilhas já morderam alguém aqui. Complementa, sem duplicar:
 
 * **[README.md](../README.md)** (raiz do projeto) — visão geral, stack, como rodar.
-* **[specifications.md](../specifications.md)** e **[enhancements.md](../enhancements.md)**
-  — requisitos numerados ("spec 17", "enhancements seção 35" etc.) citados nos
-  comentários do código. Esta wiki explica *como* o requisito foi implementado; os
-  specs continuam sendo a fonte da *decisão de produto* original.
+* **[specifications.md](../specifications.md)** — requisitos numerados ("spec 17")
+  citados nos comentários do código. Esta wiki explica *como* o requisito foi
+  implementado; o spec continua sendo a fonte da *decisão de produto* original.
+* **`enhancements.md`** — **não existe mais na árvore de trabalho**: foi apagado no
+  commit `7fa6bae`. Cerca de dez comentários espalhados pelo código continuam
+  citando-o por seção ("enhancements.md seções 9-16" em
+  `reviewAssignment.js`, `CollaborativeCorrection.jsx`, `viewService.js`,
+  `realtime.js`, `lifecycle.js`, `schemas.js`, `GroupedCorrectionPanel.jsx`), então
+  a referência ainda é necessária para entender de onde vieram a correção
+  colaborativa e a revelação sincronizada da letra. Para recuperá-lo:
+
+  ```bash
+  git show 7fa6bae^:enhancements.md > /tmp/enhancements.md
+  ```
+
+  `issues.md`, criado no mesmo commit, está vazio — não é substituto.
 
 ## Arquitetura e dados
 
@@ -28,14 +40,17 @@ foram tomadas e quais armadilhas já morderam alguém aqui. Complementa, sem dup
 ## Frontend
 
 * [Frontend](frontend.md) — páginas por cliente, componentes, hooks, onde cada
-  responsabilidade mora; o montador de rosto do aluno e as duas apresentações de
-  ranking (lista entre rodadas, pódio olímpico no fim).
+  responsabilidade mora; o montador de rosto do aluno, as quatro armadilhas de CSS
+  que nenhum teste pegou, e as duas apresentações de ranking (lista entre rodadas,
+  pódio olímpico no fim).
 
 ## Operação
 
 * [Implantação em sala de aula](implantacao-em-sala.md) — hotspot, o bug do
-  `changeOrigin` do Vite, por que celulares "abandonam" um Wi-Fi sem internet, e o
-  bundle velho que faz uma correção existir no repositório e não na tela.
+  `changeOrigin` do Vite, por que celulares "abandonam" um Wi-Fi sem internet, o
+  bundle velho que faz uma correção existir no repositório e não na tela, e o
+  cabeçalho fixo que esconde o campo que o navegador acabou de "revelar".
 * [Testes](testes.md) — suíte de integração do backend, suíte de componentes do
-  frontend, armadilhas do `fixtures.js`, duas falhas intermitentes já corrigidas, e
-  o padrão de simulação E2E isolada com Playwright.
+  frontend, armadilhas do `fixtures.js`, duas falhas intermitentes já corrigidas, o
+  espião que se instala no protótipo errado, e o padrão de simulação E2E isolada com
+  Playwright.

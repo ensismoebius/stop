@@ -113,9 +113,22 @@ Armadilhas específicas desta suíte:
 * **Contagem de pontos**: usa `requestAnimationFrame` ancorado em `performance.now()`.
   Os testes stubam `requestAnimationFrame` para chamar o callback já "muito depois do
   fim", fazendo o número assentar no valor final de forma síncrona.
-* **Rótulos duplicados**: as miniaturas do avatar têm `alt` com a combinação inteira
-  ("Feliz, Curto 1, Tom de pele 2"), o que colide com os botões dos eixos. Use
-  `within(screen.getByRole("group", { name: … }))` para escopar a busca.
+* **O título do passo aparece três vezes** no assistente de rosto: como `<h3>`, como
+  `aria-label` do `role="group"` que embrulha as opções, e como `aria-label` do botão
+  da trilha que pula para aquele passo. Um `getByRole("button", { name: /Tom de
+  pele/ })` solto casa com o botão da trilha, não com a cor. Escope sempre:
+  `within(screen.getByRole("group", { name: "Tom de pele" })).getByRole("button", {
+  name: "Tom de pele 5" })`.
+* **As miniaturas da galeria não têm nome próprio** — são "Opção 1", "Opção 2"…,
+  porque `variant07` não diz nada a ninguém e o aluno escolhe olhando o rosto. Um
+  teste que queira verificar *o desenho* precisa descer ao DOM
+  (`container.querySelectorAll(".wz__option")`), não à árvore de acessibilidade; o
+  que se afirma pelo papel é a **quantidade** e o índice gravado, não a peça.
+* **`scrollIntoView` é stubado no `HTMLElement.prototype`**, não no
+  `Element.prototype` (o jsdom não implementa layout). Um `vi.spyOn(Element.prototype,
+  "scrollIntoView")` **instala o espião e nunca é chamado**: o stub do `setup.js`
+  vive num protótipo mais próximo do elemento e sombreia o de cima. Espione
+  `window.HTMLElement.prototype` — o mesmo objeto que o `setup.js` remendou.
 * **Avatar é decorativo por padrão** (`alt=""`) porque o nome do aluno já está
   escrito ao lado; só o retrato de quem está montando o rosto recebe `alt`. Um teste
   que procura o avatar por `getByRole("img")` numa lista vai falhar — e está certo

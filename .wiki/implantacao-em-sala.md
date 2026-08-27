@@ -3,8 +3,9 @@
 O uso real do STOP é: computador do professor roda backend + frontend, ativa um
 hotspot Wi-Fi (geralmente **sem internet**, intencionalmente — só a rede local
 importa), e os celulares dos alunos se conectam a esse hotspot para acessar
-`http://<ip-do-hotspot>:5173`. Três armadilhas reais já apareceram nesse cenário
-específico — nenhuma delas visível em desenvolvimento normal (`localhost`).
+`http://<ip-do-hotspot>:5173`. Quatro armadilhas reais já apareceram nesse cenário
+específico — nenhuma delas visível em desenvolvimento normal (`localhost`, num
+monitor grande, com o `dist` recém-compilado).
 
 ## 1. Proxy do Vite reescrevendo o header `Host`
 
@@ -112,6 +113,32 @@ o teste manual final pede recarga forçada (Ctrl+Shift+R) — o hash no nome do 
 ```bash
 curl -s http://127.0.0.1:3000/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js'
 ```
+
+## 4. Cabeçalho `sticky` + barra `fixed` vs. a rolagem automática do navegador
+
+**Sintoma:** no celular, ao tocar numa categoria, a caixa de resposta aparecia
+**cortada** — via-se o rodapé do cartão e quase nada do campo. No monitor do
+professor, nunca.
+
+**Causa:** o campo recebe foco e o navegador rola sozinho para "deixá-lo visível".
+Só que "visível", para o navegador, é *dentro da viewport* — ele não tem como saber
+que o topo está coberto por um cabeçalho `position: sticky` e o pé por uma barra
+`position: fixed`. Ele para o campo numa faixa que, do ponto de vista do aluno, está
+atrás do cabeçalho. Numa tela alta sobra folga suficiente para ninguém notar; num
+celular em modo retrato, com o teclado virtual aberto, a folga é exatamente o que
+não existe.
+
+**Correção,** em duas camadas — `AnswerEditor.jsx` rola o **cartão inteiro** para o
+centro depois de focar (`scrollIntoView({ block: "center" })`), e `.editor`
+(`student.css`) declara `scroll-margin-top/bottom` para as rolagens que o navegador
+faz por conta própria e que nem passam pelo nosso código, como a abertura do
+teclado. Detalhes em [Frontend](frontend.md#answereditor--salvar-e-a-rolagem-que-o-navegador-faz-sozinho).
+
+**Regra prática:** cada novo elemento `sticky`/`fixed` neste app cria uma dívida —
+todo campo focável que possa passar por baixo dele precisa de `scroll-margin`
+correspondente. E o teste é obrigatoriamente num aparelho (ou numa viewport
+estreita de verdade): em `localhost` maximizado esta classe de bug é invisível por
+construção.
 
 ## Verificando ausência de dependência de internet no próprio app
 
