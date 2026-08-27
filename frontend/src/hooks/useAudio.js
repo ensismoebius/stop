@@ -95,31 +95,52 @@ try {
 /**
  * Trilhas de fundo (loop), diferente dos bipes sintetizados acima: aqui
  * usamos gravações de verdade porque um beep de WebAudio não faz "música".
- * Ambas por Kevin MacLeod (incompetech.com), Creative Commons: By
+ * Todas por Kevin MacLeod (incompetech.com), Creative Commons: By
  * Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/) — os
  * arquivos já carregam essa atribuição nas próprias tags ID3.
+ *
+ * Cada fase tem varias trilhas candidatas: uma so sorteada a cada troca de
+ * fase (`pickTrack`) evita que a mesma musica repita partida apos partida.
  */
 const MUSIC_TRACKS = {
-  /** "Ossuary 7 - Resolve": suspense sem agressividade, para não atropelar
-   *  quem está pensando na resposta. Toca em loop durante o PLAYING. */
-  ROUND: "/audio/round-tension.mp3",
-  /** "Winner Winner!": tema comemorativo, em loop durante o pódio. */
-  PODIUM: "/audio/podium-celebration.mp3",
+  /** Suspense sem agressividade, para não atropelar quem está pensando na
+   *  resposta. Toca em loop durante o PLAYING. */
+  ROUND: [
+    "/audio/round-tension.mp3", // "Ossuary 7 - Resolve"
+    "/audio/round-tension-2.mp3", // "Constance"
+    "/audio/round-tension-3.mp3", // "Spy Glass"
+    "/audio/round-tension-4.mp3", // "Kool Kats"
+  ],
+  /** Temas comemorativos, em loop durante o pódio. */
+  PODIUM: [
+    "/audio/podium-celebration.mp3", // "Winner Winner!"
+    "/audio/podium-celebration-2.mp3", // "Monkeys Spinning Monkeys"
+    "/audio/podium-celebration-3.mp3", // "Life of Riley"
+    "/audio/podium-celebration-4.mp3", // "Merry Go"
+  ],
 };
 /** Música fica mais baixa que os efeitos — é ambiente, não é o destaque. */
 const MUSIC_GAIN = 0.5;
 
+/** Sorteia uma trilha entre as candidatas da fase (chave de `MUSIC_TRACKS`). */
+function pickTrack(key) {
+  const tracks = MUSIC_TRACKS[key];
+  if (!tracks || tracks.length === 0) return null;
+  return tracks[Math.floor(Math.random() * tracks.length)];
+}
+
+// Cache por arquivo (nao por fase): cada trilha candidata tem seu proprio
+// <audio>, criado sob demanda na primeira vez que e sorteada.
 const musicPlayers = {};
-function getMusicPlayer(key) {
-  if (musicPlayers[key]) return musicPlayers[key];
-  const src = MUSIC_TRACKS[key];
+function getMusicPlayerForSrc(src) {
   if (!src) return null;
+  if (musicPlayers[src]) return musicPlayers[src];
   try {
     const el = new Audio(src);
     el.loop = true;
     el.preload = "auto";
     el.volume = 0;
-    musicPlayers[key] = el;
+    musicPlayers[src] = el;
     return el;
   } catch {
     return null;
@@ -142,13 +163,16 @@ function safePlay(el) {
 
 // Estado de reprodução de música é módulo-level (como `preloadedVoice`
 // acima): só uma trilha por aba, então não há razão para viver por hook.
-let activeMusicKey = null;
+// `key` é a fase (ROUND/PODIUM); `src` é qual das trilhas candidatas dessa
+// fase foi sorteada desta vez — precisamos dos dois: o primeiro pra saber
+// se a fase mudou, o segundo pra saber qual <audio> de fato desvanecer.
+let activeTrack = { key: null, src: null };
 const fadeFrames = {};
 
 /** Sobe/desce o volume de uma trilha suavemente; pausa de fato ao chegar a 0. */
-function fadeMusic(el, key, to, ms) {
+function fadeMusic(el, src, to, ms) {
   if (!el) return;
-  if (fadeFrames[key]) cancelAnimationFrame(fadeFrames[key]);
+  if (fadeFrames[src]) cancelAnimationFrame(fadeFrames[src]);
   if (to > 0 && el.paused) safePlay(el);
   const from = el.volume;
   const start = performance.now();
@@ -156,13 +180,13 @@ function fadeMusic(el, key, to, ms) {
     const t = Math.min(1, (now - start) / ms);
     el.volume = from + (to - from) * t;
     if (t < 1) {
-      fadeFrames[key] = requestAnimationFrame(step);
+      fadeFrames[src] = requestAnimationFrame(step);
     } else {
-      delete fadeFrames[key];
+      delete fadeFrames[src];
       if (to === 0) el.pause();
     }
   };
-  fadeFrames[key] = requestAnimationFrame(step);
+  fadeFrames[src] = requestAnimationFrame(step);
 }
 
 /**
@@ -201,15 +225,17 @@ export function useAudio() {
   const unlock = useCallback(() => {
     const context = ensureContext();
     if (context && context.state === "suspended") context.resume().catch(() => {});
-    for (const key of Object.keys(MUSIC_TRACKS)) {
-      const el = getMusicPlayer(key);
-      if (!el) continue;
-      try {
-        el.play()
-          ?.then(() => el.pause())
-          ?.catch(() => {});
-      } catch {
-        /* autoplay bloqueado ou play() não implementado: silencioso de proposito */
+    for (const tracks of Object.values(MUSIC_TRACKS)) {
+      for (const src of tracks) {
+        const el = getMusicPlayerForSrc(src);
+        if (!el) continue;
+        try {
+          el.play()
+            ?.then(() => el.pause())
+            ?.catch(() => {});
+        } catch {
+          /* autoplay bloqueado ou play() não implementado: silencioso de proposito */
+        }
       }
     }
   }, [ensureContext]);
@@ -254,35 +280,40 @@ export function useAudio() {
     }
   }, [preference]);
 
-  /** Troca para a trilha `key`, com crossfade; repetir a mesma trilha é no-op. */
+  /**
+   * Troca para a fase `key`, com crossfade; repetir a mesma fase é no-op.
+   * A trilha e sorteada entre as candidatas de `MUSIC_TRACKS[key]` a cada
+   * troca — assim partida apos partida a musica varia.
+   */
   const playMusic = useCallback(
     (key) => {
-      if (activeMusicKey === key) return;
-      const previousKey = activeMusicKey;
-      activeMusicKey = key;
-      if (previousKey) fadeMusic(getMusicPlayer(previousKey), previousKey, 0, 500);
-      if (!preference.enabled) return;
-      const el = getMusicPlayer(key);
+      if (activeTrack.key === key) return;
+      const previous = activeTrack;
+      const src = pickTrack(key);
+      activeTrack = { key, src };
+      if (previous.src) fadeMusic(getMusicPlayerForSrc(previous.src), previous.src, 0, 500);
+      if (!preference.enabled || !src) return;
+      const el = getMusicPlayerForSrc(src);
       if (!el) return;
       el.currentTime = 0;
-      fadeMusic(el, key, preference.volume * MUSIC_GAIN, 900);
+      fadeMusic(el, src, preference.volume * MUSIC_GAIN, 900);
     },
     [preference],
   );
 
   const stopMusic = useCallback(() => {
-    if (!activeMusicKey) return;
-    const key = activeMusicKey;
-    activeMusicKey = null;
-    fadeMusic(getMusicPlayer(key), key, 0, 700);
+    if (!activeTrack.key) return;
+    const { src } = activeTrack;
+    activeTrack = { key: null, src: null };
+    if (src) fadeMusic(getMusicPlayerForSrc(src), src, 0, 700);
   }, []);
 
   // Mudou o volume ou o mudo enquanto uma trilha tocava: acompanha ao vivo,
   // sem esperar a próxima troca de fase para aplicar a preferência nova.
   useEffect(() => {
-    if (!activeMusicKey) return;
-    const el = getMusicPlayer(activeMusicKey);
-    fadeMusic(el, activeMusicKey, preference.enabled ? preference.volume * MUSIC_GAIN : 0, 400);
+    if (!activeTrack.src) return;
+    const el = getMusicPlayerForSrc(activeTrack.src);
+    fadeMusic(el, activeTrack.src, preference.enabled ? preference.volume * MUSIC_GAIN : 0, 400);
   }, [preference]);
 
   return useMemo(

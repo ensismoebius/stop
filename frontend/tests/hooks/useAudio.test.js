@@ -47,15 +47,31 @@ async function loadHook() {
   return mod.useAudio;
 }
 
+// `fadeMusic` anima o volume via requestAnimationFrame ao longo de
+// centenas de ms — tempo real de sobra pra um frame disparar depois que o
+// teste (e o `vi.resetModules()` do próximo) já terminou, mexendo num
+// elemento de áudio de um módulo obsoleto. Forçar o "próximo frame" a
+// acontecer de imediato faz o fade terminar dentro do próprio `act()`,
+// sem deixar nada pendente pra depois do teste.
+const originalRAF = window.requestAnimationFrame;
+const originalCAF = window.cancelAnimationFrame;
+
 beforeEach(() => {
   window.localStorage.clear();
   vi.resetModules();
   delete window.AudioContext;
   delete window.webkitAudioContext;
+  window.requestAnimationFrame = (cb) => {
+    cb(performance.now() + 100000);
+    return 0;
+  };
+  window.cancelAnimationFrame = () => {};
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  window.requestAnimationFrame = originalRAF;
+  window.cancelAnimationFrame = originalCAF;
   delete window.AudioContext;
   delete window.webkitAudioContext;
 });
@@ -200,5 +216,73 @@ describe("useAudio", () => {
     }
     const { result } = renderHook(() => useAudio());
     expect(() => act(() => result.current.playVoice())).not.toThrow();
+  });
+
+  it("playMusic()/stopMusic() do not throw across phase switches", async () => {
+    const useAudio = await loadHook();
+    const { result } = renderHook(() => useAudio());
+    expect(() => act(() => result.current.playMusic("ROUND"))).not.toThrow();
+    expect(() => act(() => result.current.playMusic("PODIUM"))).not.toThrow();
+    expect(() => act(() => result.current.stopMusic())).not.toThrow();
+  });
+
+  it("stopMusic() no-ops when nothing is playing", async () => {
+    const useAudio = await loadHook();
+    const { result } = renderHook(() => useAudio());
+    expect(() => act(() => result.current.stopMusic())).not.toThrow();
+  });
+
+  it("playMusic() sorteia uma trilha mas não re-sorteia enquanto a fase não muda", async () => {
+    const useAudio = await loadHook();
+    const { result } = renderHook(() => useAudio());
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
+    act(() => result.current.playMusic("ROUND"));
+    expect(randomSpy).toHaveBeenCalledTimes(1);
+
+    // Mesma fase de novo: no-op, não sorteia outra vez.
+    act(() => result.current.playMusic("ROUND"));
+    expect(randomSpy).toHaveBeenCalledTimes(1);
+
+    randomSpy.mockRestore();
+  });
+
+  it("playMusic() re-sorteia a trilha depois que stopMusic() encerra a fase", async () => {
+    const useAudio = await loadHook();
+    const { result } = renderHook(() => useAudio());
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
+    act(() => result.current.playMusic("ROUND"));
+    act(() => result.current.stopMusic());
+    act(() => result.current.playMusic("ROUND"));
+    expect(randomSpy).toHaveBeenCalledTimes(2);
+
+    randomSpy.mockRestore();
+  });
+
+  it("playMusic() constrói o <audio> a partir de uma das trilhas candidatas da fase", async () => {
+    const created = [];
+    const originalAudio = window.Audio;
+    window.Audio = function MockAudio(src) {
+      created.push(src);
+      return {
+        src,
+        loop: false,
+        preload: "",
+        volume: 0,
+        currentTime: 0,
+        paused: true,
+        play: vi.fn(() => Promise.resolve()),
+        pause: vi.fn(),
+      };
+    };
+    try {
+      const useAudio = await loadHook();
+      const { result } = renderHook(() => useAudio());
+      act(() => result.current.playMusic("PODIUM"));
+      expect(created.some((src) => src.includes("podium-celebration"))).toBe(true);
+    } finally {
+      window.Audio = originalAudio;
+    }
   });
 });
