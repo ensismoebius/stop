@@ -798,33 +798,33 @@ export function StudentGamePage() {
       />
 
       <main className="student__body">
-        <StudentStatusArea
-          connection={game.connection}
-          player={player}
-          feedback={game.feedback}
-          eliminated={game.eliminated}
-          phase={phase}
-          fullscreenFlow={fullscreenFlow}
-          reviews={game.reviews}
-          completedReviewIds={game.completedReviewIds}
-          reviewActions={reviewActions}
-          message={message}
-        />
+<StudentStatusArea
+        connection={game.connection}
+        player={player}
+        feedback={game.feedback}
+        eliminated={game.eliminated}
+        phase={phase}
+        fullscreenFlow={fullscreenFlow}
+        reviews={game.reviews}
+        completedReviewIds={game.completedReviewIds}
+        reviewActions={reviewActions}
+        message={message}
+      />
 
-        <StudentAnswerArea
+      <StudentRankingList
+        ranking={game.ranking}
+        round={phase.round}
+        gameStatus={game.connection.state?.game?.status}
+        studentId={game.connection.state?.student?.id}
+      />
+
+      <StudentAnswerArea
           currentCategory={currentCategory}
           answers={game.answers}
           phase={phase}
           answerActions={answerActions}
           setCurrentId={game.setCurrentId}
           currentId={game.currentId}
-        />
-
-        <StudentRankingList
-          ranking={game.ranking}
-          round={phase.round}
-          gameStatus={game.connection.state?.game?.status}
-          studentId={game.connection.state?.student?.id}
         />
 
         <StudentFooterControls sendEmoji={reviewActions.sendEmoji} audio={game.audio} leaveRoom={fullscreenFlow.leaveRoom} />
