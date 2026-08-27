@@ -616,18 +616,24 @@
    `overflow:hidden` + `border-radius:inherit` fazem o desenho respeitar o
    recorte redondo de quem o hospeda: as classes de avatar por aí foram
    escritas para <img> (`object-fit`), que não vale para um <span>. */
+/* `.face` NÃO define tamanho de propósito. Ela acompanha classes que já
+   dimensionam (`.podium__avatar`, `.student__avatar`, …) e, como é definida
+   depois delas no bundle, um `width/height: 100%` aqui as sobrescreveria —
+   o avatar de 22px do cabeçalho virava 100% do pai. Quem manda no tamanho é
+   sempre a classe do lugar; aqui só cuidamos do recorte. */
 .face {
   display: block;
-  width: 100%;
-  height: 100%;
   overflow: hidden;
   border-radius: inherit;
 }
 
-.face svg {
+/* O desenho preenche a largura disponível e a altura vem do viewBox
+   quadrado — serve tanto para `.face` ser o elemento dimensionado quanto
+   para ela viver dentro de um contêiner de tamanho fixo. */
+.face > svg {
   display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
 }
 
 .wz__preview {
