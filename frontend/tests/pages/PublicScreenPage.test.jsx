@@ -369,6 +369,26 @@ describe("PublicScreenPage", () => {
     expect(audioMock.toggle).toHaveBeenCalled();
   });
 
+  it("unlocks audio on the very first interaction anywhere on the page, unattended (spec bells-and-whistles)", async () => {
+    // A tela pública normalmente é um TV ligado na sala sem ninguém
+    // clicando no botão de mudo — sem esse desbloqueio genérico a música
+    // de fundo ficava travada pra sempre pela política de autoplay.
+    socketReturn = { connected: true, state: { round: { status: "PLAYING" } } };
+    renderPage("/screen/STOP-1");
+
+    expect(audioMock.unlock).not.toHaveBeenCalled();
+    act(() => {
+      document.dispatchEvent(new Event("keydown"));
+    });
+    expect(audioMock.unlock).toHaveBeenCalledTimes(1);
+
+    // Só desbloqueia uma vez: um segundo gesto qualquer não chama de novo.
+    act(() => {
+      document.dispatchEvent(new Event("pointerdown"));
+    });
+    expect(audioMock.unlock).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the muted icon in the footer when audio is disabled", () => {
     audioMock.enabled = false;
     try {

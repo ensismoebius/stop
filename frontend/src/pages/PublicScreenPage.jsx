@@ -136,6 +136,37 @@ function useScreenMusic(playing, finished, audio) {
   useEffect(() => () => audio.stopMusic(), [audio]);
 }
 
+// A tela publica normalmente e um TV ligado na sala e esquecido: ninguem
+// clica no botaozinho de mudo, entao esperar só por esse clique (unico
+// gatilho de unlock() antes desta funcao existir) deixava a musica de
+// fundo travada pra sempre pela politica de autoplay do navegador — as
+// trocas de fase disparavam playMusic() normalmente, so que o play() de
+// verdade era recusado em silencio. Aqui destravamos no primeiro gesto
+// de qualquer tipo na pagina inteira (clique, toque, tecla) — o que
+// vier primeiro, sem exigir que seja num elemento especifico.
+function useUnlockAudioOnFirstInteraction(audio) {
+  const unlockedRef = useRef(false);
+  useEffect(() => {
+    if (unlockedRef.current) return undefined;
+    const handleInteraction = () => {
+      if (unlockedRef.current) return;
+      unlockedRef.current = true;
+      audio.unlock();
+      document.removeEventListener("pointerdown", handleInteraction);
+      document.removeEventListener("keydown", handleInteraction);
+      document.removeEventListener("touchstart", handleInteraction);
+    };
+    document.addEventListener("pointerdown", handleInteraction);
+    document.addEventListener("keydown", handleInteraction);
+    document.addEventListener("touchstart", handleInteraction);
+    return () => {
+      document.removeEventListener("pointerdown", handleInteraction);
+      document.removeEventListener("keydown", handleInteraction);
+      document.removeEventListener("touchstart", handleInteraction);
+    };
+  }, [audio]);
+}
+
 /**
  * Estado da tela pública: socket + fallback REST + QR code + derivação de
  * fase (lobby/playing/ranking) e contador — extraído da página porque é
@@ -189,6 +220,7 @@ function useScreenState(code) {
 
   useScreenBeep(playing, seconds, audio);
   useScreenMusic(playing, finished, audio);
+  useUnlockAudioOnFirstInteraction(audio);
   const sky = usePodiumSky(now, finished);
 
   return {
@@ -307,11 +339,11 @@ function ScreenFooter({ waitingForPlayers, qrCode, code, audio, connected }) {
             type="button"
             className="btn btn--ghost"
             onClick={() => {
-              // A tela pública normalmente não recebe nenhum clique — este
-              // botão é o único gesto do usuário disponível nela, então é
-              // aqui que a música de fundo (ao contrário dos bipes de
-              // WebAudio) ganha permissão do navegador para tocar sozinha
-              // depois, quando a fase mudar (ver unlock() em useAudio).
+              // Redundante com useUnlockAudioOnFirstInteraction (que já
+              // destrava no primeiro gesto em qualquer lugar da página),
+              // mas clicar aqui é em si um gesto do usuário — chamar de
+              // novo é barato e garante o desbloqueio mesmo se por algum
+              // motivo o listener global não tiver disparado ainda.
               audio.unlock();
               audio.toggle();
             }}

@@ -295,7 +295,11 @@ export function useAudio() {
       if (!preference.enabled || !src) return;
       const el = getMusicPlayerForSrc(src);
       if (!el) return;
-      el.currentTime = 0;
+      try {
+        el.currentTime = 0;
+      } catch {
+        /* metadados ainda não carregados nesse navegador: toca do ponto atual mesmo assim */
+      }
       fadeMusic(el, src, preference.volume * MUSIC_GAIN, 900);
     },
     [preference],
