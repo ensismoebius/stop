@@ -82,7 +82,10 @@ async function handlePlayerJoin(client, context, code) {
     name: context.session.student.name,
     registrationNumber: context.session.student.registrationNumber,
   });
-  await roundService.broadcastState(code);
+  // Coalescido: dezenas de alunos entrando em rajada nao devem disparar
+  // uma difusao completa cada um (fixme.md #2). O cliente recém-entrado ja
+  // recebeu o proprio estado no ack/imediato acima.
+  roundService.broadcastStateSoon(code);
   return state;
 }
 
@@ -124,7 +127,7 @@ async function handleDisconnect(socket, reason) {
       playerSessionId: context.session.id,
       reason,
     });
-    await roundService.broadcastState(context.room.code);
+    roundService.broadcastStateSoon(context.room.code);
   } catch (error) {
     logger.warn("Falha ao tratar desconexao", error?.message ?? error);
   }
@@ -138,7 +141,9 @@ async function handleIdentifyStudent(_client, data) {
 async function handleReady(client) {
   const context = requirePlayer(client);
   await playerSessionRepository.update(context.session.id, { status: "READY" });
-  await roundService.broadcastState(context.room.code);
+  // Coalescido pelo mesmo motivo do join: a classe inteira manda `ready`
+  // no mesmo segundo em que entra na tela do jogo (fixme.md #2).
+  roundService.broadcastStateSoon(context.room.code);
   return { status: "READY" };
 }
 

@@ -13,11 +13,14 @@ import logger from "../../lib/logger.js";
 import { clearRoundTimer, clearTimer, scheduleRoundEnd, scheduleTimer } from "../../game/timers.js";
 import * as realtime from "../../sockets/realtime.js";
 import viewService from "../viewService.js";
-import { lockKey, resolveRoom, getRoundOrFail, broadcastState } from "./shared.js";
+import { lockKey, resolveRoom, getRoundOrFail, broadcastState, broadcastStateSoon } from "./shared.js";
 import { handleTimeout } from "./stop.js";
 
 const revealTimerKey = (roundId) => `round:${roundId}:reveal`;
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+// Re-difusao de confirmacao apos a transicao para PLAYING (fixme.md #4).
+// Colapsa para 0 em teste para a re-difusao nao sobreviver ao tear-down.
+const CONFIRM_BROADCAST_DELAY_MS = env.isTest ? 0 : 1500;
 
 /**
  * Cria a rodada e copia as categorias do conjunto escolhido.
@@ -275,6 +278,14 @@ export async function beginPlaying(roundId) {
       serverTime: new Date().toISOString(),
     });
     await broadcastState(room.code);
+    // Reforco da transicao (fixme.md #4): PLAYING e o estado que libera as
+    // categorias no aluno. Um unico push fire-and-forget pode se perder no
+    // instante exato da mudanca (meia-conexao de Wi-Fi de sala) — o sintoma
+    // real da turma presa na tela de espera. Uma re-difusao coalescida
+    // pouco depois pega quem recebeu o `roundStarted` nomeado mas perdeu o
+    // `roomState` PLAYING. O cliente tambem se auto-recupera
+    // (fixme.md #1), entao isto e so a primeira linha de defesa.
+    setTimeout(() => broadcastStateSoon(room.code), CONFIRM_BROADCAST_DELAY_MS);
     await telemetryRepository.record({
       type: "ROUND_STARTED",
       roomId: room.id,

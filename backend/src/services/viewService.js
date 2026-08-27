@@ -143,10 +143,24 @@ export const viewService = {
     return { room, round };
   },
 
-  /** Estado completo para o painel do professor. */
-  async teacherState(roomCode) {
-    const { room, round } = await viewService.loadRoomContext(roomCode);
-    const participants = round ? await roundParticipantRepository.listByRound(round.id) : [];
+  /**
+   * Estado completo para o painel do professor.
+   *
+   * `ctx` opcional permite ao broadcast calcular `room`/`round`/
+   * `participants`/`ranking` uma unica vez e reaproveitar nas tres
+   * projecoes — sem isso, cada chamada independente refaz as mesmas
+   * consultas (o padrao N+1 que disparava ~6 queries de ranking por
+   * difusao, fixme.md #2). Chamadas avulsas (REST) continuam carregando
+   * tudo sozinhas.
+   */
+  async teacherState(roomCode, ctx = {}) {
+    const { room, round } = ctx.room ? ctx : await viewService.loadRoomContext(roomCode);
+    const participants =
+      ctx.participants !== undefined
+        ? ctx.participants
+        : round
+          ? await roundParticipantRepository.listByRound(round.id)
+          : [];
     const participantBySession = new Map(participants.map((p) => [p.playerSessionId, p]));
     const filled = round ? await filledCountByPlayer(round.id) : new Map();
     const requiredCount = round
@@ -179,14 +193,19 @@ export const viewService = {
           roundScore: participant?.roundScore ?? 0,
         };
       }),
-      ranking: await loadRanking(room.gameId),
+      ranking: ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId),
     };
   },
 
   /** Estado da TV/projetor: sem dados privados dos alunos (spec 4.3). */
-  async publicState(roomCode) {
-    const { room, round } = await viewService.loadRoomContext(roomCode);
-    const participants = round ? await roundParticipantRepository.listByRound(round.id) : [];
+  async publicState(roomCode, ctx = {}) {
+    const { room, round } = ctx.room ? ctx : await viewService.loadRoomContext(roomCode);
+    const participants =
+      ctx.participants !== undefined
+        ? ctx.participants
+        : round
+          ? await roundParticipantRepository.listByRound(round.id)
+          : [];
     const activePlayers = participants.filter((p) => p.status === "PLAYING").length;
 
     return {
@@ -199,7 +218,7 @@ export const viewService = {
       activePlayers,
       submittedPlayers: participants.filter((p) => p.status === "SUBMITTED").length,
       eliminatedPlayers: participants.filter((p) => p.status === "ELIMINATED").length,
-      ranking: await loadRanking(room.gameId),
+      ranking: ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId),
     };
   },
 
@@ -211,9 +230,14 @@ export const viewService = {
    * carrega a sala, os participantes e as respostas em uma consulta cada
    * e monta o estado de cada aluno em memoria (spec 49).
    */
-  async playerStatesForRoom(roomCode) {
-    const { room, round } = await viewService.loadRoomContext(roomCode);
-    const participants = round ? await roundParticipantRepository.listByRound(round.id) : [];
+  async playerStatesForRoom(roomCode, ctx = {}) {
+    const { room, round } = ctx.room ? ctx : await viewService.loadRoomContext(roomCode);
+    const participants =
+      ctx.participants !== undefined
+        ? ctx.participants
+        : round
+          ? await roundParticipantRepository.listByRound(round.id)
+          : [];
     const participantBySession = new Map(participants.map((p) => [p.playerSessionId, p]));
 
     const answersByPlayer = new Map();
@@ -260,7 +284,7 @@ export const viewService = {
     // aparecia nesse caso, mesmo com a partida encerrada.
     const showRanking =
       room.game.status === "FINISHED" || !round || round.status === "SCORED" || round.status === "FINISHED";
-    const ranking = showRanking ? await loadRanking(room.gameId) : [];
+    const ranking = showRanking ? (ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId)) : [];
 
     return new Map(
       room.sessions.map((session) => {

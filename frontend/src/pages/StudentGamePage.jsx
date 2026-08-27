@@ -23,6 +23,41 @@ import Avatar from "../components/common/Avatar.jsx";
 const SYNC_DELAY = 450;
 const MEDAL_BY_POSITION = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
+// Watchdog (fixme.md #1): a cada este intervalo de silencio nas fases de
+// espera o cliente pede o estado de novo. 3s — no limite do intervalo de
+// heartbeat (15s) fica uma espera longa demais para a turma; aqui a
+// recuperacao de um push perdido sai em ~3s. 30 alunos vigiando = ~10 req/s
+// na fase de espera, aceitavel como rede de seguranca (a chegada dos eventos
+// nomeados de transicao ja cobre o caso comum, entao o watchdog periodico
+// quase nunca precisa disparar).
+const WATCHDOG_STALE_MS = 3_000;
+
+// Fases em que NAO ha digitação em curso e um push perdido deixa o aluno
+// preso. `""` = ainda nao ha rodada ("Aguardando jogadores").
+const WATCHDOG_IDLE_STATUSES = ["", "CREATED", "READY", "STARTING"];
+
+// Eventos nomeados que implicam mudanca de estado da rodada. O `roomState`
+// que os acompanha e fire-and-forget: um aluno pode receber o evento
+// nomeado e ainda assim perder o push que o descolaria da tela de espera —
+// exatamente o sintoma da turma. Ao ouvir qualquer um deles, o cliente
+// pede o estado autoritativo na hora (fixme.md #1), barato (so este aluno).
+const TRANSITION_EVENTS = [
+  "roundCreated",
+  "letterSelected",
+  "roundStarting",
+  "syncCountdownReleased",
+  "roundStarted",
+  "roundStopped",
+  "roundTimedOut",
+  "roundCancelled",
+  "nextRound",
+  "collaborativeCorrectionStarted",
+  "collaborativeCorrectionFinished",
+  "correctionStarted",
+  "scoreUpdated",
+  "rankingUpdated",
+];
+
 const STATUS_MESSAGE = {
   CREATED: { title: "Aguardando", text: "O professor está preparando a rodada." },
   READY: { title: "Preparar!", text: "A letra foi sorteada. Aguarde a revelação na tela." },
@@ -194,33 +229,86 @@ function useStudentHandlers({
   );
 }
 
-/** Conexão de socket do aluno + fallback REST inicial + `refresh` sob demanda (spec 45). */
+/** Envolve os handlers de transicao para que, alem do efeito local, pecam o estado autoritativo na hora (fixme.md #1). */
+function withTransitionRefresh(handlers, refreshRef) {
+  const enriched = { ...handlers };
+  for (const event of TRANSITION_EVENTS) {
+    const original = enriched[event];
+    if (typeof original !== "function") continue;
+    enriched[event] = (payload) => {
+      original(payload);
+      refreshRef.current();
+    };
+  }
+  return enriched;
+}
+
+/** Conexão de socket do aluno + fallback REST inicial + `refresh` sob demanda + watchdog (fixme.md #1/#3, spec 45). */
 function useStudentConnection(player, handlers, applyState) {
   const socketRef = useRef(null);
+  const lastStateAtRef = useRef(Date.now());
+  const refreshRef = useRef(async () => null);
   const { socket, connected, state, setState } = useRoomSocket({
     roomCode: player?.room?.code,
     role: "player",
     playerToken: player?.playerToken,
-    handlers,
+    handlers: withTransitionRefresh(handlers, refreshRef),
   });
   socketRef.current = socket;
 
   /**
-   * Busca o estado autoritativo sob demanda. Nao e mais necessario apos
-   * cada evento — o servidor empurra `roomState` automaticamente (spec 45)
-   * — mas serve de rede de seguranca apos uma acao cujo resultado nao
-   * gerou push (por exemplo, um STOP rejeitado).
+   * Busca o estado autoritativo sob demanda (spec 45). Desde fixme.md #1,
+   * SUBSTITUI o estado compartilhado (nao so o derivado via `applyState`):
+   * sem isso, um cliente que perdeu o push de PLAYING continuaria vendo
+   * `round.status` antigo (CREATED/READY) e nunca sairia da tela de espera.
+   * Adota a versao mais nova pelo `serverTime` para nunca regredir um
+   * `roomState` recebido no meio do voo.
    */
   const refresh = useCallback(async () => {
     const socket = socketRef.current;
     if (!socket) return null;
     const response = await emitAck(socket, "requestState", {});
     if (response.ok) {
-      setState((current) => current ?? response.data);
+      setState((current) => {
+        if (!current) return response.data;
+        const currentTime = current.serverTime ? new Date(current.serverTime).getTime() : -Infinity;
+        const nextTime = response.data?.serverTime ? new Date(response.data.serverTime).getTime() : Infinity;
+        return nextTime >= currentTime ? response.data : current;
+      });
       applyState(response.data);
     }
-    return response.ok ? response.data : null;
+    return response;
   }, [applyState, setState]);
+  refreshRef.current = refresh;
+
+  // Marca quando o servidor confirmou um estado (push ou ack) pela ultima
+  // vez — o watchdog usa isso para saber que algo "deveria ter chegado".
+  useEffect(() => {
+    if (state) lastStateAtRef.current = Date.now();
+  }, [state]);
+
+  // Watchdog periodico (fixme.md #1): enquanto a rodada nao comecou, se
+  // nenhum estado chega ha WATCHDOG_STALE_MS, pede de novo. Se ate o
+  // pedido nao for respondido, a conexao esta meia-aberta (fixme.md #3):
+  // derruba e reconecta de forma limpa — o `joinRoom` do reconectar
+  // reentrega o estado autoritativo. Fases de jogo ficam de fora: ali o
+  // `answers` do servidor por cima do que o aluno digita seria perda de
+  // dado, e os eventos nomeados de transicao ja cobrem o caso.
+  useEffect(() => {
+    if (!connected || !state) return undefined;
+    const roundStatus = state?.round?.status ?? "";
+    if (!WATCHDOG_IDLE_STATUSES.includes(roundStatus)) return undefined;
+    const timer = setInterval(async () => {
+      if (Date.now() - lastStateAtRef.current < WATCHDOG_STALE_MS) return;
+      const response = await refresh();
+      const instance = socketRef.current;
+      if (!response?.ok && instance?.connected) {
+        instance.disconnect();
+        instance.connect();
+      }
+    }, WATCHDOG_STALE_MS);
+    return () => clearInterval(timer);
+  }, [connected, state, refresh]);
 
   // Primeira pintura por REST, antes do handshake do WebSocket (spec 45).
   useEffect(() => {

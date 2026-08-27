@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import helmet from "helmet";
 import env from "./config/env.js";
 import logger from "./lib/logger.js";
@@ -70,6 +71,11 @@ export function createApp() {
       credentials: true,
     }),
   );
+  // Gzip (fixme.md #6): o bundle do frontend cru atravessa o router barato
+  // da sala para 30+ celulares de uma vez. Compressao antes das rotas API,
+  // do static e do fallback. O trafego Socket.IO nao passa por aqui (o
+  // engine.io atende pelo propio path antes do Express).
+  app.use(compression());
   // Restaurar um backup é um JSON só, mas pode carregar um semestre inteiro
   // de partidas — bem acima do limite geral de 256kb logo abaixo. Registrado
   // antes dele: quem bate nessa rota usa este limite maior, e o parser

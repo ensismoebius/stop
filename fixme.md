@@ -74,45 +74,56 @@ Missing the PLAYING push + half-open socket = stuck for the whole round.
 
 ### 1. Student-side watchdog (highest leverage — fixes the permanent stuck)
 
-- [ ] **Add a watchdog to the student page.** While waiting (round `CREATED`/`READY`/
+- [x] **Add a watchdog to the student page.** While waiting (round `CREATED`/`READY`/
   `STARTING`) and/or whenever no `roomState` has arrived for ~N seconds while
   `connected`, re-request the authoritative state via `emitAck(socket, "requestState")`
   or the REST `playerState` — both endpoints already exist and return the full state.
   This turns any missed push into a seconds-long recovery instead of a stuck screen.
+  *Implemented: `withTransitionRefresh` (14 transition events also trigger
+  `requestState`) + 3 s periodic backstop in `StudentGamePage.jsx`; reconnect on
+  failed refresh.*
 - [ ] Same watchdog can also cover the footer "you are not in fullscreen" state so a
   silently-restarted round still picks up `PLAYING`.
 
 ### 2. Coalesce the burst + stop redundant ranking
 
-- [ ] Debounce/throttle the `broadcastState` triggered by join/`ready` (e.g. a
+- [x] Debounce/throttle the `broadcastState` triggered by join/`ready` (e.g. a
   100-200 ms window) so 30 quick signals don't fan out 30 full satellite broadcasts.
-- [ ] Compute `loadRanking` and `playerStatesForRoom` **once** per `broadcastState`
+  *Implemented: `broadcastStateSoon` (150 ms coalescer) for join/ready/disconnect in
+  `round/shared.js`; critical transitions keep the awaited immediate broadcast.*
+- [x] Compute `loadRanking` and `playerStatesForRoom` **once** per `broadcastState`
   and reuse the result across `teacherState`/`publicState`/`playerStatesForRoom`
   instead of running the ranking 3x per broadcast (`viewService.js:182, 202, 263`).
+  *Implemented: single `loadRoomBroadcastContext` pass shared via the `ctx` argument.*
 
 ### 3. Detect dead peers sooner so rejoin self-heals
 
-- [ ] Shorten `pingInterval`/`pingTimeout` (e.g. 10 s/15 s) in
-  `backend/src/sockets/index.js`.
-- [ ] Client-side "no event received in X seconds while `connected` -> force
+- [x] Shorten `pingInterval`/`pingTimeout` (e.g. 10 s/15 s) in
+  `backend/src/sockets/index.js`. *Implemented.*
+- [x] Client-side "no event received in X seconds while `connected` -> force
   reconnect" timer, so half-open sockets rejoin and re-`joinRoom` sooner.
+  *Implemented: 3 s staleness watchdog in `StudentGamePage.jsx` forces
+  `disconnect()` + `connect()` when `requestState` also fails.*
 
 ### 4. Reliability for the PLAYING transition specifically
 
-- [ ] After the transition to `PLAYING`, re-push `roomState` to any player who did
+- [x] After the transition to `PLAYING`, re-push `roomState` to any player who did
   not ack (e.g. reuse `requestAck` accounting from
   `syncCountdownRequested` — `realtime.js:59-73`) instead of a single fire-and-forget
-  broadcast.
+  broadcast. *Implemented as a simpler equivalent: `beginPlaying` schedules a
+  `broadcastStateSoon` re-diffusion ~1.5 s after PLAYING (0 in tests) — catches those
+  who got `roundStarted` but missed the `roomState` push, without ack round-trips.*
 
 ### 5. WebSocket flakiness check (cheap router)
 
-- [ ] **Make the transport configurable and test both modes in class.** Today it is
+- [x] **Make the transport configurable and test both modes in class.** Today it is
   hardcoded `["websocket", "polling"]` (`frontend/src/socket/socket.js:12`). Cheap
   routers black-hole long-lived WebSocket flows; if that proves to be the router's
   failure mode, force `["polling"]` in classroom mode — polling is a sequence of short
   HTTP exchanges, nothing persistent for the router to corrupt, and for 30 clients the
   extra latency is negligible. Keep websocket-first in dev; gate the choice behind an
-  env var (`VITE_SOCKET_TRANSPORTS`) and A/B it in a real run.
+  env var (`VITE_SOCKET_TRANSPORTS`) and A/B it in a real run. *Implemented via
+  `resolveTransports()` reading `VITE_SOCKET_TRANSPORTS`, default unchanged.*
 - [ ] Before assuming load is the culprit, verify the router is actually the flaky
   layer: watch the server log for a burst of `disconnect`/`playerLeft` at game start,
   and watch the teacher monitor for `connected` flapping. If drops cluster right at
@@ -121,11 +132,12 @@ Missing the PLAYING push + half-open socket = stuck for the whole round.
 
 ### 6. Compression — smaller bundle, less airtime over the router
 
-- [ ] Add `app.use(compression())` in `backend/src/app.js` (gzip; enable brotli where
+- [x] Add `app.use(compression())` in `backend/src/app.js` (gzip; enable brotli where
   supported). At game start ~30 phones download the JS/CSS bundle at nearly the same
   instant; the bundle is currently served uncompressed by `express.static`
   (`app.js:88`). Compression shrinks transfer severalfold, which means fewer router
   collisions and less tail latency at the exact moment the page loads.
+  *Implemented; `frontend/dist` rebuilt (603 kB -> 208 kB gzip).*
 - [ ] Rebuild `frontend/dist` after any change and confirm the served
   `Content-Encoding: gzip` in a classroom test (the stale-bundle warning in
   `app.js` covers forgetting the rebuild).

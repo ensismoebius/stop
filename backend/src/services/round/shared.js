@@ -1,6 +1,7 @@
 import { badRequest, notFound } from "../../lib/errors.js";
 import logger from "../../lib/logger.js";
-import roundRepository from "../../repositories/roundRepository.js";
+import env from "../../config/env.js";
+import roundRepository, { roundParticipantRepository } from "../../repositories/roundRepository.js";
 import roomRepository from "../../repositories/roomRepository.js";
 import * as realtime from "../../sockets/realtime.js";
 import viewService from "../viewService.js";
@@ -33,9 +34,15 @@ export async function getRoundOrFail(roundId) {
  */
 export async function broadcastState(roomCode) {
   try {
+    const { room, round, participants } = await loadRoomBroadcastContext(roomCode);
+    // Ranking e participantes carregados UMA vez e compartilhados pelas
+    // tres projecoes. Antes da coalescence do fixme.md #2, cada uma das
+    // tres montava o proprio contexto: eram ~6 consultas de ranking + 3
+    // de contexto por difusao, multiplicadas pela rajada de join/ready.
+    const ranking = await viewService.loadRanking(room.gameId);
     const [teacher, publicView] = await Promise.all([
-      viewService.teacherState(roomCode),
-      viewService.publicState(roomCode),
+      viewService.teacherState(roomCode, { room, round, participants, ranking }),
+      viewService.publicState(roomCode, { room, round, participants, ranking }),
     ]);
     realtime.toTeachers(roomCode, "roomState", teacher);
     realtime.toScreens(roomCode, "roomState", publicView);
@@ -45,7 +52,12 @@ export async function broadcastState(roomCode) {
     // por tabela para a sala inteira) em vez de uma rodada de queries por
     // aluno conectado.
     try {
-      const playerStates = await viewService.playerStatesForRoom(roomCode);
+      const playerStates = await viewService.playerStatesForRoom(roomCode, {
+        room,
+        round,
+        participants,
+        ranking,
+      });
       for (const [playerSessionId, playerState] of playerStates) {
         realtime.toPlayer(playerSessionId, "roomState", playerState);
       }
@@ -55,4 +67,44 @@ export async function broadcastState(roomCode) {
   } catch (error) {
     logger.warn("Falha ao difundir estado da sala", error?.message ?? error);
   }
+}
+
+/**
+ * Contexto comum das tres projecoes de uma difusao, consultado uma unica
+ * vez. `room`/`round` vem de `loadRoomContext` (duas consultas); os
+ * participantes da rodada corrente sao a terceira.
+ */
+async function loadRoomBroadcastContext(roomCode) {
+  const { room, round } = await viewService.loadRoomContext(roomCode);
+  const participants = round ? await roundParticipantRepository.listByRound(round.id) : [];
+  return { room, round, participants };
+}
+
+// Janela de coalescencia para eventos de alta frequencia (join/ready/
+// disconnect de dezenas de alunos em rajada). Em teste (sem carga real)
+// colapsa para 0 para nao deixar difusoes pendentes apos o tear-down.
+const COALESCE_WINDOW_MS = env.isTest ? 0 : 150;
+
+const coalescedByRoom = new Map();
+
+/**
+ * `broadcastState` coalescido (fixme.md #2): agrupa varias solicitacoes da
+ * mesma sala numa unica difusao alguns milissegundos depois. Nunca perde
+ * correcao — a difusao rele o estado ja persistido do banco no momento em
+ * que dispara. Transicoes criticas da rodada continuam usando
+ * `broadcastState` imediato/aguardado; este serve exclusivamente para
+ * diminuir a rajada de join/ready sem mudar o comportamento percebido.
+ * Sem Socket.IO (testes de rules de negocio) nao ha nada a avisar.
+ */
+export function broadcastStateSoon(roomCode) {
+  if (!realtime.getIo()) return;
+  const pending = coalescedByRoom.get(roomCode);
+  if (pending) clearTimeout(pending);
+  coalescedByRoom.set(
+    roomCode,
+    setTimeout(() => {
+      coalescedByRoom.delete(roomCode);
+      broadcastState(roomCode);
+    }, COALESCE_WINDOW_MS),
+  );
 }

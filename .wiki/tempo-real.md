@@ -122,3 +122,41 @@ Ao adicionar uma nova ação que muda status de jogo/rodada/sala, confira se
 `broadcastState` está sendo chamado — é o erro mais fácil de cometer (e mais difícil
 de notar em teste manual rápido, porque o evento específico *parece* funcionar) neste
 código.
+
+### Coalescência e um único passe de contexto (fixme.md #2)
+
+Dois ajustes no `broadcastState` para a rajada de join/ready de 30 alunos:
+
+1. **Um só passe de contexto/ranking.** As três projeções (`teacherState`,
+   `publicState`, `playerStatesForRoom`) agora aceitam um `ctx` opcional
+   (`{ room, round, participants, ranking }`): o `broadcastState` carrega isso
+   **uma vez** e compartilha. Antes eram ~6 consultas de ranking + 3 de contexto por
+   difusão; agora ~2. Chamadas avulsas (REST, ack de `joinRoom`) seguem sem ctx e
+   carregam tudo sozinhas.
+2. **`broadcastStateSoon` (coalescido)** — `round/shared.js`. Usam-no os sócios de
+   alta frequência `join`/`ready`/`disconnect` (handlers.js): agrupa várias solicitações
+   da mesma sala numa única difusão ~150ms depois. Nunca perde correção (a difusão
+   relê o estado já persistido do banco ao disparar). Sem Socket.IO (testes de regra
+   de negócio) vira no-op. Transições críticas da rodada continuam no `broadcastState`
+   aguardado/imediato.
+
+### Confirmação da transição PLAYING (fixme.md #4)
+
+`beginPlaying` agenda uma re-difusão coalescida (`broadcastStateSoon`) ~1,5s depois do
+`roomState` PLAYING: pega o aluno que recebeu o `roundStarted` nomeado mas perdeu o
+push fire-and-forget que o descolaria da tela de espera.
+
+### Recuperação do lado do cliente (fixme.md #1/#3)
+
+O `roomState` é fire-and-forget, então o cliente não espera passivamente por ele:
+
+- **Eventos nomeados de transição** (`roundCreated`, `roundStarting`,
+  `syncCountdownReleased`, `roundStarted`, `roundStopped`, etc.) agora também disparam
+  um `requestState` no `StudentGamePage.jsx` (`withTransitionRefresh`) — barato (só
+  aquele aluno) e cobre o push perdido no instante exato da mudança.
+- **Watchdog periódico**: em fases sem digitação (`""`/CREATED/READY/STARTING), se
+  nenhum estado chega em 3s, o cliente pede de novo; se até o pedido falhar, derruba
+  e reconecta de forma limpa (o `joinRoom` do reconnect reentrega o estado).
+- **Heartbeat** (`sockets/index.js`): `pingInterval 10s / pingTimeout 15s`
+  (era 20s/25s) para derrubar mais cedo conexões meio-abertas que routers baratos
+  "engolem".

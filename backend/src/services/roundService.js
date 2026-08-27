@@ -1,4 +1,4 @@
-import { lockKey, resolveRoom, getRoundOrFail, broadcastState } from "./round/shared.js";
+import { lockKey, resolveRoom, getRoundOrFail, broadcastState, broadcastStateSoon } from "./round/shared.js";
 import { create, drawRoundLetter, start, finish, cancel, next } from "./round/lifecycle.js";
 import { requestStop, forceStop, handleTimeout, finalizeRound, eliminate } from "./round/stop.js";
 import {
@@ -19,6 +19,7 @@ export { lockKey };
 
 export const roundService = {
   broadcastState,
+  broadcastStateSoon,
   resolveRoom,
   create,
   drawRoundLetter,
