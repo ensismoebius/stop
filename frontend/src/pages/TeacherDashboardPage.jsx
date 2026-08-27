@@ -519,7 +519,7 @@ function TabPanel({ tabKey, active, children }) {
 }
 
 function DashboardHeader({ tab, setTab, room, connected, teacher, logout, syncStats }) {
-  const syncing = syncStats && syncStats.totalConnected > 0 && syncStats.synchronized < syncStats.totalConnected;
+  const syncing = syncStats && syncStats.expected > 0 && syncStats.synchronized < syncStats.expected;
   return (
     <header className="topbar">
       <span className="topbar__brand">STOP · PROFESSOR</span>
@@ -569,11 +569,11 @@ function DashboardHeader({ tab, setTab, room, connected, teacher, logout, syncSt
             role="status"
             title={`${syncStats.stale ?? 0} alunos defasados do estado autoritativo`}
           >
-            Sincronizando {syncStats.synchronized}/{syncStats.totalConnected}
+            Sincronizando {syncStats.synchronized}/{syncStats.expected}
           </span>
         ) : room && syncStats ? (
           <span className="badge badge--playing" role="status">
-            Sincronizado {syncStats.synchronized}/{syncStats.totalConnected}
+            Sincronizado {syncStats.synchronized}/{syncStats.expected}
           </span>
         ) : null}
         <span className="muted">{teacher?.name}</span>

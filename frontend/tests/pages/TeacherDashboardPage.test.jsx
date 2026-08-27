@@ -1207,7 +1207,10 @@ describe("TeacherDashboardPage", () => {
 
     api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
     await user.click(screen.getByRole("button", { name: "rc-select-game" }));
-    const pill = await screen.findByText("Sincronizado 28/28");
+    const pill = await screen.findByText((content, element) => {
+      const text = (content ?? "").replace(/\s/g, "");
+      return Boolean(element?.classList?.contains("badge")) && text === "Sincronizado28/28";
+    });
     expect(pill.className).toContain("badge--playing");
   });
 
@@ -1223,7 +1226,10 @@ describe("TeacherDashboardPage", () => {
 
     api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
     await user.click(screen.getByRole("button", { name: "rc-select-game" }));
-    const pill = await screen.findByText("Sincronizando 25/28");
+    const pill = await screen.findByText((content, element) => {
+      const text = (content ?? "").replace(/\s/g, "");
+      return Boolean(element?.classList?.contains("badge")) && text === "Sincronizando25/28";
+    });
     expect(pill.className).toContain("badge--eliminated");
   });
 
