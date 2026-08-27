@@ -51,6 +51,9 @@ vi.mock("../../src/services/api.js", () => ({
     deleteCategory: vi.fn(),
     searchReports: vi.fn(),
     categoryStats: vi.fn(),
+    exportBackup: vi.fn(),
+    restoreBackup: vi.fn(),
+    eraseHistory: vi.fn(),
   },
 }));
 
@@ -212,6 +215,15 @@ vi.mock("../../src/components/teacher/ConfigPanel.jsx", () => ({
       </button>
       <button type="button" onClick={() => props.onDeleteStudent(9)}>
         cfg-delete-student
+      </button>
+      <button type="button" onClick={() => props.onExportBackup()}>
+        cfg-export-backup
+      </button>
+      <button type="button" onClick={() => props.onRestoreBackup({ version: 1, data: {} })}>
+        cfg-restore-backup
+      </button>
+      <button type="button" onClick={() => props.onEraseHistory()}>
+        cfg-erase-history
       </button>
     </div>
   ),
@@ -1097,6 +1109,27 @@ describe("TeacherDashboardPage", () => {
     // WAS cleared here — covered above. This test asserts the opposite path
     // isn't exercised improperly by asserting selection right after select.
     expect(screen.getByTestId("config-panel")).toHaveTextContent("config-panel:0:0:3");
+  });
+
+  it("wires the maintenance actions (backup/restore/erase) through the guard with the admin token", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    api.eraseHistory.mockResolvedValue({ gamesDeleted: 2 });
+    api.exportBackup.mockResolvedValue({ version: 1, data: {} });
+    api.restoreBackup.mockResolvedValue(undefined);
+    renderDashboard();
+    await screen.findByTestId("room-control");
+    await user.click(screen.getByRole("tab", { name: "Configuração" }));
+    await screen.findByTestId("config-panel");
+
+    await user.click(screen.getByRole("button", { name: "cfg-export-backup" }));
+    expect(api.exportBackup).toHaveBeenCalledWith("tok-1");
+
+    await user.click(screen.getByRole("button", { name: "cfg-erase-history" }));
+    expect(api.eraseHistory).toHaveBeenCalledWith("tok-1");
+
+    await user.click(screen.getByRole("button", { name: "cfg-restore-backup" }));
+    expect(api.restoreBackup).toHaveBeenCalledWith("tok-1", { version: 1, data: {} });
   });
 
   it("runs every CategorySetsPanel CRUD callback through the guard", async () => {

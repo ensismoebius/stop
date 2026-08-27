@@ -8,6 +8,7 @@ import roomRoutes from "./roomRoutes.js";
 import roundRoutes from "./roundRoutes.js";
 import answerRoutes from "./answerRoutes.js";
 import reportRoutes from "./reportRoutes.js";
+import maintenanceRoutes from "./maintenanceRoutes.js";
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use("/rooms", roomRoutes);
 router.use("/rounds", roundRoutes);
 router.use("/answers", answerRoutes);
 router.use("/reports", reportRoutes);
+router.use("/maintenance", maintenanceRoutes);
 
 export default router;

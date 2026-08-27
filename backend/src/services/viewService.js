@@ -98,17 +98,31 @@ async function filledCountByPlayer(roundId) {
  * Ranking oficial de uma partida (spec 42): unica fonte usada pelas
  * projecoes de sala (professor/tela publica/aluno) e por
  * `gameService.ranking` (consulta administrativa) — evita duas
- * implementacoes divergentes do mesmo calculo.
+ * implementacoes divergentes do mesmo calculo. `gameService.finish`
+ * tambem usa este resultado para gravar o `GameResult` permanente de cada
+ * aluno — um bug aqui nao seria so cosmetico, viraria historico academico
+ * errado.
  *
  * `includeRegistration` fica desligado por padrao: a tela publica usa
  * este mesmo ranking e nunca pode expor a matricula do aluno (spec 4.3).
  * So a consulta administrativa (`gameService.ranking`, atras de
  * `requireTeacher`) pede explicitamente esse campo.
+ *
+ * So entra no ranking quem participou de pelo menos uma rodada. `join`
+ * cria um `Score` zerado assim que o aluno entra na sala (para o placar
+ * já existir se ele acompanhar a rodada seguinte) — sem esse filtro, um
+ * aluno que só entrou na sala e nunca chegou a jogar uma rodada aparecia
+ * empatado em último lugar com uma colocação que não significa nada.
  */
 async function loadRanking(gameId, { includeRegistration = false } = {}) {
-  const scores = await scoreRepository.listByGame(gameId);
+  const [scores, participantStudentIds] = await Promise.all([
+    scoreRepository.listByGame(gameId),
+    roundParticipantRepository.listParticipatingStudentIds(gameId),
+  ]);
   return buildRanking(
-    scores.map((score) => ({
+    scores
+      .filter((score) => participantStudentIds.has(score.studentId))
+      .map((score) => ({
       studentId: score.studentId,
       name: score.student?.name ?? "—",
       ...(includeRegistration ? { registrationNumber: score.student?.registrationNumber ?? null } : {}),

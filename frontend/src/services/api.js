@@ -122,6 +122,12 @@ export const api = {
     return request(`/reports/category-stats${query ? `?${query}` : ""}`, { adminToken: t });
   },
 
+  // Manutencao (zona de risco do painel de configuracao)
+  exportBackup: (t) => request("/maintenance/backup", { adminToken: t }),
+  restoreBackup: (t, backup) =>
+    request("/maintenance/restore", { method: "POST", body: backup, adminToken: t }),
+  eraseHistory: (t) => request("/maintenance/history", { method: "DELETE", adminToken: t }),
+
   // Aluno
   getStudentHistory: (registrationNumber) =>
     request(`/students/history/${encodeURIComponent(registrationNumber)}`),

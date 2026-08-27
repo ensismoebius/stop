@@ -70,6 +70,12 @@ export function createApp() {
       credentials: true,
     }),
   );
+  // Restaurar um backup é um JSON só, mas pode carregar um semestre inteiro
+  // de partidas — bem acima do limite geral de 256kb logo abaixo. Registrado
+  // antes dele: quem bate nessa rota usa este limite maior, e o parser
+  // geral, ao ver o corpo já processado, pula sem reprocessar (é assim que
+  // o body-parser se comporta — `req._body` já vem `true`).
+  app.use("/api/maintenance/restore", express.json({ limit: "20mb" }));
   app.use(express.json({ limit: "256kb" }));
   app.use(express.urlencoded({ extended: false, limit: "256kb" }));
 

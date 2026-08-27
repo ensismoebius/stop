@@ -12,6 +12,7 @@ import roundService from "../../src/services/roundService.js";
 import gameService from "../../src/services/gameService.js";
 import answerService from "../../src/services/answerService.js";
 import viewService from "../../src/services/viewService.js";
+import roomService from "../../src/services/roomService.js";
 
 let scenario;
 let players;
@@ -67,18 +68,26 @@ describe("podio apos Finalizar partida (spec 42/44)", () => {
     expect(solo.ranking.length).toBeGreaterThan(0);
   });
 
-  it("mostra o podio mesmo quando a partida e finalizada sem nenhuma rodada pontuada", async () => {
+  it("finaliza mesmo sem nenhuma rodada jogada, mas o ranking fica vazio (ninguem participou)", async () => {
     // "Finalizar partida" pode ser clicado a qualquer momento — inclusive
-    // antes de qualquer pontuacao. O ranking (zerado) ainda precisa aparecer.
+    // antes de qualquer rodada. Entrar na sala ja cria um Score zerado
+    // (para o placar existir assim que a primeira rodada comecar), mas
+    // sem nenhuma rodada ter rodado de fato ninguem "participou": o
+    // ranking (e o GameResult persistido) devem ficar vazios, em vez de
+    // dar uma colocacao vazia para quem so entrou na sala.
     await gameService.finish(scenario.game.id);
     const room = await roomOf(scenario.game.id);
 
     const publicView = await viewService.publicState(room.code);
     expect(publicView.game.status).toBe("FINISHED");
+    expect(publicView.ranking).toHaveLength(0);
 
     const solo = await viewService.playerState(players[0].playerSessionId);
     expect(solo.game.status).toBe("FINISHED");
-    expect(solo.ranking.length).toBeGreaterThan(0);
+    expect(solo.ranking).toHaveLength(0);
+
+    const results = await prisma.gameResult.findMany({ where: { gameId: scenario.game.id } });
+    expect(results).toHaveLength(0);
   });
 
   it("encerra de fato a partida: rodada em andamento fecha, sala fecha, aluno nao responde mais", async () => {
@@ -145,6 +154,14 @@ describe("podio apos Finalizar partida (spec 42/44)", () => {
   });
 
   it("persiste GameResult com medalha para os tres primeiros", async () => {
+    const round = await startedRound(scenario);
+    for (const player of players) {
+      await fillAllAnswers(round, player.playerSessionId);
+    }
+    await roundService.forceStop(round.id);
+    await roundService.closeCollaborativeCorrection(round.id);
+    await roundService.score(round.id);
+
     await gameService.finish(scenario.game.id);
     const results = await prisma.gameResult.findMany({
       where: { gameId: scenario.game.id },
@@ -155,5 +172,45 @@ describe("podio apos Finalizar partida (spec 42/44)", () => {
       const expected = { 1: "GOLD", 2: "SILVER", 3: "BRONZE" }[result.position] ?? null;
       expect(result.medal).toBe(expected);
     }
+  });
+
+  it("aluno que so entrou na sala mas nunca participou de rodada nenhuma nao recebe colocacao (bug reportado)", async () => {
+    // Entrar na sala cria um Score zerado na hora (para o placar ja
+    // existir se o aluno acompanhar a proxima rodada) — mas esse aluno
+    // entrou depois que a unica rodada da partida ja tinha comecado, e por
+    // isso nunca ganhou um RoundParticipant. Ele nao pode aparecer no
+    // ranking com uma colocacao que nao significa nada.
+    const round = await startedRound(scenario);
+    for (const player of players) {
+      await fillAllAnswers(round, player.playerSessionId);
+    }
+    await roundService.forceStop(round.id);
+    await roundService.closeCollaborativeCorrection(round.id);
+    await roundService.score(round.id);
+
+    const retardatario = await prisma.student.create({
+      data: {
+        name: "Chegou Tarde",
+        registrationNumber: "202688888",
+        enrollments: { create: { classId: scenario.turma.id } },
+      },
+    });
+    const sessaoRetardataria = await roomService.join(scenario.room.code, retardatario.registrationNumber);
+    expect(await prisma.score.findUnique({
+      where: { gameId_studentId: { gameId: scenario.game.id, studentId: retardatario.id } },
+    })).not.toBeNull();
+    expect(await prisma.roundParticipant.findFirst({
+      where: { playerSessionId: sessaoRetardataria.playerSessionId },
+    })).toBeNull();
+
+    await gameService.finish(scenario.game.id);
+    const room = await roomOf(scenario.game.id);
+
+    const publicView = await viewService.publicState(room.code);
+    expect(publicView.ranking.some((entry) => entry.studentId === retardatario.id)).toBe(false);
+    expect(publicView.ranking.length).toBe(players.length);
+
+    const results = await prisma.gameResult.findMany({ where: { gameId: scenario.game.id } });
+    expect(results.some((result) => result.studentId === retardatario.id)).toBe(false);
   });
 });

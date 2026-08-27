@@ -102,14 +102,17 @@ function PodiumStep({ place, entries, revealed }) {
   );
 }
 
+const FIREWORKS_BURSTS = 6;
+const FIREWORKS_SPARKS = 18;
+
 /** Fogos do 1º lugar — puro CSS, sem biblioteca nem canvas. */
 function Fireworks() {
   return (
     <div className="fireworks" aria-hidden="true">
-      {Array.from({ length: 3 }, (_, burst) => (
+      {Array.from({ length: FIREWORKS_BURSTS }, (_, burst) => (
         <span key={burst} className={`fireworks__burst fireworks__burst--${burst + 1}`}>
-          {Array.from({ length: 12 }, (__, spark) => (
-            <i key={spark} style={{ "--angle": `${spark * 30}deg` }} />
+          {Array.from({ length: FIREWORKS_SPARKS }, (__, spark) => (
+            <i key={spark} style={{ "--angle": `${(spark * 360) / FIREWORKS_SPARKS}deg` }} />
           ))}
         </span>
       ))}

@@ -294,7 +294,11 @@ describe("mais bordas defensivas do motor de rodadas", () => {
 
   it("gameService.finish atribui prata/nenhuma medalha corretamente e history mostra o nome de quem deu STOP", async () => {
     const [a, b, c] = scenario.students;
-    // joinAllStudents (beforeEach) já criou Score zerado para cada aluno: upsert em vez de create.
+    // Uma rodada de verdade precisa rodar para os 3 virarem participantes
+    // de fato (RoundParticipant) — só então os totais manuais abaixo
+    // simulam quem fez mais/menos pontos, sem cair no filtro de "nunca
+    // participou de rodada nenhuma".
+    await startedRound();
     for (const [student, total] of [[a, 30], [b, 20], [c, 10]]) {
       await prisma.score.upsert({
         where: { gameId_studentId: { gameId: scenario.game.id, studentId: student.id } },
@@ -317,6 +321,7 @@ describe("mais bordas defensivas do motor de rodadas", () => {
     for (const student of [...scenario.students, quartoAluno]) {
       await roomService.join(outraSala.code, student.registrationNumber);
     }
+    await startedRoundFixture({ game: outraPartida, categorySet: scenario.categorySet });
     for (const [student, total] of [[a, 40], [b, 30], [c, 20], [quartoAluno, 10]]) {
       await prisma.score.upsert({
         where: { gameId_studentId: { gameId: outraPartida.id, studentId: student.id } },

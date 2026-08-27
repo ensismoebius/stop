@@ -365,6 +365,47 @@
   justify-items: center;
 }
 
+/* Céu do pódio: calculado em JS a partir da hora do servidor
+   (`frontend/src/lib/sky.js`) e entregue aqui como três custom properties
+   (`--sky-top/bottom/glow`) — nunca uma imagem. `::before` desenha um campo
+   de estrelas fixo (mesmo truque: gradientes, não arquivo) cuja opacidade
+   segue `--sky-stars`, então elas aparecem à noite e somem de dia sem
+   precisar de duas variantes de fundo. */
+.screen--podium {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 6%, var(--sky-glow) 0%, transparent 70%),
+    linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bottom) 100%);
+}
+
+.screen--podium::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: var(--sky-stars, 0);
+  background-image:
+    radial-gradient(1.6px 1.6px at 8% 12%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 22% 38%, #fff, transparent),
+    radial-gradient(1.8px 1.8px at 37% 8%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 52% 28%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 68% 15%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 83% 35%, #fff, transparent),
+    radial-gradient(1.7px 1.7px at 92% 10%, #fff, transparent),
+    radial-gradient(1.3px 1.3px at 15% 55%, #fff, transparent),
+    radial-gradient(1.6px 1.6px at 45% 60%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 78% 58%, #fff, transparent);
+  background-repeat: repeat;
+  background-size: 340px 260px;
+  pointer-events: none;
+}
+
+.screen--podium > * {
+  position: relative;
+  z-index: 1;
+}
+
 .ranking-reveal {
   display: flex;
   flex-direction: column;
@@ -666,26 +707,76 @@
   height: 0;
 }
 
-.fireworks__burst--1 { left: 22%; top: 28%; animation: fireworks-go 1.6s ease-out infinite; }
-.fireworks__burst--2 { left: 74%; top: 22%; animation: fireworks-go 1.6s ease-out 0.45s infinite; }
-.fireworks__burst--3 { left: 50%; top: 14%; animation: fireworks-go 1.6s ease-out 0.9s infinite; }
+/* Seis pontos de explosão espalhados pela tela toda (não só o topo) e
+   defasados no tempo — nunca dois fogos abrem juntos, então o céu nunca
+   fica vazio nem lotado ao mesmo tempo. */
+.fireworks__burst--1 { left: 10%; top: 32%; animation: fireworks-go 1.9s ease-out infinite; }
+.fireworks__burst--2 { left: 30%; top: 15%; animation: fireworks-go 1.9s ease-out 0.32s infinite; }
+.fireworks__burst--3 { left: 50%; top: 22%; animation: fireworks-go 1.9s ease-out 0.64s infinite; }
+.fireworks__burst--4 { left: 68%; top: 12%; animation: fireworks-go 1.9s ease-out 0.96s infinite; }
+.fireworks__burst--5 { left: 87%; top: 30%; animation: fireworks-go 1.9s ease-out 1.28s infinite; }
+.fireworks__burst--6 { left: 20%; top: 48%; animation: fireworks-go 1.9s ease-out 1.6s infinite; }
+
+/* Clarão do estopim: um pulso de luz que abre e some antes das faíscas
+   pararem de se mover — é o "pop" que faltava para parecer uma explosão de
+   verdade, e não apenas partículas voando. */
+.fireworks__burst::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin: -1.2rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, currentColor 45%, transparent 75%);
+  animation: fireworks-flash 1.9s ease-out infinite;
+  animation-delay: inherit;
+}
 
 .fireworks__burst i {
   position: absolute;
-  width: 0.55rem;
-  height: 0.55rem;
+  width: 0.6rem;
+  height: 0.6rem;
   border-radius: 50%;
+  background: currentColor;
+  /* O brilho em duas camadas é o que faz a faísca parecer incandescente em
+     vez de uma bolinha lisa. */
+  box-shadow:
+    0 0 0.4rem currentColor,
+    0 0 0.9rem currentColor;
   /* Cada faísca sai num ângulo diferente, definido inline. */
   transform: rotate(var(--angle)) translateY(0);
-  animation: fireworks-spark 1.6s ease-out infinite;
+  animation: fireworks-spark 1.9s ease-out infinite;
 }
 
-.fireworks__burst--1 i { background: var(--yellow); }
-.fireworks__burst--2 i { background: var(--pink); }
-.fireworks__burst--3 i { background: var(--teal); }
+/* Faíscas ímpares viajam mais longe e um tico mais devagar — sem isso, as
+   18 saem em círculo perfeito e parecem uma roda, não uma explosão. */
+.fireworks__burst i:nth-child(odd) {
+  animation-duration: 2.15s;
+}
+
+.fireworks__burst i:nth-child(3n) {
+  width: 0.4rem;
+  height: 0.4rem;
+}
+
+.fireworks__burst--1 { color: var(--yellow); }
+.fireworks__burst--2 { color: var(--pink); }
+.fireworks__burst--3 { color: var(--teal); }
+.fireworks__burst--4 { color: var(--orange); }
+.fireworks__burst--5 { color: var(--purple); }
+.fireworks__burst--6 { color: var(--red); }
 
 @keyframes fireworks-go {
   0%, 100% { opacity: 1; }
+}
+
+@keyframes fireworks-flash {
+  0% { opacity: 0; transform: scale(0.2); }
+  12% { opacity: 1; transform: scale(1); }
+  35% { opacity: 0; transform: scale(1.6); }
+  100% { opacity: 0; }
 }
 
 @keyframes fireworks-spark {
@@ -693,9 +784,9 @@
     transform: rotate(var(--angle)) translateY(0) scale(1);
     opacity: 1;
   }
-  70% { opacity: 1; }
+  65% { opacity: 1; }
   100% {
-    transform: rotate(var(--angle)) translateY(-9rem) scale(0.25);
+    transform: rotate(var(--angle)) translateY(-12rem) scale(0.2);
     opacity: 0;
   }
 }

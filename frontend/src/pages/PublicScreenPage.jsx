@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import useRoomSocket from "../hooks/useRoomSocket.js";
 import { useCountdown, useServerClock } from "../hooks/useServerClock.js";
 import useAudio from "../hooks/useAudio.js";
 import useEmojiBursts from "../hooks/useEmojiBursts.js";
+import skyForDate from "../lib/sky.js";
 import GameTitle from "../components/public/GameTitle.jsx";
 import ThemeDisplay from "../components/public/ThemeDisplay.jsx";
 import LetterAnimation from "../components/public/LetterAnimation.jsx";
@@ -97,6 +98,44 @@ function useScreenBeep(playing, seconds, audio) {
   }, [seconds, playing, audio, lastBeep]);
 }
 
+// Céu do pódio (spec dos "bells and whistles"): recalcula a cada minuto — a
+// hora do dia não muda mais rápido que isso, então não há razão para um
+// timer mais agressivo. Só liga o timer enquanto o pódio está de fato na
+// tela; nas outras fases o valor não é usado e o timer seria desperdício.
+function usePodiumSky(now, active) {
+  // `now` é logicamente estável (é sempre "hora do servidor agora"), mas o
+  // `useServerClock` real só garante identidade estável via useCallback —
+  // nada aqui depende de a referência mudar, então uma ref evita recriar o
+  // efeito (e o setInterval) a cada render por causa só da função em si.
+  const nowRef = useRef(now);
+  nowRef.current = now;
+
+  const [sky, setSky] = useState(() => skyForDate(new Date(nowRef.current())));
+  useEffect(() => {
+    if (!active) return undefined;
+    const tick = () => setSky(skyForDate(new Date(nowRef.current())));
+    tick();
+    const timer = setInterval(tick, 60_000);
+    return () => clearInterval(timer);
+  }, [active]);
+  return sky;
+}
+
+// Trilha de fundo por fase: suspense enquanto a rodada corre, comemoração
+// no pódio, silêncio fora dessas duas — só a tela pública tem essa música
+// ambiente (os telefones dos alunos continuam só com os bipes curtos de
+// useAudio: 50 aparelhos tocando trilhas fora de sincronia seria pior que
+// não ter música nenhuma).
+function useScreenMusic(playing, finished, audio) {
+  useEffect(() => {
+    if (finished) audio.playMusic("PODIUM");
+    else if (playing) audio.playMusic("ROUND");
+    else audio.stopMusic();
+  }, [playing, finished, audio]);
+
+  useEffect(() => () => audio.stopMusic(), [audio]);
+}
+
 /**
  * Estado da tela pública: socket + fallback REST + QR code + derivação de
  * fase (lobby/playing/ranking) e contador — extraído da página porque é
@@ -145,9 +184,12 @@ function useScreenState(code) {
   // proxima rodada comecar) — fora isso ficaria "vazando" o placar o tempo
   // todo e tirando a graca da virada.
   const showRanking = round?.status === "SCORED" || view?.game?.status === "FINISHED";
+  const finished = view?.game?.status === "FINISHED";
   const seconds = useCountdown(playing ? round?.endsAt : null, now);
 
   useScreenBeep(playing, seconds, audio);
+  useScreenMusic(playing, finished, audio);
+  const sky = usePodiumSky(now, finished);
 
   return {
     audio,
@@ -157,6 +199,8 @@ function useScreenState(code) {
     waitingForPlayers,
     playing,
     showRanking,
+    finished,
+    sky,
     seconds,
     collabProgress,
     qrCode,
@@ -259,7 +303,19 @@ function ScreenFooter({ waitingForPlayers, qrCode, code, audio, connected }) {
           <span>Acesse: /join/{code}</span>
         </span>
         <span className="row">
-          <button type="button" className="btn btn--ghost" onClick={audio.toggle}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => {
+              // A tela pública normalmente não recebe nenhum clique — este
+              // botão é o único gesto do usuário disponível nela, então é
+              // aqui que a música de fundo (ao contrário dos bipes de
+              // WebAudio) ganha permissão do navegador para tocar sozinha
+              // depois, quando a fase mudar (ver unlock() em useAudio).
+              audio.unlock();
+              audio.toggle();
+            }}
+          >
             {audio.enabled ? "🔊" : "🔇"}
           </button>
           <ConnectionBadge connected={connected} />
@@ -288,6 +344,8 @@ export function PublicScreenPage() {
     waitingForPlayers,
     playing,
     showRanking,
+    finished,
+    sky,
     seconds,
     collabProgress,
     qrCode,
@@ -313,14 +371,19 @@ export function PublicScreenPage() {
   // titulo, tema, QR Code ou rodape competindo por atencao com a virada.
   if (showRanking) {
     return (
-      <div className="screen screen--ranking">
+      <div
+        className={`screen screen--ranking${finished ? " screen--podium" : ""}`}
+        style={
+          finished
+            ? { "--sky-top": sky.top, "--sky-bottom": sky.bottom, "--sky-glow": sky.glow, "--sky-stars": sky.stars }
+            : undefined
+        }
+      >
         {/* Pódio olímpico só no encerramento da partida; entre rodadas,
-            o ranking normal. */}
-        <Ranking
-          entries={view?.ranking ?? []}
-          audio={audio}
-          finished={view?.game?.status === "FINISHED"}
-        />
+            o ranking normal. O céu (calculado, não é imagem) só entra
+            nesse caso — é o pódio que pediu "background que muda com a
+            hora do dia", não a lista de sempre. */}
+        <Ranking entries={view?.ranking ?? []} audio={audio} finished={finished} />
         <EmojiBursts items={emojiBursts.items} />
       </div>
     );

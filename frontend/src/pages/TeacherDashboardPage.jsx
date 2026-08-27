@@ -784,6 +784,32 @@ function ConfigTab({ catalog, token, guard, stats, deleteRound, busy }) {
             setStudents(await api.listStudents(token, selectedClassId));
           })
         }
+        onExportBackup={() => guard(async () => api.exportBackup(token))}
+        onEraseHistory={() =>
+          guard(async () => {
+            const result = await api.eraseHistory(token);
+            // O jogo/sala selecionados no painel podem ter sido apagados
+            // junto — recarregar e o jeito mais simples de garantir que
+            // nada na tela continue apontando para uma partida que não
+            // existe mais (o próprio localStorage se autocorrige ao
+            // tentar buscar um jogo que já não existe, ver useDashboardGame).
+            window.localStorage.removeItem(GAME_KEY);
+            setTimeout(() => window.location.reload(), 900);
+            return result;
+          })
+        }
+        onRestoreBackup={(backup) =>
+          guard(async () => {
+            await api.restoreBackup(token, backup);
+            // Restaurar troca até as contas de professor — não há estado
+            // local que sobreviva a isso de forma confiável, então a
+            // saída limpa é recarregar a página inteira.
+            window.localStorage.removeItem(GAME_KEY);
+            setTimeout(() => window.location.reload(), 900);
+            return true;
+          })
+        }
+        busy={busy}
       />
       <StatisticsPanel statistics={statistics} history={history} onDeleteRound={deleteRound} busy={busy} />
     </div>

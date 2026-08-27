@@ -258,7 +258,14 @@ describe("superfície administrativa ainda não coberta (CRUD completo das rotas
         data: { discipline: "React Native" },
       });
       const student = scenario.students[0];
-      await prisma.score.create({ data: { gameId: scenario.game.id, studentId: student.id, total: 10 } });
+      // Participação de verdade (RoundParticipant), senão o ranking filtra
+      // o aluno antes mesmo de chegar nos filtros do relatório testados aqui.
+      await roomService.join(scenario.room.code, student.registrationNumber);
+      await startedRoundFixture(scenario);
+      await prisma.score.update({
+        where: { gameId_studentId: { gameId: scenario.game.id, studentId: student.id } },
+        data: { total: 10 },
+      });
       await auth(request(app).post(`/api/games/${scenario.game.id}/finish`));
 
       const response = await auth(

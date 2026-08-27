@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Field from "../common/Field.jsx";
+import MaintenancePanel from "./MaintenancePanel.jsx";
 
 /** Linha de turma em modo de edição. */
 function ClassRowEditing({ item, onSave, onCancel }) {
@@ -414,6 +415,10 @@ export function ConfigPanel({
   onUpdateStudent,
   onBulkStudents,
   onDeleteStudent,
+  onExportBackup,
+  onRestoreBackup,
+  onEraseHistory,
+  busy,
 }) {
   return (
     <div className="stack">
@@ -433,6 +438,12 @@ export function ConfigPanel({
         onUpdateStudent={onUpdateStudent}
         onBulkStudents={onBulkStudents}
         onDeleteStudent={onDeleteStudent}
+      />
+      <MaintenancePanel
+        onExportBackup={onExportBackup}
+        onRestoreBackup={onRestoreBackup}
+        onEraseHistory={onEraseHistory}
+        busy={busy}
       />
     </div>
   );

@@ -35,7 +35,17 @@ vi.mock("../../src/hooks/useServerClock.js", () => ({
 
 // --- useAudio: stubbed so sound-cue calls are assertable without touching
 // WebAudio, and so play()/playVoice()/toggle() calls are observable.
-const audioMock = { play: vi.fn(), playVoice: vi.fn(), unlock: vi.fn(), enabled: true, volume: 0.4, toggle: vi.fn(), setVolume: vi.fn() };
+const audioMock = {
+  play: vi.fn(),
+  playVoice: vi.fn(),
+  playMusic: vi.fn(),
+  stopMusic: vi.fn(),
+  unlock: vi.fn(),
+  enabled: true,
+  volume: 0.4,
+  toggle: vi.fn(),
+  setVolume: vi.fn(),
+};
 vi.mock("../../src/hooks/useAudio.js", () => ({
   default: () => audioMock,
 }));

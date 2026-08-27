@@ -111,6 +111,21 @@ export const roundParticipantRepository = {
 
   countActive: (roundId) =>
     prisma.roundParticipant.count({ where: { roundId, status: { in: ["PLAYING"] } } }),
+
+  /**
+   * IDs dos alunos que de fato entraram em pelo menos uma rodada da
+   * partida — não confundir com quem apenas entrou na sala (`join` cria
+   * um `Score` zerado na hora, mesmo que a rodada nunca chegue a começar
+   * para esse aluno). Usado para tirar do ranking quem nunca participou.
+   */
+  listParticipatingStudentIds: async (gameId) => {
+    const rows = await prisma.roundParticipant.findMany({
+      where: { round: { gameId } },
+      select: { playerSession: { select: { studentId: true } } },
+      distinct: ["playerSessionId"],
+    });
+    return new Set(rows.map((row) => row.playerSession.studentId));
+  },
 };
 
 export default roundRepository;

@@ -267,8 +267,11 @@ describe("API REST (spec 30 e 34)", () => {
     );
     expect(removida.status).toBe(204);
 
+    // Era a unica rodada da partida: removida ela, o cascade tambem apaga
+    // o RoundParticipant do aluno — sem nenhuma rodada de fato jogada,
+    // ele nao aparece mais no ranking (em vez de sobrar com total zerado).
     const after = await auth(request(app).get(`/api/games/${scenario.game.id}/scores`));
-    expect(after.body.ranking[0].total).toBe(0);
+    expect(after.body.ranking).toHaveLength(0);
 
     const history = await auth(request(app).get(`/api/games/${scenario.game.id}/history`));
     expect(history.body.rounds.map((item) => item.id)).not.toContain(round.body.id);
@@ -348,10 +351,37 @@ describe("API REST (spec 30 e 34)", () => {
     // Empate no 1º lugar entre os alunos[0] e [1]; alunos[2] fica atras —
     // pela regra de posicao (nao indice), o 3º colocado cai direto pra
     // posicao 3 e medalha de bronze, pulando a prata.
+    //
+    // Os 3 precisam ter entrado numa rodada de verdade (RoundParticipant):
+    // sem isso o ranking os filtra por "nunca participou" antes mesmo de
+    // chegar na logica de empate/medalha testada aqui.
     const [a, b, c] = scenario.students;
-    await prisma.score.create({ data: { gameId: scenario.game.id, studentId: a.id, total: 10 } });
-    await prisma.score.create({ data: { gameId: scenario.game.id, studentId: b.id, total: 10 } });
-    await prisma.score.create({ data: { gameId: scenario.game.id, studentId: c.id, total: 5 } });
+    for (const student of scenario.students) {
+      await request(app)
+        .post(`/api/rooms/${scenario.room.code}/join`)
+        .send({ registrationNumber: student.registrationNumber });
+    }
+    const round = await auth(request(app).post("/api/rounds")).send({
+      gameId: scenario.game.id,
+      categorySetId: scenario.categorySet.id,
+      durationSeconds: 60,
+    });
+    await auth(request(app).post(`/api/rounds/${round.body.id}/letter`));
+    await auth(request(app).post(`/api/rounds/${round.body.id}/start`));
+    await waitForRoundStatus(round.body.id, "PLAYING");
+
+    await prisma.score.update({
+      where: { gameId_studentId: { gameId: scenario.game.id, studentId: a.id } },
+      data: { total: 10 },
+    });
+    await prisma.score.update({
+      where: { gameId_studentId: { gameId: scenario.game.id, studentId: b.id } },
+      data: { total: 10 },
+    });
+    await prisma.score.update({
+      where: { gameId_studentId: { gameId: scenario.game.id, studentId: c.id } },
+      data: { total: 5 },
+    });
 
     const finish = await auth(request(app).post(`/api/games/${scenario.game.id}/finish`));
     expect(finish.status).toBe(200);
@@ -390,7 +420,21 @@ describe("API REST (spec 30 e 34)", () => {
 
   it("aluno consulta o proprio historico por matricula, sem autenticacao de professor (nova feature)", async () => {
     const [a] = scenario.students;
-    await prisma.score.create({ data: { gameId: scenario.game.id, studentId: a.id, total: 10 } });
+    await request(app)
+      .post(`/api/rooms/${scenario.room.code}/join`)
+      .send({ registrationNumber: a.registrationNumber });
+    const round = await auth(request(app).post("/api/rounds")).send({
+      gameId: scenario.game.id,
+      categorySetId: scenario.categorySet.id,
+      durationSeconds: 60,
+    });
+    await auth(request(app).post(`/api/rounds/${round.body.id}/letter`));
+    await auth(request(app).post(`/api/rounds/${round.body.id}/start`));
+    await waitForRoundStatus(round.body.id, "PLAYING");
+    await prisma.score.update({
+      where: { gameId_studentId: { gameId: scenario.game.id, studentId: a.id } },
+      data: { total: 10 },
+    });
     await auth(request(app).post(`/api/games/${scenario.game.id}/finish`));
 
     const history = await request(app).get(`/api/students/history/${a.registrationNumber}`);

@@ -93,11 +93,84 @@ try {
 }
 
 /**
+ * Trilhas de fundo (loop), diferente dos bipes sintetizados acima: aqui
+ * usamos gravações de verdade porque um beep de WebAudio não faz "música".
+ * Ambas por Kevin MacLeod (incompetech.com), Creative Commons: By
+ * Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/) — os
+ * arquivos já carregam essa atribuição nas próprias tags ID3.
+ */
+const MUSIC_TRACKS = {
+  /** "Ossuary 7 - Resolve": suspense sem agressividade, para não atropelar
+   *  quem está pensando na resposta. Toca em loop durante o PLAYING. */
+  ROUND: "/audio/round-tension.mp3",
+  /** "Winner Winner!": tema comemorativo, em loop durante o pódio. */
+  PODIUM: "/audio/podium-celebration.mp3",
+};
+/** Música fica mais baixa que os efeitos — é ambiente, não é o destaque. */
+const MUSIC_GAIN = 0.5;
+
+const musicPlayers = {};
+function getMusicPlayer(key) {
+  if (musicPlayers[key]) return musicPlayers[key];
+  const src = MUSIC_TRACKS[key];
+  if (!src) return null;
+  try {
+    const el = new Audio(src);
+    el.loop = true;
+    el.preload = "auto";
+    el.volume = 0;
+    musicPlayers[key] = el;
+    return el;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `HTMLMediaElement.play()` deveria devolver uma Promise, mas o jsdom (e
+ * alguns navegadores restringindo autoplay) pode lançar de forma síncrona
+ * ou devolver `undefined` em vez de rejeitar — daí o try/catch em volta do
+ * encadeamento inteiro, não só um `.catch()` nele.
+ */
+function safePlay(el) {
+  try {
+    el?.play()?.catch(() => {});
+  } catch {
+    /* autoplay bloqueado ou play() não implementado: silencioso de propósito */
+  }
+}
+
+// Estado de reprodução de música é módulo-level (como `preloadedVoice`
+// acima): só uma trilha por aba, então não há razão para viver por hook.
+let activeMusicKey = null;
+const fadeFrames = {};
+
+/** Sobe/desce o volume de uma trilha suavemente; pausa de fato ao chegar a 0. */
+function fadeMusic(el, key, to, ms) {
+  if (!el) return;
+  if (fadeFrames[key]) cancelAnimationFrame(fadeFrames[key]);
+  if (to > 0 && el.paused) safePlay(el);
+  const from = el.volume;
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / ms);
+    el.volume = from + (to - from) * t;
+    if (t < 1) {
+      fadeFrames[key] = requestAnimationFrame(step);
+    } else {
+      delete fadeFrames[key];
+      if (to === 0) el.pause();
+    }
+  };
+  fadeFrames[key] = requestAnimationFrame(step);
+}
+
+/**
  * Audio hook for the STOP game. Provides synthesized sound cues via
- * WebAudio, a preloaded voice clip for the STOP moment, and user
- * preference persistence (mute toggle + volume).
+ * WebAudio, a preloaded voice clip for the STOP moment, looping background
+ * music, and user preference persistence (mute toggle + volume).
  *
- * @returns {{ play: (cue: string) => void, playVoice: () => void, unlock: () => void, enabled: boolean, volume: number, toggle: () => void, setVolume: (v: number) => void }}
+ * @returns {{ play: (cue: string) => void, playVoice: () => void, playMusic: (key: string) => void, stopMusic: () => void, unlock: () => void, enabled: boolean, volume: number, toggle: () => void, setVolume: (v: number) => void }}
  */
 export function useAudio() {
   const [preference, setPreference] = useState(readPreference);
@@ -119,10 +192,26 @@ export function useAudio() {
     return contextRef.current;
   }, []);
 
-  /** Must be called from a user gesture (spec 23). */
+  /**
+   * Must be called from a user gesture (spec 23). Um play()+pause() dentro
+   * do gesto "destrava" o elemento `<audio>` para autoplay programático
+   * depois — o mesmo truque, só que para HTMLMediaElement em vez do
+   * AudioContext logo abaixo.
+   */
   const unlock = useCallback(() => {
     const context = ensureContext();
     if (context && context.state === "suspended") context.resume().catch(() => {});
+    for (const key of Object.keys(MUSIC_TRACKS)) {
+      const el = getMusicPlayer(key);
+      if (!el) continue;
+      try {
+        el.play()
+          ?.then(() => el.pause())
+          ?.catch(() => {});
+      } catch {
+        /* autoplay bloqueado ou play() não implementado: silencioso de proposito */
+      }
+    }
   }, [ensureContext]);
 
   const play = useCallback(
@@ -165,17 +254,50 @@ export function useAudio() {
     }
   }, [preference]);
 
+  /** Troca para a trilha `key`, com crossfade; repetir a mesma trilha é no-op. */
+  const playMusic = useCallback(
+    (key) => {
+      if (activeMusicKey === key) return;
+      const previousKey = activeMusicKey;
+      activeMusicKey = key;
+      if (previousKey) fadeMusic(getMusicPlayer(previousKey), previousKey, 0, 500);
+      if (!preference.enabled) return;
+      const el = getMusicPlayer(key);
+      if (!el) return;
+      el.currentTime = 0;
+      fadeMusic(el, key, preference.volume * MUSIC_GAIN, 900);
+    },
+    [preference],
+  );
+
+  const stopMusic = useCallback(() => {
+    if (!activeMusicKey) return;
+    const key = activeMusicKey;
+    activeMusicKey = null;
+    fadeMusic(getMusicPlayer(key), key, 0, 700);
+  }, []);
+
+  // Mudou o volume ou o mudo enquanto uma trilha tocava: acompanha ao vivo,
+  // sem esperar a próxima troca de fase para aplicar a preferência nova.
+  useEffect(() => {
+    if (!activeMusicKey) return;
+    const el = getMusicPlayer(activeMusicKey);
+    fadeMusic(el, activeMusicKey, preference.enabled ? preference.volume * MUSIC_GAIN : 0, 400);
+  }, [preference]);
+
   return useMemo(
     () => ({
       play,
       playVoice,
+      playMusic,
+      stopMusic,
       unlock,
       enabled: preference.enabled,
       volume: preference.volume,
       toggle: () => setPreference((current) => ({ ...current, enabled: !current.enabled })),
       setVolume: (volume) => setPreference((current) => ({ ...current, volume })),
     }),
-    [play, playVoice, unlock, preference],
+    [play, playVoice, playMusic, stopMusic, unlock, preference],
   );
 }
 

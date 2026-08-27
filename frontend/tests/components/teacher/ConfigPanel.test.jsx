@@ -327,3 +327,25 @@ describe("ConfigPanel — Alunos", () => {
     expect(onDeleteStudent).toHaveBeenCalledWith(100);
   });
 });
+
+describe("ConfigPanel — Manutenção", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders the maintenance section and wires its callbacks/busy through", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onEraseHistory = vi.fn().mockResolvedValue({ gamesDeleted: 1 });
+    renderPanel({ onEraseHistory, busy: false });
+
+    expect(screen.getByRole("heading", { name: "Manutenção" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Apagar todo o histórico de partidas" }));
+    expect(onEraseHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates busy to the maintenance section's buttons too", () => {
+    renderPanel({ busy: true });
+    expect(screen.getByRole("button", { name: "Baixar backup" })).toBeDisabled();
+  });
+});
