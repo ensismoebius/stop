@@ -227,6 +227,13 @@ export function useAudio() {
     if (context && context.state === "suspended") context.resume().catch(() => {});
     for (const tracks of Object.values(MUSIC_TRACKS)) {
       for (const src of tracks) {
+        // A trilha ativa não passa pelo play()+pause() de "priming" abaixo:
+        // se playMusic() já tentou tocá-la antes de qualquer gesto (o caso
+        // comum — a tela abre com a rodada já em PLAYING), esse play() aqui
+        // teria sucesso agora que há gesto, e o .then(() => el.pause())
+        // pausaria de volta a MESMA trilha que devia estar tocando de
+        // verdade. Ela é tratada à parte, logo abaixo.
+        if (src === activeTrack.src) continue;
         const el = getMusicPlayerForSrc(src);
         if (!el) continue;
         try {
@@ -237,6 +244,13 @@ export function useAudio() {
           /* autoplay bloqueado ou play() não implementado: silencioso de proposito */
         }
       }
+    }
+    // A trilha ativa pode ter ficado pausada esperando permissão do
+    // navegador (o play() de playMusic() foi recusado antes deste gesto) —
+    // agora que temos um gesto de verdade, retoma a reprodução de fato.
+    if (activeTrack.src) {
+      const el = getMusicPlayerForSrc(activeTrack.src);
+      if (el?.paused) safePlay(el);
     }
   }, [ensureContext]);
 

@@ -285,4 +285,66 @@ describe("useAudio", () => {
       window.Audio = originalAudio;
     }
   });
+
+  it("unlock() retoma de verdade a trilha ativa bloqueada pelo autoplay, sem pausá-la de novo (regressão)", async () => {
+    // Cenário real: a tela pública abre com a rodada já em PLAYING, então
+    // playMusic() tenta tocar ANTES de qualquer gesto do usuário — o
+    // primeiro play() é recusado pelo navegador. Só depois vem o clique
+    // que chama unlock(). Antes da correção, o laço de "priming" de
+    // unlock() tocava (com sucesso, já com gesto) e imediatamente
+    // PAUSAVA de volta essa mesma trilha ativa, deixando a música muda.
+    const elements = {};
+    const originalAudio = window.Audio;
+    window.Audio = function MockAudio(src) {
+      let playAttempts = 0;
+      const el = {
+        src,
+        loop: false,
+        preload: "",
+        volume: 0,
+        currentTime: 0,
+        paused: true,
+        play: vi.fn(function play() {
+          playAttempts += 1;
+          if (playAttempts === 1) {
+            return Promise.reject(Object.assign(new Error("blocked"), { name: "NotAllowedError" }));
+          }
+          el.paused = false;
+          return Promise.resolve();
+        }),
+        pause: vi.fn(function pause() {
+          el.paused = true;
+        }),
+      };
+      elements[src] = el;
+      return el;
+    };
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      const useAudio = await loadHook();
+      const { result } = renderHook(() => useAudio());
+
+      await act(async () => {
+        result.current.playMusic("ROUND");
+        await Promise.resolve();
+      });
+      const activeEl = elements["/audio/round-tension.mp3"];
+      expect(activeEl).toBeTruthy();
+      expect(activeEl.paused).toBe(true); // bloqueado pelo autoplay, como no navegador real
+
+      await act(async () => {
+        result.current.unlock();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // A trilha ativa nunca é pausada pelo priming de unlock() (ela é
+      // pulada de propósito) e termina tocando de verdade.
+      expect(activeEl.pause).not.toHaveBeenCalled();
+      expect(activeEl.paused).toBe(false);
+    } finally {
+      window.Audio = originalAudio;
+      randomSpy.mockRestore();
+    }
+  });
 });
