@@ -13,6 +13,7 @@ const TABLES = [
   "Round",
   "Score",
   "GameResult",
+  "ProcessedOperation",
   "PlayerSession",
   "Room",
   "Game",

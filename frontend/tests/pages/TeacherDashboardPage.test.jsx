@@ -1195,6 +1195,51 @@ describe("TeacherDashboardPage", () => {
     expect(await screen.findByTestId("connection-badge")).toHaveTextContent("online");
   });
 
+  it("shows the green synchronized pill when every connected student is in sync", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    seedSocket({
+      connected: true,
+      state: { syncStats: { expected: 28, synchronized: 28, stale: 0, recovering: 0 } },
+    });
+    renderDashboard();
+    await screen.findByTestId("room-control");
+
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    await user.click(screen.getByRole("button", { name: "rc-select-game" }));
+    const pill = await screen.findByText("Sincronizado 28/28");
+    expect(pill.className).toContain("badge--playing");
+  });
+
+  it("shows the amber recovering pill when some students are stale", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    seedSocket({
+      connected: true,
+      state: { syncStats: { expected: 28, synchronized: 25, stale: 3, recovering: 0 } },
+    });
+    renderDashboard();
+    await screen.findByTestId("room-control");
+
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    await user.click(screen.getByRole("button", { name: "rc-select-game" }));
+    const pill = await screen.findByText("Sincronizando 25/28");
+    expect(pill.className).toContain("badge--eliminated");
+  });
+
+  it("omits the sync pill when the state carries no syncStats yet", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    seedSocket({ connected: true, state: { round: null } });
+    renderDashboard();
+    await screen.findByTestId("room-control");
+
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [{ code: "R1", status: "OPEN" }] });
+    await user.click(screen.getByRole("button", { name: "rc-select-game" }));
+    await screen.findByTestId("connection-badge");
+    expect(screen.queryByText(/Sincroniz/)).not.toBeInTheDocument();
+  });
+
   it("exits fullscreen on mount if the browser was already in it", async () => {
     const exitFullscreen = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(document, "fullscreenElement", {

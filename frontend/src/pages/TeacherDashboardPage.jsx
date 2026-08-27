@@ -518,7 +518,8 @@ function TabPanel({ tabKey, active, children }) {
   );
 }
 
-function DashboardHeader({ tab, setTab, room, connected, teacher, logout }) {
+function DashboardHeader({ tab, setTab, room, connected, teacher, logout, syncStats }) {
+  const syncing = syncStats && syncStats.totalConnected > 0 && syncStats.synchronized < syncStats.totalConnected;
   return (
     <header className="topbar">
       <span className="topbar__brand">STOP · PROFESSOR</span>
@@ -562,6 +563,19 @@ function DashboardHeader({ tab, setTab, room, connected, teacher, logout }) {
       </nav>
       <div className="row small">
         {room ? <ConnectionBadge connected={connected} /> : null}
+        {room && syncing ? (
+          <span
+            className="badge badge--eliminated"
+            role="status"
+            title={`${syncStats.stale ?? 0} alunos defasados do estado autoritativo`}
+          >
+            Sincronizando {syncStats.synchronized}/{syncStats.totalConnected}
+          </span>
+        ) : room && syncStats ? (
+          <span className="badge badge--playing" role="status">
+            Sincronizado {syncStats.synchronized}/{syncStats.totalConnected}
+          </span>
+        ) : null}
         <span className="muted">{teacher?.name}</span>
         <button type="button" className="btn btn--ghost" onClick={logout}>
           Sair
@@ -916,7 +930,7 @@ export function TeacherDashboardPage() {
 
   return (
     <div className="teacher">
-      <DashboardHeader tab={tab} setTab={setTab} room={gameState.room} connected={realtime.connected} teacher={teacher} logout={logout} />
+      <DashboardHeader tab={tab} setTab={setTab} room={gameState.room} connected={realtime.connected} teacher={teacher} logout={logout} syncStats={realtime.view?.syncStats} />
 
       <div className="container">
         <Alert kind="error">{error}</Alert>
