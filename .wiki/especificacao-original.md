@@ -1,4 +1,27 @@
-# STOP — Plataforma Competitiva de Revisão de React Native
+# Especificação original
+
+Documento de requisitos que deu origem ao projeto — preservado quase
+literalmente porque o código cita **estes números de seção** diretamente nos
+comentários (`spec 17`, `spec 42`, `spec 4.1`...; mais de 200 ocorrências em
+`backend/src` e `frontend/src`). Renumerar ou reorganizar esta página quebraria
+essa trilha entre comentário e requisito.
+
+Este documento descreve a **decisão de produto original**; o resto da wiki
+descreve *como* ela foi implementada — em particular
+[Ciclo de vida da rodada](ciclo-de-vida-da-rodada.md) (máquina de estados,
+regra da letra, correção, pontuação),
+[Arquitetura](arquitetura.md) (o princípio "servidor decide o estado", já
+formalizado abaixo na seção 64) e
+[Modelo de dados](modelo-de-dados.md) (o schema real diverge do modelo
+conceitual da seção 28 em vários pontos — Prisma, `Restrict` vs. `Cascade`,
+`GameResult`/medalhas — que essa seção não previa). Onde a implementação real
+foi além do que está descrito aqui (correção colaborativa, avatar/rosto do
+aluno, relatórios entre partidas, regra `CONTAINS`), a origem é
+`enhancements.md` — ver a nota na [página inicial da wiki](README.md).
+
+Alguns exemplos de código abaixo (seções 54-57) são ilustrativos de quando o
+requisito foi escrito, não o código atual — confira a implementação real nos
+caminhos citados nas outras páginas.
 
 ## 1. Objetivo
 
@@ -26,9 +49,7 @@ A aplicação deverá permitir que o professor controle as rodadas em tempo real
 
 A aplicação deve ser arquitetada de maneira que posteriormente possa ser executada também em um servidor remoto.
 
----
-
-# 2. Conceito do jogo
+## 2. Conceito do jogo
 
 O jogo mantém a mecânica clássica do Stop:
 
@@ -76,9 +97,7 @@ Exemplos:
 
 O professor poderá cadastrar novos conjuntos de categorias.
 
----
-
-# 3. Arquitetura geral
+## 3. Arquitetura geral
 
 A aplicação deverá possuir arquitetura cliente-servidor.
 
@@ -145,9 +164,7 @@ O cliente nunca deve ser considerado confiável para:
 * respostas após encerramento;
 * identificação do aluno.
 
----
-
-# 4. Perfis de utilização
+## 4. Perfis de utilização
 
 ## 4.1 Professor
 
@@ -173,8 +190,6 @@ Pode:
 * iniciar a próxima rodada;
 * consultar estatísticas.
 
----
-
 ## 4.2 Aluno
 
 O aluno:
@@ -191,8 +206,6 @@ O aluno:
 10. pressiona STOP quando terminar.
 
 O aluno não possui acesso às funções administrativas.
-
----
 
 ## 4.3 Tela pública
 
@@ -220,9 +233,7 @@ Deve apresentar:
   * "Correção";
   * "Próxima rodada".
 
----
-
-# 5. Fluxo de criação da partida
+## 5. Fluxo de criação da partida
 
 O professor acessa o painel administrativo.
 
@@ -258,9 +269,7 @@ O QR Code é exibido na tela do professor e pode também ser exibido na TV.
 
 Os alunos escaneiam o QR Code.
 
----
-
-# 6. Identificação do aluno
+## 6. Identificação do aluno
 
 Ao acessar a sala, o aluno deverá informar sua matrícula.
 
@@ -302,9 +311,7 @@ O nome deve ser obtido exclusivamente do banco de dados.
 
 O cliente nunca deve enviar o próprio nome como mecanismo de identificação.
 
----
-
-# 7. Estado de participação
+## 7. Estado de participação
 
 Cada aluno deverá possuir um estado dentro da sala.
 
@@ -343,9 +350,7 @@ Aluno foi eliminado da rodada.
 
 Rodada encerrada e aluno aguardando correção/próxima rodada.
 
----
-
-# 8. Tela do aluno
+## 8. Tela do aluno
 
 A interface mobile deve ser projetada **mobile-first**.
 
@@ -390,9 +395,7 @@ Exemplo:
 
 O aluno pode tocar em qualquer categoria.
 
----
-
-# 9. Navegação entre categorias
+## 9. Navegação entre categorias
 
 Todas as categorias devem estar acessíveis a partir da mesma tela.
 
@@ -422,9 +425,7 @@ Categorias preenchidas devem apresentar indicação clara.
 
 Categorias vazias devem permanecer visualmente distinguíveis.
 
----
-
-# 10. Campos de resposta
+## 10. Campos de resposta
 
 Ao selecionar uma categoria:
 
@@ -451,9 +452,7 @@ Não deve existir botão de "Salvar" individual para cada categoria.
 
 A resposta deve ser mantida no estado local do React e sincronizada com o servidor de maneira controlada.
 
----
-
-# 11. Botão STOP
+## 11. Botão STOP
 
 O botão STOP deve permanecer em posição previsível, preferencialmente fixado na parte inferior da viewport.
 
@@ -501,9 +500,7 @@ Essa validação deve existir:
 
 O servidor deve rejeitar um evento STOP se houver categoria obrigatória sem resposta.
 
----
-
-# 12. Evento STOP
+## 12. Evento STOP
 
 O evento STOP é crítico e deve ser processado atomicamente no servidor.
 
@@ -528,9 +525,7 @@ o servidor deve:
 
 A ordem deve ser determinada pelo **servidor**, não pelo relógio do navegador.
 
----
-
-# 13. Condição de corrida do STOP
+## 13. Condição de corrida do STOP
 
 É possível que dois celulares enviem STOP praticamente simultaneamente.
 
@@ -546,9 +541,7 @@ Os demais eventos STOP recebidos depois devem ser rejeitados.
 
 A implementação deve utilizar uma operação transacional/atômica no banco ou um mecanismo equivalente no servidor.
 
----
-
-# 14. Finalização automática
+## 14. Finalização automática
 
 Cada rodada deve possuir duração máxima configurável.
 
@@ -572,9 +565,7 @@ O aluno não poderá mais alterar respostas.
 
 A rodada segue para correção.
 
----
-
-# 15. Sorteio da letra
+## 15. Sorteio da letra
 
 Antes da rodada começar, o professor deverá possuir um botão:
 
@@ -606,9 +597,7 @@ Letra: S
 
 A animação de sorteio pode ocorrer no frontend, mas o resultado oficial é aquele enviado pelo servidor.
 
----
-
-# 16. Não repetição de letras
+## 16. Não repetição de letras
 
 Durante uma partida, o sistema deve evitar repetir letras já utilizadas enquanto houver letras disponíveis.
 
@@ -625,9 +614,7 @@ Se todas as letras disponíveis forem utilizadas, o sistema poderá reiniciar o 
 
 O professor deve poder visualizar o histórico de letras utilizadas.
 
----
-
-# 17. Configuração de categorias
+## 17. Configuração de categorias
 
 Categorias devem ser entidades independentes.
 
@@ -679,9 +666,7 @@ As categorias da rodada são copiadas/associadas à rodada no momento de sua cri
 
 Isso impede que alterações posteriores no cadastro modifiquem uma partida histórica.
 
----
-
-# 18. Correção
+## 18. Correção
 
 Após o STOP, o painel administrativo deve mostrar uma interface de correção.
 
@@ -715,9 +700,7 @@ A correção deve ser rápida.
 
 Preferencialmente, o professor deve conseguir navegar pelas respostas com teclado.
 
----
-
-# 19. Regra de pontuação
+## 19. Regra de pontuação
 
 Adotar a regra clássica:
 
@@ -770,9 +753,7 @@ A decisão de validade semântica permanece sob responsabilidade do professor.
 
 O sistema pode sugerir automaticamente inconsistências, mas não deve substituir a correção humana.
 
----
-
-# 20. Normalização das respostas
+## 20. Normalização das respostas
 
 Para identificar respostas iguais, o backend deve possuir uma função de normalização.
 
@@ -805,9 +786,7 @@ A resposta original deve permanecer armazenada para exibição.
 
 A normalização deve ser utilizada apenas para comparação.
 
----
-
-# 21. Validação da letra
+## 21. Validação da letra
 
 O sistema deve verificar se a resposta começa com a letra da rodada após normalização.
 
@@ -831,9 +810,7 @@ não começa com R.
 
 Essa validação automática não determina se a resposta é semanticamente correta para a categoria.
 
----
-
-# 22. Tela pública
+## 22. Tela pública
 
 A tela pública deve ser visualmente impactante, mas não deve comprometer legibilidade.
 
@@ -866,9 +843,7 @@ Durante os últimos segundos:
 * animação discreta;
 * música/efeito de urgência opcional.
 
----
-
-# 23. Áudio
+## 23. Áudio
 
 A aplicação poderá possuir trilha sonora durante a rodada.
 
@@ -894,9 +869,7 @@ Portanto:
 * realizar uma interação inicial do usuário quando necessário;
 * armazenar a preferência de volume localmente.
 
----
-
-# 24. Tela cheia
+## 24. Tela cheia
 
 A aplicação deve solicitar Fullscreen API no dispositivo do aluno quando a partida começar.
 
@@ -946,9 +919,7 @@ A eliminação deve ser definitiva para aquela rodada.
 
 O aluno poderá participar novamente na próxima rodada.
 
----
-
-# 25. Limitações da detecção de foco
+## 25. Limitações da detecção de foco
 
 Não utilizar exclusivamente `blur` como prova de que o aluno saiu da aplicação.
 
@@ -964,9 +935,7 @@ A regra de eliminação deve ser baseada primariamente na saída do fullscreen.
 
 `visibilitychange` e `blur` podem ser registrados como eventos de telemetria.
 
----
-
-# 26. Eliminação
+## 26. Eliminação
 
 Quando o servidor eliminar um aluno:
 
@@ -993,9 +962,7 @@ Você foi eliminado desta rodada.
 Você poderá participar da próxima rodada.
 ```
 
----
-
-# 27. Próxima rodada
+## 27. Próxima rodada
 
 Após a correção, o professor seleciona:
 
@@ -1015,9 +982,7 @@ O servidor:
 
 Um aluno eliminado na rodada anterior poderá participar normalmente da nova rodada.
 
----
-
-# 28. Banco de dados
+## 28. Banco de dados
 
 Modelo conceitual mínimo.
 
@@ -1140,9 +1105,7 @@ total
 updatedAt
 ```
 
----
-
-# 29. Integridade do banco
+## 29. Integridade do banco
 
 Criar índices para:
 
@@ -1170,9 +1133,7 @@ E uma resposta única por:
 (roundId, playerSessionId, categoryId)
 ```
 
----
-
-# 30. API REST
+## 30. API REST
 
 A API deve possuir, no mínimo:
 
@@ -1200,9 +1161,7 @@ GET/POST/PATCH/DELETE /api/category-sets
 GET/POST/PATCH/DELETE /api/categories
 ```
 
----
-
-# 31. Socket.IO
+## 31. Socket.IO
 
 Socket.IO será utilizado para eventos em tempo real.
 
@@ -1241,9 +1200,7 @@ nextRound
 error
 ```
 
----
-
-# 32. Estado da rodada
+## 32. Estado da rodada
 
 Implementar explicitamente uma máquina de estados.
 
@@ -1277,9 +1234,7 @@ deve ser impossível.
 
 Uma nova rodada deverá ser criada.
 
----
-
-# 33. Estado autoritativo
+## 33. Estado autoritativo
 
 O servidor deverá manter o estado oficial.
 
@@ -1300,9 +1255,7 @@ O cronômetro exibido pelo React é apenas uma representação visual.
 
 O servidor deve utilizar timestamps próprios para determinar se o tempo acabou.
 
----
-
-# 34. Segurança
+## 34. Segurança
 
 Mesmo sendo uma aplicação para rede local, implementar:
 
@@ -1328,9 +1281,7 @@ editScore
 
 sem autorização.
 
----
-
-# 35. Autenticação administrativa
+## 35. Autenticação administrativa
 
 O professor deverá possuir autenticação separada.
 
@@ -1346,9 +1297,7 @@ A sessão administrativa deve possuir autorização específica.
 
 Não reutilizar a sessão do aluno para funções administrativas.
 
----
-
-# 36. QR Code
+## 36. QR Code
 
 O QR Code deverá representar a sala, não necessariamente o aluno.
 
@@ -1367,9 +1316,7 @@ O QR Code não deve conter:
 
 A matrícula é informada posteriormente pelo aluno e validada no servidor.
 
----
-
-# 37. Rede local
+## 37. Rede local
 
 A primeira versão deve funcionar em uma rede Wi-Fi local.
 
@@ -1403,9 +1350,7 @@ localhost
 
 para permitir acesso pelos celulares.
 
----
-
-# 38. Responsividade
+## 38. Responsividade
 
 A interface deverá possuir pelo menos três breakpoints conceituais:
 
@@ -1443,9 +1388,7 @@ Prioridade:
 * estado;
 * ranking.
 
----
-
-# 39. Acessibilidade
+## 39. Acessibilidade
 
 Implementar:
 
@@ -1460,9 +1403,7 @@ Implementar:
 
 No celular, botões interativos devem possuir área de toque confortável.
 
----
-
-# 40. UX do aluno
+## 40. UX do aluno
 
 A tela deve possuir poucos elementos.
 
@@ -1484,9 +1425,7 @@ Evitar:
 * elementos pequenos;
 * navegação profunda.
 
----
-
-# 41. UX do professor
+## 41. UX do professor
 
 O painel administrativo deve separar claramente:
 
@@ -1530,9 +1469,7 @@ Ranking
 Próxima rodada
 ```
 
----
-
-# 42. Ranking
+## 42. Ranking
 
 A tela pública poderá apresentar:
 
@@ -1563,9 +1500,7 @@ mesma posição
 
 Não utilizar ordem de chegada como critério de desempate, salvo configuração futura.
 
----
-
-# 43. Estatísticas
+## 43. Estatísticas
 
 Registrar dados suficientes para produzir posteriormente:
 
@@ -1582,9 +1517,7 @@ Registrar dados suficientes para produzir posteriormente:
 
 Esses dados podem posteriormente ser usados pelo professor para identificar conteúdos que precisam de revisão.
 
----
-
-# 44. Persistência e histórico
+## 44. Persistência e histórico
 
 As partidas finalizadas não devem ser apagadas automaticamente.
 
@@ -1611,9 +1544,7 @@ Cada rodada deve preservar:
 
 Isso permite auditoria e análise posterior.
 
----
-
-# 45. Tratamento de desconexão
+## 45. Tratamento de desconexão
 
 Se um aluno perder a conexão:
 
@@ -1637,9 +1568,7 @@ Se a rodada ainda estiver ativa e a sessão puder ser restaurada, o aluno retorn
 
 Se a rodada já terminou, ele não poderá modificar respostas.
 
----
-
-# 46. Reentrada
+## 46. Reentrada
 
 A sessão do aluno deve possuir um identificador temporário.
 
@@ -1661,9 +1590,7 @@ ou cookie apropriado.
 
 O servidor continua sendo a autoridade.
 
----
-
-# 47. Estado após STOP
+## 47. Estado após STOP
 
 Depois do primeiro STOP válido:
 
@@ -1683,9 +1610,7 @@ qualquer tentativa posterior de alteração deve ser rejeitada.
 
 Isso é obrigatório porque um aluno poderia manipular o frontend.
 
----
-
-# 48. Tratamento de respostas
+## 48. Tratamento de respostas
 
 As respostas podem ser enviadas incrementalmente ao servidor para permitir recuperação após uma falha de conexão.
 
@@ -1714,9 +1639,7 @@ Preferencialmente sincronizar:
 * ao trocar de categoria;
 * ou em intervalos curtos.
 
----
-
-# 49. Performance
+## 49. Performance
 
 A aplicação deve suportar inicialmente pelo menos:
 
@@ -1734,9 +1657,7 @@ Não transmitir constantemente todas as respostas de todos os alunos para todos 
 
 Cada cliente deve receber apenas as informações necessárias.
 
----
-
-# 50. Estrutura sugerida do projeto
+## 50. Estrutura sugerida do projeto
 
 ```text
 stop-game/
@@ -1776,9 +1697,7 @@ stop-game/
 └── README.md
 ```
 
----
-
-# 51. Componentes React sugeridos
+## 51. Componentes React sugeridos
 
 ## Aluno
 
@@ -1822,9 +1741,7 @@ PublicGameScreen
 └── Ranking
 ```
 
----
-
-# 52. Gerenciamento de estado no React
+## 52. Gerenciamento de estado no React
 
 O frontend deve possuir estado explícito para:
 
@@ -1847,9 +1764,7 @@ Caso a complexidade aumente, utilizar Zustand ou Redux Toolkit.
 
 Não é necessário introduzir Redux prematuramente.
 
----
-
-# 53. Contratos de eventos
+## 53. Contratos de eventos
 
 Os eventos Socket.IO devem possuir payloads tipados e validados.
 
@@ -1874,9 +1789,7 @@ socket.on("requestStop", async ({ roundId }) => {
 
 Não confiar em dados enviados pelo cliente.
 
----
-
-# 54. Exemplo mínimo de servidor Express
+## 54. Exemplo mínimo de servidor Express
 
 ```javascript
 import express from "express";
@@ -1894,9 +1807,7 @@ app.listen(3000, "0.0.0.0", () => {
 });
 ```
 
----
-
-# 55. Exemplo mínimo de Socket.IO
+## 55. Exemplo mínimo de Socket.IO
 
 ```javascript
 import { Server } from "socket.io";
@@ -1916,9 +1827,7 @@ io.on("connection", (socket) => {
 
 A implementação final deve adicionar autenticação, validação e autorização.
 
----
-
-# 56. Exemplo mínimo de React
+## 56. Exemplo mínimo de React
 
 ```jsx
 function StopButton({ disabled, onClick }) {
@@ -1936,9 +1845,7 @@ function StopButton({ disabled, onClick }) {
 
 O frontend deve controlar a apresentação, mas a regra final de elegibilidade deve existir no servidor.
 
----
-
-# 57. Exemplo mínimo de normalização
+## 57. Exemplo mínimo de normalização
 
 ```javascript
 function normalizeAnswer(value) {
@@ -1952,9 +1859,7 @@ function normalizeAnswer(value) {
 
 A implementação final deve ser testada especificamente com Unicode e caracteres portugueses.
 
----
-
-# 58. Variáveis de ambiente
+## 58. Variáveis de ambiente
 
 Exemplo:
 
@@ -1978,9 +1883,7 @@ Fornecer:
 
 sem segredos.
 
----
-
-# 59. Docker
+## 59. Docker
 
 Fornecer inicialmente:
 
@@ -1998,9 +1901,7 @@ frontend
 
 Durante desenvolvimento, entretanto, frontend e backend podem ser executados separadamente.
 
----
-
-# 60. Testes
+## 60. Testes
 
 Implementar testes em três níveis.
 
@@ -2068,9 +1969,7 @@ e verificar:
 ELIMINATED
 ```
 
----
-
-# 61. Testes críticos
+## 61. Testes críticos
 
 Os seguintes testes são obrigatórios.
 
@@ -2146,9 +2045,7 @@ Resultado:
 nome exibido para confirmação
 ```
 
----
-
-# 62. Critérios de aceitação
+## 62. Critérios de aceitação
 
 A primeira versão será considerada funcional quando:
 
@@ -2182,9 +2079,7 @@ A primeira versão será considerada funcional quando:
 * [ ] histórico das rodadas é preservado;
 * [ ] aplicação funciona para múltiplos alunos simultaneamente.
 
----
-
-# 63. Prioridade de implementação
+## 63. Prioridade de implementação
 
 Implementar em fases.
 
@@ -2246,9 +2141,7 @@ Implementar em fases.
 * desempenho por categoria;
 * desempenho por aluno.
 
----
-
-# 64. Princípio arquitetural fundamental
+## 64. Princípio arquitetural fundamental
 
 A implementação deve seguir uma regra central:
 
@@ -2286,9 +2179,7 @@ pontuação
 integridade
 ```
 
----
-
-# 65. Resultado esperado
+## 65. Resultado esperado
 
 O produto final deve funcionar como uma plataforma de competição educacional em tempo real, preservando a mecânica essencial do Stop, mas adaptada ao ensino de React Native.
 

@@ -4,9 +4,10 @@ Referência técnica do projeto — como as peças se encaixam, por que certas d
 foram tomadas e quais armadilhas já morderam alguém aqui. Complementa, sem duplicar:
 
 * **[README.md](../README.md)** (raiz do projeto) — visão geral, stack, como rodar.
-* **[specifications.md](../specifications.md)** — requisitos numerados ("spec 17")
-  citados nos comentários do código. Esta wiki explica *como* o requisito foi
-  implementado; o spec continua sendo a fonte da *decisão de produto* original.
+* **[Especificação original](especificacao-original.md)** — requisitos numerados
+  ("spec 17") citados em mais de 200 comentários do código; migrou para a wiki
+  (era `specifications.md`, na raiz do projeto) para viver ao lado das páginas que
+  explicam *como* cada requisito foi implementado, em vez de num arquivo solto.
 * **`enhancements.md`** — **não existe mais na árvore de trabalho**: foi apagado no
   commit `7fa6bae`. Cerca de dez comentários espalhados pelo código continuam
   citando-o por seção ("enhancements.md seções 9-16" em
