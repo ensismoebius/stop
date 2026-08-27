@@ -1,4 +1,5 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import * as realtime from "../../src/sockets/realtime.js";
 import {
   createScenario,
   prisma,
@@ -102,6 +103,34 @@ describe("podio apos Finalizar partida (spec 42/44)", () => {
         value: `${round.letter}teste`,
       }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("nao diz ao aluno que a rodada foi cancelada — a partida foi finalizada", async () => {
+    // Fechar a rodada em andamento reusa o mesmo mecanismo de cancelar, e
+    // por isso o aluno via "O professor cancelou esta rodada" ao final da
+    // partida: mensagem errada para o que de fato aconteceu.
+    const round = await startedRound(scenario);
+    const spy = vi.spyOn(realtime, "toRoom");
+
+    await gameService.finish(scenario.game.id);
+
+    const avisos = spy.mock.calls.filter((call) => call[1] === "roundCancelled");
+    for (const aviso of avisos) {
+      expect(aviso[2].message).not.toMatch(/cancelou/i);
+      expect(aviso[2].message).toMatch(/encerrada/i);
+    }
+    spy.mockRestore();
+  });
+
+  it("cancelar uma rodada de verdade continua avisando que foi cancelada", async () => {
+    const round = await startedRound(scenario);
+    const spy = vi.spyOn(realtime, "toRoom");
+
+    await roundService.cancel(round.id);
+
+    const avisos = spy.mock.calls.filter((call) => call[1] === "roundCancelled");
+    expect(avisos[0][2].message).toMatch(/cancelou/i);
+    spy.mockRestore();
   });
 
   it("nao deixa criar nova rodada numa partida ja finalizada", async () => {

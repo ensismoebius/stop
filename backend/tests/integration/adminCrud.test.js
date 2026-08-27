@@ -203,20 +203,45 @@ describe("superfície administrativa ainda não coberta (CRUD completo das rotas
   });
 
   describe("sala: avatar do aluno", () => {
-    it("aceita um avatar pronto (/avatars/*.svg) e rejeita quem não pertence à turma", async () => {
+    it("aceita o rosto do aluno e rejeita quem não pertence à turma", async () => {
       const student = scenario.students[0];
       const response = await request(app).post(`/api/rooms/${scenario.room.code}/avatar`).send({
         registrationNumber: student.registrationNumber,
-        avatarUrl: "/avatars/gato-1.svg",
+        avatarUrl: "face:v1:02111002203202052",
       });
       expect(response.status).toBe(200);
-      expect(response.body.avatarUrl).toBe("/avatars/gato-1.svg");
+      expect(response.body.avatarUrl).toBe("face:v1:02111002203202052");
 
       const naoMatriculado = await request(app).post(`/api/rooms/${scenario.room.code}/avatar`).send({
         registrationNumber: "000000000",
-        avatarUrl: "/avatars/gato-1.svg",
+        avatarUrl: "face:v1:02111002203202052",
       });
       expect(naoMatriculado.status).toBe(404);
+    });
+
+    it("aceita o rosto montado pelo aluno e recusa marcação disfarçada de avatar", async () => {
+      const student = scenario.students[0];
+      // A receita é só um código de características — nunca SVG de origem
+      // desconhecida entrando no banco pelo campo do avatar.
+      const rosto = await request(app).post(`/api/rooms/${scenario.room.code}/avatar`).send({
+        registrationNumber: student.registrationNumber,
+        avatarUrl: "face:v1:02111002203202052",
+      });
+      expect(rosto.status).toBe(200);
+      expect(rosto.body.avatarUrl).toBe("face:v1:02111002203202052");
+
+      for (const invalido of [
+        'face:v1:<svg onload="alert(1)">',
+        "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+        "face:v2:0000",
+        "javascript:alert(1)",
+      ]) {
+        const recusado = await request(app).post(`/api/rooms/${scenario.room.code}/avatar`).send({
+          registrationNumber: student.registrationNumber,
+          avatarUrl: invalido,
+        });
+        expect(recusado.status).toBe(400);
+      }
     });
 
     it("fecha a sala via rota administrativa", async () => {

@@ -42,6 +42,33 @@ rodada de uma partida fica em `SCORED`; é `Game.status` que vira `FINISHED`.
 transição contra um mapa de estados permitidos — uma tentativa de pular etapas
 lança erro em vez de corromper o estado silenciosamente.
 
+## Regra da letra (`letterRule`, spec 21)
+
+Cada rodada guarda **como** a letra sorteada deve ser cobrada
+(`Round.letterRule`, escolhido pelo professor em `RoundControl`):
+
+| Valor | Significado | Exemplo com a letra R |
+| --- | --- | --- |
+| `STARTS_WITH` (padrão) | a resposta precisa **começar** com a letra | "React" ✓, "Servidor" ✗ |
+| `CONTAINS` | basta **conter** a letra em qualquer posição | "React" ✓, "Servidor" ✓ |
+
+A comparação mora num único lugar: `matchesLetter(value, letter, rule)` em
+`backend/src/game/normalize.js`, sobre o valor já normalizado (minúsculas, sem
+acento — mesma normalização de duplicatas). `startsWithLetter()` continua existindo
+como atalho para `matchesLetter(..., "STARTS_WITH")`.
+
+Quem consome a regra:
+
+* `suggestReviewState()` (`game/scoring.js`) — marca `INVALID` automaticamente só
+  quando a resposta viola **a regra da rodada**, não sempre "não começa com".
+* `correctionGrid()` e `groupedCorrectionGrid()` (`services/round/correction.js`) —
+  expõem o campo **`matchesLetter`** por resposta/grupo. O nome antigo era
+  `startsWithLetter`; virou mentira quando a regra passou a ser configurável, então
+  foi renomeado — se algum código externo ainda esperar `startsWithLetter`, é aqui
+  que quebrou.
+* `viewService.roundSummary()` — envia `letterRule` no estado da sala, para que o
+  aluno veja o critério antes de responder (ver [Frontend](frontend.md#regra-da-letra-na-tela-do-aluno)).
+
 ## STOP e a corrida entre alunos
 
 `requestStop` (`stop.js:79`) resolve a corrida com um único `UPDATE ... WHERE status
@@ -138,18 +165,32 @@ professor ao encerrar a partida (`Game.status → FINISHED`). Diferente de `scor
 (que atualiza `Score`, o total corrente), `finish()` grava **`GameResult`** — o
 registro permanente:
 
-1. Carrega o ranking final via `viewService.loadRanking` (mesma função usada por
+1. **Encerra a rodada em andamento, se houver.** `findCurrentByGame` + `roundService.cancel`
+   levam a rodada a `FINISHED` sem pontuar (as respostas ficam no banco para
+   auditoria, spec 44 — o que não existe é pontuação de uma rodada que nunca foi
+   corrigida). Sem este passo, "Finalizar partida" só mexia na tabela `Game`: a
+   rodada seguia `PLAYING`, a sala seguia `OPEN` e **os alunos continuavam
+   respondendo** — a partida "terminava" sem terminar.
+   `cancel(roundId, { message })` aceita um texto próprio justamente aqui: fechar a
+   rodada reusa o mecanismo de cancelar, mas o aluno não pode ler "o professor
+   cancelou esta rodada" quando o que houve foi o fim da partida.
+2. Carrega o ranking final via `viewService.loadRanking` (mesma função usada por
    `gameService.ranking`, única fonte de verdade para posição/empates).
-2. Para cada entrada, `prisma.gameResult.upsert` (idempotente por
+3. Para cada entrada, `prisma.gameResult.upsert` (idempotente por
    `@@unique([gameId, studentId])`) grava `score`, `position` e `medal`:
    `position === 1 → GOLD`, `2 → SILVER`, `3 → BRONZE`, qualquer outra posição →
    `null` (o aluno ainda ganha uma linha em `GameResult` — só sem medalha). Como a
    medalha deriva de `position` (não do índice), um empate em 1º dá ouro aos dois.
-3. Bloqueio de novas rodadas: `round/lifecycle.js`'s `create()` checa
+4. Bloqueio de novas rodadas: `round/lifecycle.js`'s `create()` checa
    `game.status === "FINISHED"` **antes** de qualquer outra validação e lança 409 —
    como `next()` chama `create()` internamente, isso cobre ambos os caminhos de
    criar uma nova rodada numa partida já finalizada.
-4. Difunde `rankingUpdated` + `broadcastState` para que quem estiver conectado veja o
+5. **Fecha a sala** (`Room.status → CLOSED`) e emite `roomStatusChanged`. `CLOSED`
+   bloqueia apenas `roomService.join`, ou seja, impede alguém de **entrar** numa
+   partida encerrada — quem já está conectado continua recebendo estado e vê o pódio
+   normalmente. Era importante conferir isso antes de fechar: fechar de um jeito que
+   derrubasse os alunos apagaria justamente o pódio que acabamos de calcular.
+6. Difunde `rankingUpdated` + `broadcastState` para que quem estiver conectado veja o
    pódio **imediatamente** — a tela pública (`Ranking.jsx`) e a tela do aluno
    (`StudentGamePage.jsx`) já sabiam mostrar o ranking quando `game.status ===
    "FINISHED"`; faltava só avisá-los (ver [Tempo real](tempo-real.md) para o porquê
@@ -158,3 +199,21 @@ registro permanente:
 O pódio é puramente derivado de `position`: 🥇/🥈/🥉 aparecem para `position <= 3`
 tanto em `Ranking.jsx` (tela pública) quanto no ranking de `StudentGamePage.jsx`
 (aluno), via um mapa `MEDAL_BY_POSITION` idêntico nos dois lugares.
+
+### O aluno precisa se ver, não só o pódio
+
+O ranking do aluno mostrava `ranking.slice(0, 10)`. Numa turma de 100+ alunos isso
+significa que **quase ninguém se encontrava na lista** — o pedido "todo aluno vê sua
+colocação e medalha" era insatisfazível por construção. Hoje `StudentRankingList`
+casa `entry.studentId` com o `student.id` do próprio estado e mostra um bloco
+"Sua colocação" (posição, pontos, medalha); se o aluno estiver fora do top 10, a
+linha dele é anexada depois de um separador. Regressão coberta com um aluno em 42º.
+
+### O que `finishPodium.test.js` protege
+
+As três superfícies leem o ranking por caminhos **diferentes** do `viewService`
+(`publicState`, `playerStatesForRoom` em lote, e `playerState` individual de quem
+recarrega a página). Já houve regressão em que a tela pública mostrava o pódio e a
+do aluno não, então há uma asserção por caminho — além de rodada fechada, sala
+fechada, `submit` recusado com 409, e a mensagem enviada ao aluno **não** conter
+"cancelou".

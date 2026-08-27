@@ -314,7 +314,13 @@ export function PublicScreenPage() {
   if (showRanking) {
     return (
       <div className="screen screen--ranking">
-        <Ranking entries={view?.ranking ?? []} audio={audio} />
+        {/* Pódio olímpico só no encerramento da partida; entre rodadas,
+            o ranking normal. */}
+        <Ranking
+          entries={view?.ranking ?? []}
+          audio={audio}
+          finished={view?.game?.status === "FINISHED"}
+        />
         <EmojiBursts items={emojiBursts.items} />
       </div>
     );

@@ -42,6 +42,27 @@ const CUES = {
     { freq: 784, duration: 0.12 },
     { freq: 1047, duration: 0.28 },
   ],
+  /** Tensão enquanto a próxima colocação do pódio não aparece. */
+  DRUMROLL: [
+    { freq: 165, duration: 0.05, gain: 0.05 },
+    { freq: 165, duration: 0.05, gain: 0.07 },
+    { freq: 196, duration: 0.05, gain: 0.09 },
+    { freq: 196, duration: 0.05, gain: 0.11 },
+    { freq: 233, duration: 0.14, gain: 0.14 },
+  ],
+  /** 3º e 2º lugares: acorde curto de revelação. */
+  PODIUM: [
+    { freq: 523, duration: 0.1, gain: 0.16 },
+    { freq: 784, duration: 0.24, gain: 0.18 },
+  ],
+  /** 1º lugar: fanfarra inteira, junto com os fogos. */
+  FANFARE: [
+    { freq: 523, duration: 0.13, gain: 0.18 },
+    { freq: 659, duration: 0.13, gain: 0.18 },
+    { freq: 784, duration: 0.13, gain: 0.2 },
+    { freq: 1047, duration: 0.16, gain: 0.22 },
+    { freq: 1319, duration: 0.55, gain: 0.24 },
+  ],
 };
 
 /**

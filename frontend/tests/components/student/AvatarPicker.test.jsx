@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AvatarPicker from "../../../src/components/student/AvatarPicker.jsx";
+import { DEFAULT_FACE, FACE_STEPS, decodeFace, encodeFace } from "../../../src/lib/face.js";
+import { FACE_COUNTS } from "../../../src/data/faceParts.js";
 
 /** Always resolves onload, mimicking a decoded image. */
 class SuccessImage {
@@ -51,50 +53,87 @@ afterEach(() => {
 });
 
 describe("AvatarPicker", () => {
-  it("shows a placeholder when no avatar is selected", () => {
-    render(<AvatarPicker value={null} onChange={vi.fn()} />);
-    expect(screen.getByText("?")).toBeInTheDocument();
-    expect(screen.queryByAltText("Seu avatar")).not.toBeInTheDocument();
-  });
-
-  it("shows the selected avatar image", () => {
-    render(<AvatarPicker value="/avatars/avatar-01.svg" onChange={vi.fn()} />);
-    expect(screen.getByAltText("Seu avatar")).toHaveAttribute("src", "/avatars/avatar-01.svg");
-  });
-
-  it("hides the camera option when isSecureContext is false", () => {
-    Object.defineProperty(window, "isSecureContext", { value: false, configurable: true });
-    render(<AvatarPicker value={null} onChange={vi.fn()} />);
-    expect(screen.queryByText("📷 Tirar foto")).not.toBeInTheDocument();
-  });
-
-  it("shows the camera option when isSecureContext is true", () => {
-    Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
-    render(<AvatarPicker value={null} onChange={vi.fn()} />);
-    expect(screen.getByText("📷 Tirar foto")).toBeInTheDocument();
-  });
-
-  it("renders the full preset avatar grid (48 options)", () => {
+  it("mostra o assistente quando não há foto", () => {
     const { container } = render(<AvatarPicker value={null} onChange={vi.fn()} />);
-    expect(container.querySelectorAll(".avatar-picker__option")).toHaveLength(48);
+    expect(container.querySelector(".wz")).not.toBeNull();
+    expect(container.querySelector(".wz__preview svg")).not.toBeNull();
   });
 
-  it("marks the preset matching the current value as selected", () => {
-    const { container } = render(
-      <AvatarPicker value="/avatars/avatar-02.svg" onChange={vi.fn()} />,
-    );
-    const options = container.querySelectorAll(".avatar-picker__option");
-    expect(options[1]).toHaveClass("avatar-picker__option--selected");
-    expect(options[0]).not.toHaveClass("avatar-picker__option--selected");
-  });
-
-  it("calls onChange with the preset URL when a preset is clicked", async () => {
-    const onChange = vi.fn();
+  it("começa na primeira etapa e avança uma de cada vez", async () => {
     const user = userEvent.setup();
-    const { container } = render(<AvatarPicker value={null} onChange={onChange} />);
-    const firstOption = container.querySelectorAll(".avatar-picker__option")[0];
-    await user.click(firstOption);
-    expect(onChange).toHaveBeenCalledWith("/avatars/avatar-01.svg");
+    render(<AvatarPicker value={null} onChange={vi.fn()} />);
+
+    expect(screen.getByRole("heading", { name: FACE_STEPS[0].title })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Próximo" }));
+    expect(screen.getByRole("heading", { name: FACE_STEPS[1].title })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Voltar" }));
+    expect(screen.getByRole("heading", { name: FACE_STEPS[0].title })).toBeInTheDocument();
+  });
+
+  it("não deixa voltar antes da primeira etapa nem avançar depois da última", async () => {
+    const user = userEvent.setup();
+    render(<AvatarPicker value={null} onChange={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Voltar" })).toBeDisabled();
+
+    for (let i = 0; i < FACE_STEPS.length - 1; i += 1) {
+      await user.click(screen.getByRole("button", { name: "Próximo" }));
+    }
+    expect(screen.getByRole("button", { name: "Pronto" })).toBeDisabled();
+  });
+
+  it("dá para pular direto para uma etapa pela trilha", async () => {
+    const user = userEvent.setup();
+    render(<AvatarPicker value={null} onChange={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: FACE_STEPS[3].title }));
+    expect(screen.getByRole("heading", { name: FACE_STEPS[3].title })).toBeInTheDocument();
+  });
+
+  it("escolher um tom de pele grava o índice", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<AvatarPicker value={encodeFace(DEFAULT_FACE)} onChange={onChange} />);
+
+    const paleta = within(screen.getByRole("group", { name: "Tom de pele" }));
+    await user.click(paleta.getByRole("button", { name: "Tom de pele 5" }));
+    expect(decodeFace(onChange.mock.calls.at(-1)[0]).sk).toBe(4);
+  });
+
+  it("cada opção da galeria mostra o rosto do aluno com aquela peça", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { container } = render(<AvatarPicker value={encodeFace(DEFAULT_FACE)} onChange={onChange} />);
+
+    await user.click(screen.getByRole("button", { name: "Próximo" })); // cabelo
+    const options = container.querySelectorAll(".wz__option");
+    expect(options.length).toBe(FACE_COUNTS.hair);
+    // Cada miniatura é um rosto inteiro, não só a peça solta.
+    expect(options[0].querySelector("svg")).not.toBeNull();
+
+    await user.click(options[3]);
+    expect(decodeFace(onChange.mock.calls.at(-1)[0]).hair).toBe(3);
+  });
+
+  it("o botão de sortear devolve um rosto válido", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<AvatarPicker value={null} onChange={onChange} />);
+    await user.click(screen.getByRole("button", { name: "🎲" }));
+    expect(decodeFace(onChange.mock.calls.at(-1)[0])).not.toBeNull();
+  });
+
+  it("com uma foto, mostra a foto e some com o montador", () => {
+    const photo = "data:image/jpeg;base64,abc";
+    const { container } = render(<AvatarPicker value={photo} onChange={vi.fn()} />);
+    expect(container.querySelector(".fb")).toBeNull();
+    expect(screen.getByRole("img")).toHaveAttribute("src", photo);
+  });
+
+  it("dá para trocar a foto pelo rosto montado", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<AvatarPicker value="data:image/jpeg;base64,abc" onChange={onChange} />);
+    await user.click(screen.getByRole("button", { name: /Montar um rosto/ }));
+    expect(onChange).toHaveBeenCalledWith(null);
   });
 
   it("processes a captured photo through resize and calls onChange with the data URL", async () => {

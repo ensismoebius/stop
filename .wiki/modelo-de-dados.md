@@ -53,7 +53,7 @@ silenciosamente), `Cascade` para dados puramente derivados/dependentes.
   partida (`gameService.finish`, ver [Ciclo de vida da rodada](ciclo-de-vida-da-rodada.md)).
   Guarda `score` (cópia do total final), `position` (com empates — ver algoritmo de
   ranking) e `medal` (GOLD/SILVER/BRONZE para o top 3, `null` para os demais). É a
-  fonte de dados do painel de [Relatórios](frontend.md#reportspanel).
+  fonte de dados do painel de [Relatórios](frontend.md#reportspaneljsx).
 
 Eles não são o mesmo dado com nomes diferentes: `Score` pode mudar a qualquer
 momento até o fim da partida; `GameResult` é gravado uma vez (via `upsert` idempotente
@@ -78,6 +78,36 @@ uma oferta de uma disciplina; se a mesma disciplina for oferecida a duas turmas
 diferentes, cada uma tem seu próprio registro `Class` com o mesmo valor de
 `discipline`.
 
+## `letterRule` em `Round`
+
+`Round.letterRule` (`enum LetterRule { STARTS_WITH | CONTAINS }`, default
+`STARTS_WITH`) guarda como a letra sorteada é cobrada naquela rodada. Fica no
+`Round`, não no `Game` nem em configuração global, porque o professor escolhe por
+rodada — e porque uma rodada já jogada precisa continuar sendo lida com a regra que
+valia quando foi jogada (mesmo princípio de imutabilidade do `RoundCategory` acima).
+Ver [Ciclo de vida da rodada](ciclo-de-vida-da-rodada.md#regra-da-letra-letterrule-spec-21).
+
+## `avatarUrl`: dois formatos, um só validador
+
+`Student.avatarUrl` (`String?  @db.Text`) aceita **exatamente dois** formatos, e o
+regex em `roomAvatarSchema` (`validators/schemas.js`) é a única porta:
+
+| Formato | O que é |
+| --- | --- |
+| `face:v1:<12 dígitos base36>` | a receita do rosto montado pelo aluno — só índices |
+| `data:image/(png\|jpeg\|webp);base64,…` | foto tirada na hora, já reduzida no cliente |
+
+O ponto de segurança: a receita guarda **números**, não marcação. `data:image/svg+xml`
+é recusado de propósito — aceitar SVG arbitrário do cliente seria aceitar marcação de
+origem desconhecida num campo que depois é renderizado. Há teste para as duas coisas
+(receita aceita; `svg+xml`, `face:v1:<svg onload=…>`, `face:v2:` e `javascript:` todos
+recusados com 400).
+
+Caminhos de arquivo (`/avatars/*.svg`) **não valem mais**: a pasta de avatares
+prontos deixou de existir quando o montador entrou. Se aparecer um `avatarUrl` assim
+num banco antigo, ele vira imagem quebrada — a limpeza é
+`UPDATE Student SET avatarUrl = NULL WHERE avatarUrl LIKE '/avatars/%'`.
+
 ## Migrações
 
 Fluxo usado neste projeto (ver [Testes](testes.md) para o setup do banco isolado):
@@ -87,3 +117,9 @@ Fluxo usado neste projeto (ver [Testes](testes.md) para o setup do banco isolado
 2. Inspecionar o SQL gerado manualmente antes de tocar produção.
 3. `npx prisma migrate deploy` (usando o `DATABASE_URL` de produção do `.env`) —
    aplica a **mesma** migração já testada, nunca `migrate dev` direto em produção.
+
+> **Quando `migrate dev` não roda.** Ele precisa criar um *shadow database*, e o
+> usuário do MySQL pode não ter `CREATE DATABASE`. Nesse caso: escrever o
+> `migration.sql` à mão (copiando o estilo das migrações vizinhas), colocá-lo numa
+> pasta `prisma/migrations/<timestamp>_<nome>/` e aplicar com `migrate deploy`, que
+> **não** usa shadow database. Foi assim que `letterRule` entrou.

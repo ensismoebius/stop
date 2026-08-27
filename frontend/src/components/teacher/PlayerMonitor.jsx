@@ -1,4 +1,5 @@
 import StatusBadge from "../common/StatusBadge.jsx";
+import Avatar from "../common/Avatar.jsx";
 
 /** Alunos conectados e progresso agregado (spec 4.1 e 49). */
 export function PlayerMonitor({ players, requiredCount }) {
@@ -25,7 +26,7 @@ export function PlayerMonitor({ players, requiredCount }) {
                   data-initial={player.avatarUrl ? undefined : (player.name?.charAt(0)?.toUpperCase() ?? "?")}
                 >
                   {player.avatarUrl ? (
-                    <img className="player__avatar" src={player.avatarUrl} alt="" />
+                    <Avatar className="player__avatar" value={player.avatarUrl} name={player.name} />
                   ) : null}
                   {player.name}
                 </div>

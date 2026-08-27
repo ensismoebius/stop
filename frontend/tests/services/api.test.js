@@ -241,12 +241,12 @@ describe("api convenience methods", () => {
   });
 
   it("setAvatar posts registrationNumber and avatarUrl", async () => {
-    await api.setAvatar("ABCD", "123", "/avatars/a1.svg");
+    await api.setAvatar("ABCD", "123", "face:v1:02111002203202052");
     const [url, options] = fetch.mock.calls[0];
     expect(url).toBe("/api/rooms/ABCD/avatar");
     expect(JSON.parse(options.body)).toEqual({
       registrationNumber: "123",
-      avatarUrl: "/avatars/a1.svg",
+      avatarUrl: "face:v1:02111002203202052",
     });
   });
 

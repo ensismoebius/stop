@@ -474,3 +474,309 @@
     box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25), 0 0 2.5rem rgba(255, 180, 0, 0.8);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Cerimônia de pódio (tela pública)
+   ---------------------------------------------------------------------------
+   Layout olímpico: 2º à esquerda, 1º ao centro e mais alto, 3º à direita.
+   A revelação é encenada — o degrau só ganha gente quando chega a vez dele.
+   ------------------------------------------------------------------------ */
+.podium-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5vh;
+  width: min(94vw, 72rem);
+}
+
+.podium-stage__title {
+  font-size: clamp(1.6rem, 4.4vw, 3.2rem);
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--yellow);
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Altura reservada: o anúncio aparece e some sem empurrar o pódio. */
+.podium-stage__tease {
+  min-height: clamp(2.4rem, 7vh, 4.5rem);
+  display: grid;
+  place-items: center;
+}
+
+.podium-tease {
+  font-size: clamp(1.4rem, 4vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: #fff;
+  text-transform: uppercase;
+  animation: podium-tease-pulse 0.75s ease-in-out infinite;
+}
+
+@keyframes podium-tease-pulse {
+  50% {
+    transform: scale(1.07);
+    opacity: 0.65;
+  }
+}
+
+.podium {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: end;
+  gap: clamp(0.4rem, 1.5vw, 1.5rem);
+  width: 100%;
+}
+
+.podium__step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.8vh;
+  min-width: 0;
+}
+
+/* Blocos com alturas diferentes — é o que faz o pódio parecer um pódio. */
+.podium__block {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  border-radius: 10px 10px 0 0;
+  color: #2b1a00;
+  font-weight: 900;
+}
+
+.podium__step--p1 .podium__block {
+  height: clamp(5rem, 18vh, 9rem);
+  background: linear-gradient(180deg, #ffe07a 0%, var(--yellow) 100%);
+  box-shadow: 0 6px 0 var(--yellow-dark);
+}
+
+.podium__step--p2 .podium__block {
+  height: clamp(3.6rem, 12.5vh, 6.5rem);
+  background: linear-gradient(180deg, #e9e9f2 0%, #b9b9cc 100%);
+  box-shadow: 0 6px 0 #7a7a99;
+}
+
+.podium__step--p3 .podium__block {
+  height: clamp(2.8rem, 9vh, 5rem);
+  background: linear-gradient(180deg, #f0b98a 0%, var(--orange) 100%);
+  box-shadow: 0 6px 0 var(--orange-dark);
+}
+
+.podium__medal {
+  font-size: clamp(1.6rem, 4.5vh, 3rem);
+  line-height: 1;
+}
+
+.podium__place {
+  font-size: clamp(0.9rem, 2.4vh, 1.4rem);
+  letter-spacing: 0.1em;
+}
+
+.podium__people {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vh;
+  min-height: clamp(8rem, 25vh, 17rem);
+  justify-content: flex-end;
+}
+
+/* Cada vencedor "aterrissa" no degrau. */
+.podium__step--in .podium__winner {
+  animation: podium-land 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+@keyframes podium-land {
+  from {
+    transform: translateY(-60px) scale(0.7);
+    opacity: 0;
+  }
+}
+
+.podium__winner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* O avatar é a estrela da cerimônia: numa TV vista do fundo da sala, ele
+   precisa ser reconhecível de longe — o nome, em comparação, é secundário. */
+.podium__avatar {
+  width: clamp(5rem, 17vh, 11rem);
+  height: clamp(5rem, 17vh, 11rem);
+  border-radius: 50%;
+  object-fit: cover;
+  background: #fff;
+  border: 5px solid #fff;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* O 1º lugar é maior ainda que os outros dois degraus. */
+.podium__step--p1 .podium__avatar {
+  width: clamp(6.5rem, 22vh, 14rem);
+  height: clamp(6.5rem, 22vh, 14rem);
+  border-color: var(--yellow);
+  box-shadow: 0 6px 0 var(--yellow-dark);
+}
+
+.podium__avatar--blank {
+  display: block;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.podium__name {
+  font-size: clamp(0.9rem, 2.6vh, 1.7rem);
+  font-weight: 800;
+  color: #fff;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podium__total {
+  font-size: clamp(1.1rem, 3.4vh, 2.2rem);
+  font-weight: 900;
+  color: var(--yellow);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fogos do 1º lugar ------------------------------------------------------ */
+
+.fireworks {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.fireworks__burst {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.fireworks__burst--1 { left: 22%; top: 28%; animation: fireworks-go 1.6s ease-out infinite; }
+.fireworks__burst--2 { left: 74%; top: 22%; animation: fireworks-go 1.6s ease-out 0.45s infinite; }
+.fireworks__burst--3 { left: 50%; top: 14%; animation: fireworks-go 1.6s ease-out 0.9s infinite; }
+
+.fireworks__burst i {
+  position: absolute;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  /* Cada faísca sai num ângulo diferente, definido inline. */
+  transform: rotate(var(--angle)) translateY(0);
+  animation: fireworks-spark 1.6s ease-out infinite;
+}
+
+.fireworks__burst--1 i { background: var(--yellow); }
+.fireworks__burst--2 i { background: var(--pink); }
+.fireworks__burst--3 i { background: var(--teal); }
+
+@keyframes fireworks-go {
+  0%, 100% { opacity: 1; }
+}
+
+@keyframes fireworks-spark {
+  0% {
+    transform: rotate(var(--angle)) translateY(0) scale(1);
+    opacity: 1;
+  }
+  70% { opacity: 1; }
+  100% {
+    transform: rotate(var(--angle)) translateY(-9rem) scale(0.25);
+    opacity: 0;
+  }
+}
+
+/* Turma no rodapé -------------------------------------------------------- */
+
+.audience {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vh;
+  animation: audience-in 0.6s ease-out both;
+}
+
+@keyframes audience-in {
+  from { transform: translateY(20px); opacity: 0; }
+}
+
+.audience__label {
+  font-size: clamp(0.7rem, 1.8vh, 1rem);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.audience__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 0.8rem;
+  max-height: 22vh;
+  overflow: hidden;
+}
+
+.audience__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  width: clamp(3rem, 6vw, 4.5rem);
+}
+
+.audience__avatar {
+  width: clamp(1.8rem, 4.5vh, 2.8rem);
+  height: clamp(1.8rem, 4.5vh, 2.8rem);
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.25);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 900;
+}
+
+.audience__name {
+  font-size: clamp(0.55rem, 1.4vh, 0.8rem);
+  color: var(--text-muted);
+  font-weight: 700;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Drama é opcional: quem pediu menos movimento recebe o pódio montado,
+   sem pulsos, aterrissagens nem fogos animados. */
+@media (prefers-reduced-motion: reduce) {
+  .podium-tease,
+  .podium__step--in .podium__winner,
+  .audience,
+  .fireworks__burst,
+  .fireworks__burst i {
+    animation: none;
+  }
+
+  .fireworks {
+    display: none;
+  }
+}

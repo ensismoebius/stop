@@ -76,16 +76,21 @@ export const roomJoinSchema = z.object({
   registrationNumber: trimmed(40),
 });
 
-// Ou um avatar pronto (/avatars/xxx.svg) ou uma foto comprimida em data URL
+// Ou o rosto montado pelo aluno (`face:v1:…`) ou uma foto comprimida em data URL
 // (camera do aluno). O limite de tamanho evita que um upload gigante va
 // parar no banco (spec 6).
 export const roomAvatarSchema = z.object({
   registrationNumber: trimmed(40),
+  // Só dois formatos: o rosto montado pelo aluno (`face:v1:` + um caractere
+  // por característica) e a foto tirada na hora. A receita guarda apenas
+  // números — nunca marcação —, então nada de SVG de origem desconhecida
+  // entra pelo `avatarUrl`. Caminhos de arquivo não valem mais: a pasta de
+  // avatares prontos deixou de existir.
   avatarUrl: z
     .string()
     .max(180_000)
     .regex(
-      /^(\/avatars\/[a-z0-9-]+\.svg|data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*)$/,
+      /^(face:v1:[0-9a-z]{1,40}|data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*)$/,
       "Avatar inválido",
     ),
 });

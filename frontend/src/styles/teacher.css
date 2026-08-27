@@ -544,3 +544,85 @@
 .home__link span {
   color: rgba(255, 255, 255, 0.85);
 }
+
+/* ---------------------------------------------------------------------------
+   Partida/sala encerrada
+   ---------------------------------------------------------------------------
+   Depois de "Finalizar partida" o botao some e a sala precisa PARECER
+   fechada, nao so estar fechada no banco: sem QR Code e sem codigo de
+   entrada em destaque, para ninguem tentar entrar numa sala que ja recusa
+   entradas.
+   ------------------------------------------------------------------------ */
+.badge--finished {
+  background: var(--ink-muted);
+  color: #fff;
+}
+
+.roomclosed {
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+/* Mesmo codigo, visualmente "apagado": continua legivel para conferencia,
+   mas nao convida mais ninguem a entrar. */
+.roomcode--closed {
+  background: var(--ink-muted);
+  opacity: 0.75;
+  text-decoration: line-through;
+}
+
+/* ---------------------------------------------------------------------------
+   Barra de estado + acoes da partida
+   ---------------------------------------------------------------------------
+   Antes esta barra so tinha botoes, entao a fase atual da partida precisava
+   ser deduzida de quais botoes existiam. Agora o estado e explicito (nome da
+   partida + selo) e as acoes ficam agrupadas do outro lado, com uma unica
+   acao primaria por contexto.
+   ------------------------------------------------------------------------ */
+.gamebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.gamebar__status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.gamebar__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.gamebar__title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gamebar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Em telas estreitas as acoes ocupam a linha inteira, lado a lado, em vez
+   de espremer contra o titulo. */
+@media (max-width: 560px) {
+  .gamebar__actions {
+    width: 100%;
+  }
+
+  .gamebar__actions .btn {
+    flex: 1;
+  }
+}

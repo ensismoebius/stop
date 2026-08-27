@@ -36,7 +36,11 @@
 
 .letter__label {
   font-size: 0.7rem;
-  letter-spacing: 0.22em;
+  /* O rotulo agora carrega a regra da rodada ("Começa com" / "Contém"),
+     bem mais largo que o antigo "Letra": espacamento menor e sem quebra,
+     para nao empurrar o cronometro ao lado. */
+  letter-spacing: 0.12em;
+  white-space: nowrap;
   color: var(--text-muted);
   text-transform: uppercase;
   font-weight: 800;
@@ -245,6 +249,12 @@
   flex-direction: column;
   gap: 0.6rem;
   box-shadow: 0 6px 0 var(--purple-dark);
+  /* Rede de segurança para as rolagens que o NAVEGADOR faz sozinho (abrir o
+     teclado, por exemplo, que nem passa pelo nosso `scrollIntoView`): reserva
+     espaço para o cabeçalho `sticky` em cima e a barra do STOP `fixed`
+     embaixo, senão o campo encosta atrás de um dos dois. */
+  scroll-margin-top: 10rem;
+  scroll-margin-bottom: 7rem;
 }
 
 .editor__title {
@@ -522,4 +532,266 @@
   font-weight: 800;
   letter-spacing: 0.2em;
   line-height: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Eixos do seletor de avatar
+   ---------------------------------------------------------------------------
+   A grade completa e expressao x cabelo x tom de pele (270 combinacoes).
+   Mostrar tudo de uma vez seria ilegivel, entao expressao e tom de pele
+   viram filtros e a grade abaixo mostra so os cabelos — ja renderizados
+   na combinacao escolhida, para o aluno ver exatamente o que vai levar.
+   ------------------------------------------------------------------------ */
+.avatar-axis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.avatar-axis__btn {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0.4rem 0.7rem;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text-muted);
+  font-weight: 800;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.avatar-axis__btn--on {
+  background: var(--purple);
+  border-color: #fff;
+  color: #fff;
+}
+
+/* Amostras de tom de pele: alvo de toque de 44px mesmo sendo circulos
+   pequenos, para funcionar no celular do aluno. */
+.avatar-skin {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.avatar-skin--on {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px var(--purple);
+}
+
+/* Amostras de cor de cabelo: menores que as de pele (sao 10) e com borda
+   escura, porque tons claros como o platinado somem no fundo branco. */
+.avatar-skin--hair {
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+}
+
+/* ---------------------------------------------------------------------------
+   Montador de rosto (assistente)
+   ---------------------------------------------------------------------------
+   Uma decisão por tela. Cada opção é o rosto inteiro do aluno com aquela
+   peça trocada — escolher olhando o resultado, nunca um nome de variante.
+
+   Este bloco vive dentro de `.card`, que é BRANCO com texto escuro. Nada
+   aqui pode assumir o roxo do resto da tela do aluno: título branco sumia
+   no fundo branco, e as bordas em branco translúcido idem.
+   ------------------------------------------------------------------------ */
+.wz {
+  display: flex;
+  flex-direction: column;
+  gap: .7rem;
+  width: 100%;
+  color: var(--ink);
+}
+
+/* O rosto é um SVG dentro de um wrapper: sem `display:block` o wrapper é
+   inline, ganha altura de linha e corta o desenho — era isso que deixava
+   só o alto da cabeça à mostra.
+   `overflow:hidden` + `border-radius:inherit` fazem o desenho respeitar o
+   recorte redondo de quem o hospeda: as classes de avatar por aí foram
+   escritas para <img> (`object-fit`), que não vale para um <span>. */
+.face {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.face svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.wz__preview {
+  align-self: center;
+  width: clamp(7.5rem, 36vw, 11rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--bg-soft, #f4f2ff);
+  box-shadow: 0 5px 0 var(--purple-dark);
+  overflow: hidden;
+}
+
+.wz__track {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  gap: .45rem;
+}
+
+.wz__dot {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border-soft);
+  background: transparent;
+  cursor: pointer;
+}
+
+.wz__dot--done { background: var(--purple); border-color: var(--purple); }
+.wz__dot--on { background: var(--yellow); border-color: var(--yellow-dark); transform: scale(1.15); }
+
+.wz__head { text-align: center; display: flex; flex-direction: column; gap: .1rem; }
+
+.wz__step-count {
+  font-size: .7rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--purple);
+}
+
+.wz__title { margin: 0; font-size: 1.15rem; font-weight: 900; color: var(--ink); }
+.wz__hint { margin: 0; font-size: .85rem; color: var(--ink-muted); }
+
+/* A galeria rola dentro dela mesma: a página não cresce sem fim só porque
+   um passo tem 45 opções. */
+/* Painel de rolagem das miniaturas.
+   Altura FIXA, não `max-height`: a galeria tem que ocupar sempre o mesmo
+   pedaço da tela, com barra de rolagem própria. Com altura variável a
+   lista de 45 cabelos empurrava "Voltar/Próximo" para fora do telefone. */
+.wz__panel {
+  position: relative;
+  height: clamp(11rem, 38vh, 19rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  border: 2px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--bg-soft, #f4f2ff);
+  padding: .35rem;
+}
+
+/* Barra de rolagem visível: é a pista de que ali dentro tem mais coisa. */
+.wz__panel { scrollbar-width: thin; scrollbar-color: var(--purple) transparent; }
+.wz__panel::-webkit-scrollbar { width: 10px; }
+.wz__panel::-webkit-scrollbar-track { background: transparent; }
+.wz__panel::-webkit-scrollbar-thumb {
+  background: var(--purple);
+  border-radius: 999px;
+  border: 3px solid var(--bg-soft, #f4f2ff);
+}
+
+/* Quantas peças existem, fixo no canto do painel. */
+.wz__count {
+  position: sticky;
+  bottom: -.35rem;
+  float: right;
+  margin-top: .3rem;
+  padding: .1rem .45rem;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  opacity: .75;
+}
+
+.wz__grid {
+  display: grid;
+  /* Colunas que encolhem junto com a tela: em telefone estreito cabem
+     três, e cada uma continua quadrada. */
+  grid-template-columns: repeat(auto-fill, minmax(3.6rem, 1fr));
+  gap: .4rem;
+  /* Itens de grid esticam por padrão, e o stretch ganha do `aspect-ratio`:
+     sem isto a miniatura fica baixa e larga, e o rosto quadrado aparece
+     cortado na linha do cabelo. */
+  align-items: start;
+}
+
+.wz__option {
+  padding: 0;
+  border: 3px solid var(--border-soft);
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+  width: 100%;
+  aspect-ratio: 1;
+  align-self: start;
+  overflow: hidden;
+}
+
+.wz__option--on { border-color: var(--yellow); box-shadow: 0 0 0 3px var(--purple); }
+
+.wz__swatches { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; }
+
+.wz__swatch {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--border-soft);
+  padding: 0;
+  cursor: pointer;
+}
+
+.wz__swatch--on { border-color: var(--ink); box-shadow: 0 0 0 3px var(--yellow); }
+
+.wz__nav { display: flex; gap: .4rem; align-items: stretch; }
+
+.wz__nav .btn {
+  flex: 1;
+  min-width: 0;
+  padding-inline: .5rem;
+  font-size: .9rem;
+  white-space: nowrap;
+}
+
+/* O dado é um ícone: largura fixa, para não roubar espaço dos outros dois. */
+.wz__nav .btn:nth-child(2) { flex: 0 0 auto; min-width: 48px; padding-inline: .3rem; }
+
+.avatar-picker__photo { display: flex; flex-direction: column; gap: .6rem; align-items: center; }
+
+/* Telas estreitas (a maioria dos alunos entra pelo telefone). */
+@media (max-width: 380px) {
+  .wz { gap: .55rem; }
+
+  .wz__preview { width: 6.5rem; }
+
+  .wz__dot { width: 26px; height: 26px; }
+
+  .wz__swatch { width: 38px; height: 38px; }
+
+  .wz__grid { grid-template-columns: repeat(auto-fill, minmax(3.1rem, 1fr)); }
+  .wz__panel { height: clamp(10rem, 34vh, 15rem); }
+
+  .wz__title { font-size: 1.05rem; }
+  .wz__hint { font-size: .78rem; }
+}
+
+/* Telas muito baixas: a galeria encolhe em vez de esconder os botões. */
+@media (max-height: 700px) {
+  .wz__panel { height: clamp(8.5rem, 30vh, 13rem); }
+  .wz__preview { width: 6rem; }
 }

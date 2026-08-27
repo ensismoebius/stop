@@ -421,6 +421,13 @@ describe("API REST (spec 30 e 34)", () => {
     const round = await waitForRoundStatus(created.id, "PLAYING");
     const [certa, errada] = round.categories;
 
+    // Uma resposta que comprovadamente NAO comeca com a letra sorteada,
+    // seja ela qual for. Antes isso era o literal "zzz-fora-da-letra", mas
+    // o LETTER_POOL configurado inclui Z: quando o sorteio caia em Z a
+    // resposta passava a ser valida e o teste falhava (~1 vez a cada 21).
+    const outraLetra = "ABCDEFGHIJLMNOPRSTUVZ".split("").find((letra) => letra !== round.letter);
+    const foraDaLetra = `${outraLetra}${outraLetra}-fora-da-letra`;
+
     // "certa": todo mundo responde valido (mesma resposta -> duplicada,
     // mas ainda pontua e conta como valida). "errada": ninguem comeca com
     // a letra sorteada -> tudo marcado invalido na correcao (spec 19).
@@ -435,7 +442,7 @@ describe("API REST (spec 30 e 34)", () => {
         roundId: round.id,
         playerSessionId: session.playerSessionId,
         roundCategoryId: errada.id,
-        value: "zzz-fora-da-letra",
+        value: foraDaLetra,
       });
     }
 

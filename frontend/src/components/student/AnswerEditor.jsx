@@ -9,9 +9,17 @@ import { useEffect, useRef } from "react";
  */
 export function AnswerEditor({ category, value, letter, letterRule = "STARTS_WITH", disabled, onChange, onCommit, onClose }) {
   const inputRef = useRef(null);
+  const cardRef = useRef(null);
 
   useEffect(() => {
-    if (!disabled) inputRef.current?.focus();
+    if (disabled) return;
+    inputRef.current?.focus();
+    // O cabeçalho é `sticky` e a barra do STOP é `fixed`: o "rolar até ficar
+    // visível" que o navegador faz sozinho ao focar considera a viewport
+    // inteira, então o campo ia parar ATRÁS do cabeçalho — sobrava só o
+    // rodapé do cartão na tela. Centralizar o cartão o mantém livre dos dois,
+    // e não depende de saber a altura do cabeçalho.
+    cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [category?.id, disabled]);
 
   if (!category) return null;
@@ -29,7 +37,7 @@ export function AnswerEditor({ category, value, letter, letterRule = "STARTS_WIT
   const ruleHint = letterRule === "CONTAINS" ? `Contém ${letter}` : `Começa com ${letter}`;
 
   return (
-    <section className="editor" aria-label={`Resposta para ${category.name}`}>
+    <section ref={cardRef} className="editor" aria-label={`Resposta para ${category.name}`}>
       <span className="editor__title">{category.name}</span>
       <input
         ref={inputRef}
@@ -62,8 +70,18 @@ export function AnswerEditor({ category, value, letter, letterRule = "STARTS_WIT
       ) : (
         <span className="editor__hint">A resposta é salva automaticamente.</span>
       )}
-      <button type="button" className="btn btn--ghost" onClick={onClose}>
-        Voltar
+      {/* Grava antes de fechar: o `onBlur` do campo também grava, mas o
+          botão não pode depender disso — se o campo não estiver focado, o
+          blur nunca acontece e "Salvar" teria mentido. */}
+      <button
+        type="button"
+        className="btn btn--primary"
+        onClick={() => {
+          onCommit(category.id);
+          onClose();
+        }}
+      >
+        Salvar
       </button>
     </section>
   );

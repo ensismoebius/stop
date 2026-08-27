@@ -1,8 +1,15 @@
 # Testes
 
-Duas camadas: testes de integração automatizados do backend (Vitest) e uma
-simulação E2E visual isolada (Playwright), este último um script fora do
-repositório (scratchpad), não uma suíte versionada.
+Três camadas: testes de integração do backend (Vitest sobre um banco real), testes
+de componente do frontend (Vitest + Testing Library sobre jsdom) e uma simulação E2E
+visual isolada (Playwright), esta última um script de scratchpad, não uma suíte
+versionada.
+
+> **O que nenhuma delas pega:** bug visual. Miniaturas cortadas e título branco em
+> fundo branco passaram por 660 testes verdes — a estrutura e o comportamento
+> estavam certos, só o CSS estava errado. Para mudança de aparência, screenshot
+> (ou uma página de revisão renderizada) não é luxo, é a única verificação que
+> vale.
 
 ## Backend — Vitest (`backend/tests/`)
 
@@ -64,6 +71,55 @@ de "propriedade indefinida" — a mensagem não aponta de volta para a causa.
 cd backend
 DATABASE_URL="mysql://.../stop_test" npx vitest run
 ```
+
+`vitest.config.js` fixa **`fileParallelism: false`**: os arquivos compartilham o
+mesmo banco, então rodar em paralelo faria um teste apagar o cenário do outro.
+
+### Duas falhas intermitentes já corrigidas (e o padrão delas)
+
+Ambas passavam isoladas e falhavam de vez em quando na suíte inteira — o tipo de
+teste que se aprende a ignorar, que é exatamente o perigo.
+
+* **`criticalRules.test.js`** segurava uma trava e chamava `releaseHeld()` depois de
+  um `setTimeout` fixo. Mas `asyncLock.run` faz `await previous` **antes** de chamar
+  a task, ou seja, a trava nunca é adquirida de forma síncrona: sob carga,
+  `releaseHeld` ainda era `undefined`. Correção: esperar um sinal de aquisição real
+  em vez de dormir um tempo arbitrário.
+* **`api.test.js`** usava o literal `"zzz-fora-da-letra"` como resposta que jamais
+  bateria com a letra sorteada — só que o `LETTER_POOL` configurado **inclui Z**.
+  Uma em cada ~21 execuções sorteava Z, a resposta virava válida e o teste caía.
+  Correção: derivar uma letra comprovadamente diferente da sorteada.
+
+Moral: teste que depende de sorteio precisa **derivar** o caso do valor sorteado,
+nunca assumir um literal; e sincronização se espera por sinal, não por relógio.
+
+## Frontend — Vitest + Testing Library (`frontend/tests/`)
+
+```bash
+cd frontend
+npx vitest run            # ou: npx vitest run --coverage
+```
+
+Ambiente jsdom, configurado em `frontend/vitest.config.js` com
+`frontend/tests/setup.js` — que traz um `MemoryStorage` próprio para
+`localStorage`/`sessionStorage` (o Node moderno sombreia a implementação do jsdom) e
+um stub de `scrollIntoView`.
+
+Armadilhas específicas desta suíte:
+
+* **Cerimônia de pódio** (`Ranking.test.jsx`): cada passo do roteiro só agenda o
+  próximo **depois** de renderizar, então `advanceTimersByTime(passo1 + passo2)` não
+  avança dois passos. Avance pelo maior atraso do roteiro, uma vez por passo.
+* **Contagem de pontos**: usa `requestAnimationFrame` ancorado em `performance.now()`.
+  Os testes stubam `requestAnimationFrame` para chamar o callback já "muito depois do
+  fim", fazendo o número assentar no valor final de forma síncrona.
+* **Rótulos duplicados**: as miniaturas do avatar têm `alt` com a combinação inteira
+  ("Feliz, Curto 1, Tom de pele 2"), o que colide com os botões dos eixos. Use
+  `within(screen.getByRole("group", { name: … }))` para escopar a busca.
+* **Avatar é decorativo por padrão** (`alt=""`) porque o nome do aluno já está
+  escrito ao lado; só o retrato de quem está montando o rosto recebe `alt`. Um teste
+  que procura o avatar por `getByRole("img")` numa lista vai falhar — e está certo
+  que falhe.
 
 **Nunca** apontar `DATABASE_URL` de teste para o banco de produção do `.env` — o
 `.env` do projeto aponta para produção por padrão; sempre sobrescrever

@@ -1,10 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-
-const PRESET_COUNT = 48;
-const PRESET_AVATARS = Array.from(
-  { length: PRESET_COUNT },
-  (_, idx) => `/avatars/avatar-${String(idx + 1).padStart(2, "0")}.svg`,
-);
+import FaceBuilder from "./FaceBuilder.jsx";
+import Avatar from "../common/Avatar.jsx";
 
 const PHOTO_SIZE = 256;
 const PHOTO_QUALITY = 0.7;
@@ -41,9 +37,8 @@ function resizePhoto(file) {
 }
 
 /**
- * Avatar picker for the student (spec 6): take a photo on the spot or
- * choose one of the preset avatars. Optional — the student can proceed
- * without picking anything.
+ * Avatar do aluno (spec 6): montar o próprio rosto ou tirar uma foto na
+ * hora. Opcional — dá para entrar sem escolher nada.
  *
  * @param {{ value: string | null, onChange: (url: string | null) => void }} props
  */
@@ -51,12 +46,13 @@ export function AvatarPicker({ value, onChange }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef(null);
+  const isPhoto = typeof value === "string" && value.startsWith("data:");
   // Em sala de aula o app roda por HTTP simples na rede local (o QR Code
   // aponta para http://IP:PORTA — ver README), e nesse caso o atalho de
   // camera do <input capture> e recusado pelo navegador do celular sem
   // lancar nenhum erro: o botao simplesmente nao faz nada. Sem contexto
-  // seguro (HTTPS/localhost) nem tentamos — o aluno vai direto pros
-  // avatares prontos, em vez de tocar num botao morto.
+  // seguro (HTTPS/localhost) nem tentamos — o aluno vai direto montar o
+  // rosto, em vez de tocar num botao morto.
   const cameraAvailable = typeof window !== "undefined" && window.isSecureContext;
 
   const handleFile = useCallback(
@@ -80,14 +76,6 @@ export function AvatarPicker({ value, onChange }) {
 
   return (
     <div className="avatar-picker stack">
-      <div className="avatar-picker__preview">
-        {value ? (
-          <img src={value} alt="Seu avatar" />
-        ) : (
-          <span className="avatar-picker__placeholder">?</span>
-        )}
-      </div>
-
       {cameraAvailable ? (
         <>
           <button
@@ -111,31 +99,18 @@ export function AvatarPicker({ value, onChange }) {
 
       {error ? <p className="small" style={{ color: "var(--red)" }}>{error}</p> : null}
 
-      <span className="small muted">Ou escolha um avatar:</span>
-      <AvatarGrid avatars={PRESET_AVATARS} selected={value} onSelect={onChange} />
-    </div>
-  );
-}
-
-/**
- * Grid of preset avatar buttons. Extracted to keep AvatarPicker under
- * the function-length threshold.
- *
- * @param {{ avatars: string[], selected: string | null, onSelect: (url: string) => void }} props
- */
-function AvatarGrid({ avatars, selected, onSelect }) {
-  return (
-    <div className="avatar-picker__grid">
-      {avatars.map((preset) => (
-        <button
-          key={preset}
-          type="button"
-          className={`avatar-picker__option${selected === preset ? " avatar-picker__option--selected" : ""}`}
-          onClick={() => onSelect(preset)}
-        >
-          <img src={preset} alt="" />
-        </button>
-      ))}
+      {/* Foto tirada na hora continua sendo uma opção: quando existe, ela
+          manda, e o montador some para não competir com ela. */}
+      {isPhoto ? (
+        <div className="avatar-picker__photo">
+          <Avatar value={value} alt="Seu avatar" className="avatar-picker__preview" />
+          <button type="button" className="btn btn--ghost btn--block" onClick={() => onChange(null)}>
+            Montar um rosto no lugar da foto
+          </button>
+        </div>
+      ) : (
+        <FaceBuilder value={value} onChange={onChange} />
+      )}
     </div>
   );
 }

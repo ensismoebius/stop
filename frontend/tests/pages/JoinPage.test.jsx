@@ -22,7 +22,7 @@ vi.mock("../../src/components/student/AvatarPicker.jsx", () => ({
   default: ({ value, onChange }) => (
     <div>
       <span>avatar-picker:{value ?? "none"}</span>
-      <button type="button" onClick={() => onChange("/avatars/avatar-02.svg")}>
+      <button type="button" onClick={() => onChange("face:v1:02111002203202052")}>
         pick-avatar
       </button>
     </div>
@@ -135,11 +135,11 @@ describe("JoinPage", () => {
     await user.click(screen.getByRole("button", { name: "CONTINUAR" }));
 
     await waitFor(() =>
-      expect(api.setAvatar).toHaveBeenCalledWith("STOP-1", "123", "/avatars/avatar-02.svg"),
+      expect(api.setAvatar).toHaveBeenCalledWith("STOP-1", "123", "face:v1:02111002203202052"),
     );
     expect(api.join).toHaveBeenCalledWith("STOP-1", "123");
     expect(await screen.findByText(/play-screen:/)).toBeInTheDocument();
-    expect(screen.getByText(/avatar-02\.svg/)).toBeInTheDocument();
+    expect(screen.getByText(/face:v1:/)).toBeInTheDocument();
   });
 
   it("skips the avatar step without calling setAvatar", async () => {
@@ -186,7 +186,7 @@ describe("JoinPage", () => {
     const user = userEvent.setup();
     api.getRoom.mockResolvedValue({});
     api.identify.mockResolvedValue({
-      student: { name: "Ana Silva", registrationNumber: "123", avatarUrl: "/avatars/avatar-01.svg" },
+      student: { name: "Ana Silva", registrationNumber: "123", avatarUrl: "face:v1:01111002203202052" },
     });
     api.join.mockResolvedValue({
       token: "tok",
@@ -197,7 +197,7 @@ describe("JoinPage", () => {
     await user.type(screen.getByLabelText("Matrícula"), "123");
     await user.click(screen.getByRole("button", { name: "CONTINUAR" }));
     await user.click(await screen.findByRole("button", { name: "SIM, SOU EU" }));
-    expect(await screen.findByText("avatar-picker:/avatars/avatar-01.svg")).toBeInTheDocument();
+    expect(await screen.findByText("avatar-picker:face:v1:01111002203202052")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "CONTINUAR" }));
 

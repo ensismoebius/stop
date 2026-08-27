@@ -1,3 +1,4 @@
+import Avatar from "../common/Avatar.jsx";
 /** Ranking oficial calculado pelo servidor (spec 42). */
 export function RankingPanel({ ranking }) {
   return (
@@ -21,7 +22,7 @@ export function RankingPanel({ ranking }) {
                   <td>{entry.position}</td>
                   <td className="ranking-panel__name">
                     {entry.avatarUrl ? (
-                      <img className="ranking-panel__avatar" src={entry.avatarUrl} alt="" />
+                      <Avatar className="ranking-panel__avatar" value={entry.avatarUrl} name={entry.name} />
                     ) : null}
                     {entry.name}
                   </td>

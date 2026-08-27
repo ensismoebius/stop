@@ -309,7 +309,7 @@ export async function finish(roundId) {
  * comecar outra. As respostas continuam no banco para auditoria (spec 44),
  * mas nao geram pontos: a rodada vai direto para FINISHED.
  */
-export async function cancel(roundId) {
+export async function cancel(roundId, { message } = {}) {
   return gameLock.run(lockKey(roundId), async () => {
     const round = await getRoundOrFail(roundId);
     if (round.status === ROUND_STATUS.FINISHED) return round;
@@ -339,7 +339,11 @@ export async function cancel(roundId) {
     realtime.toRoom(room.code, "roundCancelled", {
       roundId,
       roundNumber: updated.roundNumber,
-      message: "O professor cancelou esta rodada.",
+      // Fechar a rodada e o mesmo mecanismo em dois casos bem diferentes:
+      // o professor cancelar a rodada, e o professor finalizar a partida.
+      // Sem poder trocar o texto, o aluno via "o professor cancelou esta
+      // rodada" no fim da partida — informacao simplesmente errada.
+      message: message ?? "O professor cancelou esta rodada.",
     });
     await telemetryRepository.record({
       type: "ROUND_CANCELLED",

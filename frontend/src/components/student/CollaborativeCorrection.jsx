@@ -5,7 +5,14 @@ import { useEffect, useState } from "react";
  * recebe respostas anonimas de colegas e decide válida/inválida, uma de
  * cada vez, avançando automaticamente. Nunca mostra quem respondeu.
  */
-export function CollaborativeCorrection({ reviews, completedIds, onDecide, deciding, letter }) {
+export function CollaborativeCorrection({
+  reviews,
+  completedIds,
+  onDecide,
+  deciding,
+  letter,
+  letterRule = "STARTS_WITH",
+}) {
   const pending = reviews.filter((review) => !completedIds.has(review.reviewId));
   const [index, setIndex] = useState(0);
 
@@ -40,7 +47,13 @@ export function CollaborativeCorrection({ reviews, completedIds, onDecide, decid
   return (
     <section className="editor" aria-label="Corrija a resposta de um colega">
       <span className="editor__title">Corrija um colega — {current.categoryName}</span>
-      {letter ? <span className="editor__hint">Letra {letter}</span> : null}
+      {/* Quem corrige precisa saber por qual criterio julgar: "Letra A"
+          sozinho nao diz se a resposta tinha de comecar com A ou so conte-la. */}
+      {letter ? (
+        <span className="editor__hint">
+          {letterRule === "CONTAINS" ? "Contém a letra" : "Começa com a letra"} {letter}
+        </span>
+      ) : null}
       <p className="review__value">{current.value || <em className="muted">— em branco —</em>}</p>
       <div className="row">
         <button

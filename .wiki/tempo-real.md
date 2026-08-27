@@ -66,6 +66,13 @@ volta: `syncCountdownRequested` (o handler chama `ack(true)` automaticamente dep
 de repassar o payload — o servidor só usa isso como confirmação de recebimento, spec
 54).
 
+> **`roundCancelled` não significa só "cancelada".** O mesmo evento fecha a rodada
+> em dois casos bem diferentes: o professor cancelar a rodada, e o professor
+> finalizar a partida. Por isso `cancel(roundId, { message })` aceita o texto — o
+> aluno lia "o professor cancelou esta rodada" no fim da partida, o que
+> simplesmente não era verdade. Há teste para os dois textos, incluindo um que
+> proíbe a palavra "cancelou" no caminho de finalização.
+
 E um evento tratado à parte por atualizar o estado compartilhado diretamente:
 `roomState` (ver abaixo).
 

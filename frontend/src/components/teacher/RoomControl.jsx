@@ -2,12 +2,31 @@ import { useState } from "react";
 import Field from "../common/Field.jsx";
 
 /** QR Code + código de entrada da sala já criada, ou o botão para criar (spec 5 e 36). */
-function GameRoom({ room, qrCode, onCreateRoom, busy }) {
+function GameRoom({ room, qrCode, onCreateRoom, busy, closed }) {
   if (!room) {
     return (
       <button type="button" className="btn btn--primary" onClick={onCreateRoom} disabled={busy}>
         Criar sala e gerar QR Code
       </button>
+    );
+  }
+
+  // Sala encerrada nao aceita mais ninguem, entao mostrar QR Code e codigo
+  // de entrada seria mentira: alguem tentaria entrar e levaria erro. O card
+  // vira um aviso de sala fechada, mantendo so o acesso a tela publica —
+  // que continua util, porque e onde o podio final fica.
+  if (closed) {
+    return (
+      <div className="stack roomclosed">
+        <div>
+          <div className="small muted">Sala</div>
+          <div className="roomcode roomcode--closed">{room.code}</div>
+        </div>
+        <span className="badge badge--finished">Sala encerrada — não aceita mais entradas</span>
+        <a className="btn btn--ghost" href={`/screen/${room.code}`} target="_blank" rel="noreferrer">
+          Abrir tela pública
+        </a>
+      </div>
     );
   }
 
@@ -134,7 +153,15 @@ export function RoomControl({
             </div>
           </div>
 
-          <GameRoom room={room} qrCode={qrCode} onCreateRoom={onCreateRoom} busy={busy} />
+          <GameRoom
+            room={room}
+            qrCode={qrCode}
+            onCreateRoom={onCreateRoom}
+            busy={busy}
+            // A sala fecha junto com a partida; `room.status` cobre o caso
+            // em que ela foi fechada sozinha, pelo botao de encerrar sala.
+            closed={game.status === "FINISHED" || room?.status === "CLOSED"}
+          />
         </div>
       ) : (
         <GameSelector classes={classes} games={games} onCreateGame={onCreateGame} onSelectGame={onSelectGame} busy={busy} />

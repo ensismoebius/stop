@@ -561,6 +561,66 @@ describe("TeacherDashboardPage", () => {
     expect(api.finishGame).toHaveBeenCalledWith("tok-1", 5);
   });
 
+  it("hides the 'Finalizar partida' button once the game is FINISHED", async () => {
+    // Clicar de novo numa partida ja encerrada nao faz nada de util e so
+    // confunde: o botao some e da lugar a um aviso de partida encerrada.
+    const user = userEvent.setup();
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", status: "FINISHED", rooms: [] });
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+
+    expect(screen.queryByRole("button", { name: "Finalizar partida" })).not.toBeInTheDocument();
+    expect(screen.getByText("Partida encerrada")).toBeInTheDocument();
+  });
+
+  it("offers 'Nova partida' once the game is FINISHED, clearing the selected game", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", status: "FINISHED", rooms: [] });
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+
+    const novaPartida = screen.getByRole("button", { name: "Nova partida" });
+    expect(novaPartida).toBeInTheDocument();
+
+    await user.click(novaPartida);
+    // Sem partida selecionada, a barra de acoes some e volta o seletor.
+    await waitFor(() => expect(screen.queryByText("Ações rápidas")).not.toBeInTheDocument());
+  });
+
+  it("exposes the game phase as a visible status badge", async () => {
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", status: "ACTIVE", rooms: [] });
+    renderDashboard();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "rc-select-game" }));
+
+    expect(screen.getByText("Partida aberta")).toBeInTheDocument();
+    expect(screen.getByText("Jogo 5")).toBeInTheDocument();
+  });
+
+  it("wires the tablist to its panels and moves between tabs with arrow keys", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    renderDashboard();
+
+    const tabs = await screen.findAllByRole("tab");
+    const selected = tabs.find((tab) => tab.getAttribute("aria-selected") === "true");
+    // Cada aba controla um painel, e o painel aponta de volta para a aba.
+    expect(selected).toHaveAttribute("aria-controls", "panel-control");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "tab-control");
+    // Roving tabindex: so a aba ativa participa da navegacao por Tab.
+    expect(selected).toHaveAttribute("tabindex", "0");
+    expect(tabs.filter((tab) => tab !== selected)[0]).toHaveAttribute("tabindex", "-1");
+
+    selected.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "tab-correction");
+
+    await user.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "tab-control");
+  });
+
   it("hides quick actions entirely without a selected game", async () => {
     await loginSession();
     renderDashboard();

@@ -1,17 +1,44 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import Ranking from "../../../src/components/public/Ranking.jsx";
 
 function entry(overrides = {}) {
   return { studentId: "s1", name: "Ana", total: 30, position: 1, avatarUrl: null, ...overrides };
 }
 
+/** Pódio completo mais dois participantes fora dele. */
+function fullField() {
+  return [
+    entry({ studentId: "s1", name: "Ana", total: 30, position: 1 }),
+    entry({ studentId: "s2", name: "Bruno", total: 20, position: 2 }),
+    entry({ studentId: "s3", name: "Carla", total: 10, position: 3 }),
+    entry({ studentId: "s4", name: "Davi", total: 5, position: 4 }),
+    entry({ studentId: "s5", name: "Elis", total: 2, position: 5 }),
+  ];
+}
+
+/**
+ * Cada passo do roteiro agenda o seguinte só depois de renderizar, então
+ * avançar o tempo de dois passos de uma vez não funciona. Avançamos pelo
+ * maior atraso do roteiro (3200ms): isso dispara exatamente um passo, já
+ * que o próximo é sempre agendado com pelo menos 1700ms a partir dali.
+ */
+const STEP_MS = 3200;
+const next = (times = 1) => {
+  for (let i = 0; i < times; i += 1) act(() => vi.advanceTimersByTime(STEP_MS));
+};
+
+// tease(3) → 3º → tease(2) → 2º → tease(1) → 1º → turma
+const toThird = () => next(1);
+const toSecond = () => next(2);
+const toFirst = () => next(2);
+const toAudience = () => next(1);
+
 beforeEach(() => {
   vi.useFakeTimers();
-  // RankingRow's count-up uses requestAnimationFrame keyed off real wall
-  // time (performance.now()). Make it deterministic and synchronous: the
-  // very first frame reports "well past COUNT_DURATION_MS", so the value
-  // settles on the target immediately instead of animating over real time.
+  // A contagem de pontos usa requestAnimationFrame ancorado em
+  // performance.now(). Torna-a sincrona: o primeiro frame ja reporta
+  // "muito depois do fim", entao o valor assenta no total na hora.
   vi.stubGlobal("requestAnimationFrame", (cb) => {
     cb(performance.now() + 100000);
     return 1;
@@ -24,7 +51,64 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Ranking", () => {
+const stepOf = (place) => screen.getByTestId(`podium-step-${place}`);
+
+describe("Ranking entre rodadas (lista de sempre)", () => {
+  it("usa a lista, não o pódio, enquanto a partida não acabou", () => {
+    render(<Ranking entries={fullField()} audio={null} />);
+    expect(screen.getByText("🏆 RANKING 🏆")).toBeInTheDocument();
+    expect(screen.queryByTestId("podium-step-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("3º LUGAR…")).not.toBeInTheDocument();
+  });
+
+  it("revela do último colocado para o primeiro", () => {
+    render(<Ranking entries={fullField()} audio={null} />);
+    act(() => vi.advanceTimersByTime(700));
+    // O último colocado aparece primeiro; o 1º lugar ainda não.
+    expect(screen.getByText("Elis")).toBeInTheDocument();
+    expect(screen.queryByText("Ana")).not.toBeInTheDocument();
+
+    for (let i = 0; i < 4; i += 1) act(() => vi.advanceTimersByTime(1100));
+    expect(screen.getByText("Ana")).toBeInTheDocument();
+  });
+
+  it("não dispara fogos nem faixa de participantes", () => {
+    const { container } = render(<Ranking entries={fullField()} audio={null} />);
+    for (let i = 0; i < 6; i += 1) act(() => vi.advanceTimersByTime(1100));
+    expect(container.querySelector(".fireworks")).toBeNull();
+    expect(screen.queryByTestId("audience")).not.toBeInTheDocument();
+  });
+
+  it("mostra no máximo o top 8", () => {
+    const many = Array.from({ length: 12 }, (_, i) =>
+      entry({ studentId: `s${i}`, name: `Aluno ${i + 1}`, total: 50 - i, position: i + 1 }),
+    );
+    render(<Ranking entries={many} audio={null} />);
+    for (let i = 0; i < 10; i += 1) act(() => vi.advanceTimersByTime(1100));
+    expect(screen.getAllByRole("listitem")).toHaveLength(8);
+    expect(screen.queryByText("Aluno 9")).not.toBeInTheDocument();
+  });
+
+  it("mostra o avatar na linha da lista quando existe", () => {
+    const entries = [
+      entry({ studentId: "s1", name: "Ana", total: 30, position: 1, avatarUrl: "/a.svg" }),
+    ];
+    const { container } = render(<Ranking entries={entries} audio={null} />);
+    act(() => vi.advanceTimersByTime(700));
+    expect(container.querySelector(".ranking-reveal__avatar")).toHaveAttribute("src", "/a.svg");
+  });
+
+  it("troca para o pódio quando a partida termina", () => {
+    const { rerender } = render(<Ranking entries={fullField()} audio={null} />);
+    expect(screen.getByText("🏆 RANKING 🏆")).toBeInTheDocument();
+
+    rerender(<Ranking entries={fullField()} audio={null} finished />);
+    expect(screen.getByTestId("podium-step-1")).toBeInTheDocument();
+    expect(screen.queryByText("🏆 RANKING 🏆")).not.toBeInTheDocument();
+  });
+});
+
+describe("Ranking (cerimônia de pódio)", () => {
   it("renders nothing when there are no entries", () => {
     const { container } = render(<Ranking entries={[]} audio={null} />);
     expect(container).toBeEmptyDOMElement();
@@ -35,140 +119,179 @@ describe("Ranking", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("reveals the last-place entry first, counting its score up to the target", () => {
-    const entries = [
-      entry({ studentId: "s1", name: "Ana", total: 30, position: 1 }),
-      entry({ studentId: "s2", name: "Bia", total: 20, position: 2 }),
-    ];
-    render(<Ranking entries={entries} audio={null} />);
-    expect(screen.getByText("🏆 RANKING 🏆")).toBeInTheDocument();
-
-    // Nothing revealed yet (step 0 -> revealFrom = length).
-    expect(screen.queryByText("Bia")).not.toBeInTheDocument();
-    expect(screen.queryByText("Ana")).not.toBeInTheDocument();
-
-    act(() => {
-      vi.advanceTimersByTime(700); // FIRST_REVEAL_DELAY_MS
-    });
-    expect(screen.getByText("Bia")).toBeInTheDocument();
-    expect(screen.getByText("20")).toBeInTheDocument();
-    expect(screen.queryByText("Ana")).not.toBeInTheDocument();
+  it("lays the podium out in olympic order: 2nd, 1st, 3rd", () => {
+    render(<Ranking entries={fullField()} audio={null} finished />);
+    const steps = screen.getAllByTestId(/^podium-step-/);
+    expect(steps.map((step) => step.dataset.testid)).toEqual([
+      "podium-step-2",
+      "podium-step-1",
+      "podium-step-3",
+    ]);
   });
 
-  it("reveals the winner last, with medal and podium/winner styling", () => {
-    const entries = [
-      entry({ studentId: "s1", name: "Ana", total: 30, position: 1 }),
-      entry({ studentId: "s2", name: "Bia", total: 20, position: 2 }),
-    ];
-    const play = vi.fn();
-    const { container } = render(<Ranking entries={entries} audio={{ play }} />);
-
-    act(() => vi.advanceTimersByTime(700)); // reveal 2nd place
-    expect(play).toHaveBeenCalledWith("TICK");
-
-    act(() => vi.advanceTimersByTime(1100)); // reveal 1st place (winner)
-    expect(screen.getByText("Ana")).toBeInTheDocument();
-    expect(play).toHaveBeenCalledWith("RANKING");
-
-    const winnerRow = container.querySelector(".ranking-reveal__row--winner");
-    expect(winnerRow).toBeInTheDocument();
-    expect(winnerRow).toHaveTextContent("🥇");
-    expect(winnerRow).toHaveClass("ranking-reveal__row--p1");
+  it("teases each place before revealing it", () => {
+    render(<Ranking entries={fullField()} audio={null} finished />);
+    // Começa anunciando o 3º lugar, com o degrau ainda vazio.
+    expect(screen.getByText("3º LUGAR…")).toBeInTheDocument();
+    expect(within(stepOf(3)).queryByText("Carla")).not.toBeInTheDocument();
   });
 
-  it("renders an avatar image when avatarUrl is provided", () => {
-    const entries = [entry({ avatarUrl: "/avatars/avatar-01.svg" })];
-    const { container } = render(<Ranking entries={entries} audio={null} />);
-    act(() => vi.advanceTimersByTime(700));
-    expect(container.querySelector(".ranking-reveal__avatar")).toHaveAttribute(
+  it("reveals third place first — before second and first", () => {
+    render(<Ranking entries={fullField()} audio={null} finished />);
+    toThird();
+
+    expect(within(stepOf(3)).getByText("Carla")).toBeInTheDocument();
+    expect(within(stepOf(2)).queryByText("Bruno")).not.toBeInTheDocument();
+    expect(within(stepOf(1)).queryByText("Ana")).not.toBeInTheDocument();
+  });
+
+  it("then reveals second, still holding back the winner", () => {
+    render(<Ranking entries={fullField()} audio={null} finished />);
+    toThird();
+    toSecond();
+
+    expect(within(stepOf(3)).getByText("Carla")).toBeInTheDocument();
+    expect(within(stepOf(2)).getByText("Bruno")).toBeInTheDocument();
+    expect(within(stepOf(1)).queryByText("Ana")).not.toBeInTheDocument();
+  });
+
+  it("reveals the winner last, with fireworks", () => {
+    const { container } = render(<Ranking entries={fullField()} audio={null} finished />);
+    expect(container.querySelector(".fireworks")).toBeNull();
+
+    toThird();
+    toSecond();
+    toFirst();
+
+    expect(within(stepOf(1)).getByText("Ana")).toBeInTheDocument();
+    expect(container.querySelector(".fireworks")).not.toBeNull();
+  });
+
+  it("counts each winner's score up to the target", () => {
+    render(<Ranking entries={fullField()} audio={null} finished />);
+    toThird();
+    expect(within(stepOf(3)).getByText("10")).toBeInTheDocument();
+  });
+
+  it("shows the rest of the class only at the very end", () => {
+    render(<Ranking entries={fullField()} audio={null} finished />);
+    toThird();
+    toSecond();
+    toFirst();
+    expect(screen.queryByTestId("audience")).not.toBeInTheDocument();
+
+    toAudience();
+    const audience = within(screen.getByTestId("audience"));
+    expect(audience.getByText("Davi")).toBeInTheDocument();
+    expect(audience.getByText("Elis")).toBeInTheDocument();
+    // Quem subiu ao pódio não se repete no rodapé.
+    expect(audience.queryByText("Ana")).not.toBeInTheDocument();
+  });
+
+  it("plays drumroll for the tease and a fanfare for the winner", () => {
+    const audio = { play: vi.fn() };
+    render(<Ranking entries={fullField()} audio={audio} finished />);
+    expect(audio.play).toHaveBeenCalledWith("DRUMROLL");
+
+    toThird();
+    expect(audio.play).toHaveBeenCalledWith("PODIUM");
+
+    toSecond();
+    toFirst();
+    expect(audio.play).toHaveBeenCalledWith("FANFARE");
+  });
+
+  it("puts everyone tied on the same step", () => {
+    // Empate real: dois alunos em 1º sobem juntos no degrau do ouro.
+    const entries = [
+      entry({ studentId: "s1", name: "Ana", total: 30, position: 1 }),
+      entry({ studentId: "s2", name: "Bruno", total: 30, position: 1 }),
+      entry({ studentId: "s3", name: "Carla", total: 10, position: 3 }),
+    ];
+    render(<Ranking entries={entries} audio={null} finished />);
+    toThird();
+    toSecond();
+    toFirst();
+
+    const gold = within(stepOf(1));
+    expect(gold.getByText("Ana")).toBeInTheDocument();
+    expect(gold.getByText("Bruno")).toBeInTheDocument();
+  });
+
+  it("renders avatars on the podium when provided", () => {
+    const entries = [
+      entry({ studentId: "s1", name: "Ana", total: 30, position: 1, avatarUrl: "/a.svg" }),
+    ];
+    const { container } = render(<Ranking entries={entries} audio={null} finished />);
+    toThird();
+    toSecond();
+    toFirst();
+    expect(container.querySelector(".podium__avatar")).toHaveAttribute("src", "/a.svg");
+  });
+
+  it("shows avatars in the audience strip, falling back to an initial", () => {
+    const entries = [
+      entry({ studentId: "s1", name: "Ana", total: 30, position: 1 }),
+      entry({ studentId: "s4", name: "Davi", total: 5, position: 4, avatarUrl: "/d.svg" }),
+      entry({ studentId: "s5", name: "Elis", total: 2, position: 5 }),
+    ];
+    render(<Ranking entries={entries} audio={null} finished />);
+    toThird();
+    toSecond();
+    toFirst();
+    toAudience();
+
+    const audience = within(screen.getByTestId("audience"));
+    // O avatar é decorativo: o nome já está escrito ao lado dele.
+    expect(audience.getByRole("listitem", { name: /Davi/ }).querySelector("img")).toHaveAttribute(
       "src",
-      "/avatars/avatar-01.svg",
+      "/d.svg",
     );
+    // Sem avatar, entra a inicial do nome.
+    expect(audience.getByText("E")).toBeInTheDocument();
   });
 
-  it("renders medals only for the top 3 positions", () => {
+  it("omits the audience strip when nobody finished outside the podium", () => {
     const entries = [
-      entry({ studentId: "s1", name: "P1", total: 40, position: 1 }),
-      entry({ studentId: "s2", name: "P2", total: 30, position: 2 }),
-      entry({ studentId: "s3", name: "P3", total: 20, position: 3 }),
-      entry({ studentId: "s4", name: "P4", total: 10, position: 4 }),
+      entry({ studentId: "s1", name: "Ana", total: 30, position: 1 }),
+      entry({ studentId: "s2", name: "Bruno", total: 20, position: 2 }),
     ];
-    render(<Ranking entries={entries} audio={null} />);
-    act(() => vi.advanceTimersByTime(700));
-    act(() => vi.advanceTimersByTime(1100));
-    act(() => vi.advanceTimersByTime(1100));
-    act(() => vi.advanceTimersByTime(1100)); // reveal 4th place, no medal
-    expect(screen.getByText("P4").closest("li")).not.toHaveTextContent("🥇");
-    expect(screen.getByText("P4").closest("li")).not.toHaveClass("ranking-reveal__row--winner");
+    render(<Ranking entries={entries} audio={null} finished />);
+    toThird();
+    toSecond();
+    toFirst();
+    toAudience();
+    expect(screen.queryByTestId("audience")).not.toBeInTheDocument();
   });
 
-  it("caps the shown entries to the top 8", () => {
-    const entries = Array.from({ length: 12 }, (_, i) =>
-      entry({ studentId: `s${i}`, name: `P${i}`, total: 100 - i, position: i + 1 }),
+  it("restarts the ceremony when the ranking actually changes", () => {
+    const { rerender } = render(<Ranking entries={fullField()} audio={null} finished />);
+    toThird();
+    toSecond();
+    expect(within(stepOf(2)).getByText("Bruno")).toBeInTheDocument();
+
+    const next = fullField().map((item) =>
+      item.studentId === "s2" ? { ...item, total: 99 } : item,
     );
-    render(<Ranking entries={entries} audio={null} />);
-    // Reveal everything.
-    for (let i = 0; i < 8; i += 1) act(() => vi.advanceTimersByTime(1100));
-    expect(screen.getAllByRole("listitem")).toHaveLength(8);
+    rerender(<Ranking entries={next} audio={null} finished />);
+    // Volta ao início: nenhum degrau ocupado.
+    expect(within(stepOf(2)).queryByText("Bruno")).not.toBeInTheDocument();
   });
 
-  it("resets the reveal sequence when the ranking signature changes (new round scored)", () => {
-    const first = [entry({ studentId: "s1", name: "Ana", total: 30, position: 1 })];
-    const { rerender } = render(<Ranking entries={first} audio={null} />);
-    act(() => vi.advanceTimersByTime(700));
-    expect(screen.getByText("Ana")).toBeInTheDocument();
-
-    const second = [entry({ studentId: "s2", name: "Bia", total: 40, position: 1 })];
-    rerender(<Ranking entries={second} audio={null} />);
-    // Freshly reset: nothing revealed until the first-reveal delay passes again.
-    expect(screen.queryByText("Bia")).not.toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(700));
-    expect(screen.getByText("Bia")).toBeInTheDocument();
+  it("does not restart on a re-render with the same ranking", () => {
+    const entries = fullField();
+    const { rerender } = render(<Ranking entries={entries} audio={null} finished />);
+    toThird();
+    rerender(<Ranking entries={[...entries]} audio={null} finished />);
+    expect(within(stepOf(3)).getByText("Carla")).toBeInTheDocument();
   });
 
-  it("does not reset the sequence on a re-render with the same signature", () => {
-    const entries = [entry({ studentId: "s1", name: "Ana", total: 30, position: 1 })];
-    const { rerender } = render(<Ranking entries={entries} audio={null} />);
-    act(() => vi.advanceTimersByTime(700));
-    expect(screen.getByText("Ana")).toBeInTheDocument();
-
-    rerender(<Ranking entries={[...entries]} audio={null} />);
-    expect(screen.getByText("Ana")).toBeInTheDocument();
-  });
-
-  it("stops revealing once every entry has been shown (no further timers scheduled)", () => {
-    const entries = [entry({ studentId: "s1", name: "Ana", total: 30, position: 1 })];
-    render(<Ranking entries={entries} audio={null} />);
-    act(() => vi.advanceTimersByTime(700));
-    expect(screen.getByText("Ana")).toBeInTheDocument();
-    // No more timers pending; advancing further must not throw.
-    expect(() => act(() => vi.advanceTimersByTime(5000))).not.toThrow();
-  });
-
-  it("reschedules another animation frame while the count-up is still in progress", () => {
-    // Override the module-level rAF mock for this test only: the first
-    // frame reports a small elapsed time (progress < 1, so RankingRow
-    // must request another frame), the second reports enough elapsed
-    // time to finish (progress >= 1, so it must stop rescheduling).
-    let call = 0;
-    vi.stubGlobal("requestAnimationFrame", (cb) => {
-      call += 1;
-      if (call === 1) cb(performance.now() + 1);
-      else cb(performance.now() + 100000);
-      return call;
-    });
-
-    const entries = [entry({ studentId: "s1", name: "Ana", total: 30, position: 1 })];
-    render(<Ranking entries={entries} audio={null} />);
-    act(() => vi.advanceTimersByTime(700));
-    expect(screen.getByText("Ana")).toBeInTheDocument();
-  });
-
-  it("cleans up its reveal timer on unmount", () => {
-    const entries = [entry()];
-    const clearSpy = vi.spyOn(global, "clearTimeout");
-    const { unmount } = render(<Ranking entries={entries} audio={null} />);
-    unmount();
-    expect(clearSpy).toHaveBeenCalled();
+  it("stops scheduling once the ceremony is over", () => {
+    render(<Ranking entries={fullField()} audio={null} finished />);
+    toThird();
+    toSecond();
+    toFirst();
+    toAudience();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

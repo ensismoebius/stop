@@ -136,6 +136,52 @@ describe("RoomControl", () => {
     );
   });
 
+  it("shows the room as closed (no QR, no join URL) once the game is FINISHED", () => {
+    // A sala fecha junto com a partida. Continuar mostrando QR Code e URL
+    // de entrada seria mentira: quem tentasse entrar levaria erro.
+    render(
+      <RoomControl
+        classes={classes}
+        games={[]}
+        game={{ id: 1, name: "Jogo A", status: "FINISHED", class: { name: "9A" } }}
+        room={{ code: "STOP-77", status: "CLOSED" }}
+        qrCode={{ dataUrl: "data:image/png;base64,xxx", url: "http://x/join/STOP-77" }}
+        onCreateGame={vi.fn()}
+        onSelectGame={vi.fn()}
+        onCreateRoom={vi.fn()}
+        busy={false}
+      />,
+    );
+
+    expect(screen.getByText(/Sala encerrada/)).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /QR Code/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("http://x/join/STOP-77")).not.toBeInTheDocument();
+    // A tela publica continua acessivel — e onde fica o podio final.
+    expect(screen.getByRole("link", { name: "Abrir tela pública" })).toHaveAttribute(
+      "href",
+      "/screen/STOP-77",
+    );
+  });
+
+  it("shows the room as closed when the room itself is CLOSED, even if the game is not", () => {
+    render(
+      <RoomControl
+        classes={classes}
+        games={[]}
+        game={{ id: 1, name: "Jogo A", status: "ACTIVE", class: { name: "9A" } }}
+        room={{ code: "STOP-77", status: "CLOSED" }}
+        qrCode={{ dataUrl: "data:image/png;base64,xxx", url: "http://x/join/STOP-77" }}
+        onCreateGame={vi.fn()}
+        onSelectGame={vi.fn()}
+        onCreateRoom={vi.fn()}
+        busy={false}
+      />,
+    );
+
+    expect(screen.getByText(/Sala encerrada/)).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /QR Code/ })).not.toBeInTheDocument();
+  });
+
   it("renders the room card without a QR image when qrCode is missing", () => {
     render(
       <RoomControl

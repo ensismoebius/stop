@@ -19,18 +19,23 @@ foram tomadas e quais armadilhas já morderam alguém aqui. Complementa, sem dup
 ## Domínio do jogo
 
 * [Ciclo de vida da rodada](ciclo-de-vida-da-rodada.md) — a máquina de estados
-  `RoundStatus`, correção colaborativa, correção do professor, ranking e medalhas.
+  `RoundStatus`, a regra da letra (`STARTS_WITH`/`CONTAINS`), correção colaborativa,
+  correção do professor, ranking e medalhas, e o que "Finalizar partida" encerra
+  de fato.
 * [Tempo real (Socket.IO)](tempo-real.md) — salas de socket, catálogo de eventos, e o
   padrão `broadcastState()` (com dois bugs reais desta base como estudo de caso).
 
 ## Frontend
 
 * [Frontend](frontend.md) — páginas por cliente, componentes, hooks, onde cada
-  responsabilidade mora.
+  responsabilidade mora; o montador de rosto do aluno e as duas apresentações de
+  ranking (lista entre rodadas, pódio olímpico no fim).
 
 ## Operação
 
 * [Implantação em sala de aula](implantacao-em-sala.md) — hotspot, o bug do
-  `changeOrigin` do Vite, e por que celulares "abandonam" um Wi-Fi sem internet.
-* [Testes](testes.md) — suíte de integração do backend, armadilhas do
-  `fixtures.js`, e o padrão de simulação E2E isolada com Playwright.
+  `changeOrigin` do Vite, por que celulares "abandonam" um Wi-Fi sem internet, e o
+  bundle velho que faz uma correção existir no repositório e não na tela.
+* [Testes](testes.md) — suíte de integração do backend, suíte de componentes do
+  frontend, armadilhas do `fixtures.js`, duas falhas intermitentes já corrigidas, e
+  o padrão de simulação E2E isolada com Playwright.

@@ -18,6 +18,7 @@ import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
 import EmojiBursts from "../components/common/EmojiBursts.jsx";
 import Alert from "../components/common/Alert.jsx";
 import StopSplash from "../components/common/StopSplash.jsx";
+import Avatar from "../components/common/Avatar.jsx";
 
 const SYNC_DELAY = 450;
 const MEDAL_BY_POSITION = { 1: "🥇", 2: "🥈", 3: "🥉" };
@@ -462,7 +463,11 @@ function StudentTopBar({ state, player, connected }) {
     <div className="spread small muted">
       <span className="row">
         {state?.student?.avatarUrl ?? player.student?.avatarUrl ? (
-          <img className="student__avatar" src={state?.student?.avatarUrl ?? player.student?.avatarUrl} alt="" />
+          <Avatar
+            className="student__avatar"
+            value={state?.student?.avatarUrl ?? player.student?.avatarUrl}
+            name={state?.student?.name}
+          />
         ) : null}
         {state?.student?.name} · sala {player.room?.code}
       </span>
@@ -506,6 +511,7 @@ function StudentStatusArea({ connection, player, feedback, eliminated, phase, fu
           onDecide={handleDecideReview}
           deciding={reviewBusy}
           letter={round?.letter}
+          letterRule={round?.letterRule}
         />
       ) : null}
 

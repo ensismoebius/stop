@@ -65,7 +65,11 @@ vi.mock("../../src/components/public/GameStatus.jsx", () => ({
   default: ({ status }) => <div data-testid="game-status">{status ?? "none"}</div>,
 }));
 vi.mock("../../src/components/public/Ranking.jsx", () => ({
-  default: ({ entries }) => <div data-testid="ranking">ranking:{entries.length}</div>,
+  default: ({ entries, finished }) => (
+    <div data-testid="ranking" data-finished={String(Boolean(finished))}>
+      ranking:{entries.length}
+    </div>
+  ),
 }));
 vi.mock("../../src/components/common/ConnectionBadge.jsx", () => ({
   default: ({ connected }) => <div data-testid="connection-badge">{connected ? "online" : "offline"}</div>,
@@ -331,6 +335,8 @@ describe("PublicScreenPage", () => {
     renderPage("/screen/STOP-1");
 
     expect(screen.getByTestId("ranking")).toHaveTextContent("ranking:2");
+    // Rodada pontuada nao e fim de partida: lista, nao podio.
+    expect(screen.getByTestId("ranking")).toHaveAttribute("data-finished", "false");
     expect(screen.queryByTestId("game-title")).not.toBeInTheDocument();
     expect(screen.queryByTestId("connection-badge")).not.toBeInTheDocument();
   });
@@ -339,6 +345,8 @@ describe("PublicScreenPage", () => {
     socketReturn = { connected: true, state: { round: { status: "CORRECTION" }, game: { status: "FINISHED" } } };
     renderPage("/screen/STOP-1");
     expect(screen.getByTestId("ranking")).toHaveTextContent("ranking:0");
+    // Partida encerrada: e aqui, e so aqui, que o podio entra.
+    expect(screen.getByTestId("ranking")).toHaveAttribute("data-finished", "true");
   });
 
   it("toggles audio from the footer, and reflects the connection badge state", async () => {

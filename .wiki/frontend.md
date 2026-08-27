@@ -38,14 +38,29 @@ e monta a UI; a lógica de apresentação fica em `components/<cliente>/`.
 | --- | --- |
 | `ConfigPanel.jsx` | CRUD de Turmas (incluindo `discipline`), Alunos, e vínculo com `CategorySetsPanel` |
 | `CategorySetsPanel.jsx` | CRUD de conjuntos de categorias e categorias |
-| `RoomControl.jsx` | abrir/fechar sala, ver QR/link de entrada |
-| `RoundControl.jsx` | criar/iniciar/avançar rodada |
+| `RoomControl.jsx` | abrir/fechar sala, ver QR/link de entrada — com a partida encerrada mostra "Sala encerrada" **sem QR nem URL de entrada** (exibi-los seria mentira: `join` recusa sala `CLOSED`), mantendo só o link da tela pública, que é onde fica o pódio |
+| `RoundControl.jsx` | criar/iniciar/avançar rodada, incluindo a escolha da regra da letra (`STARTS_WITH`/`CONTAINS`) |
 | `PlayerMonitor.jsx` | status ao vivo de cada aluno conectado |
 | `CorrectionPanel.jsx` | grade de correção "crua" (uma linha por aluno × categoria) |
 | `GroupedCorrectionPanel.jsx` | grade agrupada por resposta distinta, com auto-avanço para a próxima categoria pendente após Válida/Inválida — sem botão "Em branco" (respostas vazias já chegam marcadas automaticamente, ver [Ciclo de vida da rodada](ciclo-de-vida-da-rodada.md#correção-do-professor)) |
 | `RankingPanel.jsx` | ranking da partida em andamento |
 | `StatisticsPanel.jsx` | estatísticas por partida |
 | `ReportsPanel.jsx` | relatórios acadêmicos entre partidas/turmas — ver abaixo |
+
+#### Abas e barra de estado do painel
+
+As abas do `TeacherDashboardPage` implementam o padrão **Tabs da WAI-ARIA**
+completo: cada aba tem `aria-controls` apontando para seu `tabpanel`, o painel
+aponta de volta com `aria-labelledby`, as setas ← → navegam entre abas e o
+*roving tabindex* faz o Tab entrar na lista de abas **uma vez** em vez de percorrer
+as cinco. Antes a marcação anunciava `role="tab"` sem entregar nada disso — dizia ao
+leitor de tela que era uma aba e não se comportava como uma.
+
+A barra de ações (`QuickActions`) mostra o **estado da partida** ("Partida aberta" /
+"Rodada em andamento" / "Partida encerrada"), em vez de obrigar o professor a
+deduzir a fase a partir de quais botões existem. Com a partida encerrada, "Finalizar
+partida" some (clicar de novo não faz nada de útil) e dá lugar a **"Nova partida"**,
+que limpa a partida selecionada e volta ao seletor.
 
 #### `ReportsPanel.jsx`
 
@@ -74,10 +89,63 @@ Duas ações adicionais na mesma tela:
 
 ### `components/student/`
 
-`AvatarPicker`, `GameHeader`, `LetterDisplay`, `CountdownTimer`, `CategoryList` +
-`CategoryCard`, `AnswerEditor`, `StopButton`, `ProgressIndicator`,
+`AvatarPicker` + `FaceBuilder`, `GameHeader`, `LetterDisplay`, `CountdownTimer`,
+`CategoryList` + `CategoryCard`, `AnswerEditor`, `StopButton`, `ProgressIndicator`,
 `CollaborativeCorrection`, `EmojiPicker`. Compostos por `StudentGamePage.jsx`, que
-também renderiza o ranking final (com medalha) quando `game.status === "FINISHED"`.
+também renderiza o ranking final (com medalha) quando `game.status === "FINISHED"` —
+incluindo a **própria colocação** do aluno mesmo quando ele está fora do top 10 (ver
+[Ciclo de vida da rodada](ciclo-de-vida-da-rodada.md#o-aluno-precisa-se-ver-não-só-o-pódio)).
+
+#### Regra da letra na tela do aluno
+
+`round.letterRule` chega no estado da sala e aparece em **três** lugares, para que o
+critério nunca dependa de o aluno abrir uma categoria:
+
+* `LetterDisplay` — o rótulo acima da letra **é** a regra ("Começa com" / "Contém"),
+  visível a rodada inteira e já antes do sorteio.
+* `AnswerEditor` — placeholder e o aviso de resposta fora da regra.
+* `CollaborativeCorrection` — quem corrige o colega precisa saber por qual critério
+  julgar; "Letra A" sozinho não diz isso.
+
+#### Avatar: `FaceBuilder` (assistente) + `lib/face.js`
+
+O aluno **monta** o próprio rosto; não existe mais galeria de avatares prontos.
+
+* **Peças** — `src/data/faceParts.js` é **gerado** por
+  `scripts/extract-face-parts.mjs` a partir do estilo *Adventurer* do DiceBear
+  (CC BY 4.0, Lisa Wischofsky): 45 cabelos, 26 olhos, 15 sobrancelhas, 30 bocas.
+  DiceBear é **devDependency** — roda no build, nunca no navegador.
+  Cabelo e pele saem com uma cor-sentinela trocada em tempo de execução, e é por
+  isso que 22 cores de cabelo custam 45 peças, não 990.
+* **Receita** — `lib/face.js` guarda só índices e os codifica como
+  `face:v1:020100010203` (dois dígitos base36 por campo: 45 cabelos não cabem em um).
+  O que vai para o banco é isso, **nunca marcação** — ver
+  [Modelo de dados](modelo-de-dados.md#avatarurl-dois-formatos-um-só-validador).
+* **Assistente** — uma decisão por tela (pele → cabelo → cor → olhos → sobrancelhas
+  → boca). Cada miniatura da galeria é **o rosto inteiro do aluno com aquela peça
+  trocada**: escolher olhando o resultado, nunca um nome como `variant07`.
+* **Renderização** — `components/common/FaceSvg.jsx` compõe o SVG;
+  `components/common/Avatar.jsx` é o único lugar que sabe distinguir receita de foto
+  (data URL) e é usado por **todas** as telas (ranking, pódio, monitor do professor,
+  cabeçalho do aluno).
+
+Três armadilhas visuais que passaram por 660 testes verdes e só apareceram em
+screenshot — todas de CSS, nenhuma de lógica:
+
+1. `FaceSvg` embrulha o SVG num `<span>`. `span` é `display: inline`: sem
+   `display:block` + altura, ele colapsa para a altura de linha e o rosto sai
+   cortado na testa. Daí `.face { display:block; width:100%; height:100% }`.
+2. As classes de avatar espalhadas pelo app foram escritas para `<img>` e usam
+   `object-fit`, que **não vale para um `<span>`**. `.face` carrega
+   `overflow:hidden; border-radius:inherit` para respeitar o recorte redondo de quem
+   a hospeda.
+3. Itens de grid **esticam por padrão, e o stretch ganha do `aspect-ratio`** — as
+   miniaturas ficavam baixas e largas, e o rosto quadrado aparecia cortado na linha
+   do cabelo. Corrigido com `align-items: start` na grade.
+
+A galeria fica num painel de rolagem de **altura fixa** (`.wz__panel`), não
+`max-height`: com altura variável, a lista de 45 cabelos empurrava "Voltar/Próximo"
+para fora da tela do telefone.
 
 `EmojiPicker.jsx`'s `EMOJI_REACTIONS` (conjunto fixo, sem digitação livre — spec:
 fácil de moderar) é **duplicado** em `backend/src/validators/schemas.js` como
@@ -98,9 +166,30 @@ que só aparecem para quem já está autenticado.
 ### `components/public/`
 
 `GameTitle`, `ThemeDisplay`, `LetterAnimation`, `Countdown`, `PlayerCount`,
-`GameStatus`, `Ranking` (pódio final com 🥇🥈🥉, revelação animada e escalonada por
-posição — ao testar visualmente, aguardar a animação terminar antes de tirar
-screenshot/verificar o DOM, ver [Testes](testes.md)).
+`GameStatus`, `Ranking`.
+
+#### `Ranking.jsx` — dois placares, não um
+
+`Ranking` é um despachante entre duas apresentações, escolhidas pela prop
+`finished` (`view.game.status === "FINISHED"`, passada por `PublicScreenPage`):
+
+| Quando | O quê |
+| --- | --- |
+| **entre rodadas** (`round.status === "SCORED"`) | `RankingList` — a lista de sempre, revelada do último colocado para o primeiro, top 8 |
+| **fim da partida** (`game.status === "FINISHED"`) | `PodiumCeremony` — cerimônia olímpica |
+
+Usar a cerimônia a cada rodada gastaria o efeito e alongaria a aula; por isso a
+separação é explícita e tem teste dos dois modos **e da troca entre eles**.
+
+A cerimônia segue um roteiro (`SCRIPT`): anuncia o 3º lugar (suspense, `DRUMROLL`),
+revela, repete para o 2º, segura mais tempo no 1º e fecha com `FANFARE` + fogos de
+CSS; só então a turma inteira aparece no rodapé. A ordem visual dos degraus é a
+olímpica (2º à esquerda, **1º ao centro e mais alto**, 3º à direita), e cada degrau
+recebe uma **lista** — empates são reais aqui, dois alunos em 1º sobem juntos.
+
+Ao testar: cada passo do roteiro só agenda o próximo **depois de renderizar**, então
+avançar o tempo de dois passos de uma vez não funciona — avance pelo maior atraso do
+roteiro, uma vez por passo (ver [Testes](testes.md)).
 
 ### `components/common/`
 

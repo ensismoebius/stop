@@ -144,9 +144,34 @@ describe("AnswerEditor", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("calls onClose when the Voltar button is clicked", async () => {
+  it("o botão Salvar grava a resposta e fecha o editor", async () => {
     const onClose = vi.fn();
+    const onCommit = vi.fn();
     const user = userEvent.setup();
+    render(
+      <AnswerEditor
+        category={category}
+        value="Abacaxi"
+        letter="A"
+        disabled={false}
+        onChange={vi.fn()}
+        onCommit={onCommit}
+        onClose={onClose}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Salvar" }));
+    // Grava mesmo — não depende do `onBlur` do campo, que só dispara se ele
+    // estiver focado.
+    expect(onCommit).toHaveBeenCalledWith("c1");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("rola o cartão para o meio da tela ao abrir, longe do cabeçalho fixo", () => {
+    // O setup dos testes já põe um stub em `HTMLElement.prototype`, que
+    // sombreia `Element.prototype` — o espião precisa ir no mesmo lugar.
+    const scrollIntoView = vi
+      .spyOn(window.HTMLElement.prototype, "scrollIntoView")
+      .mockImplementation(() => {});
     render(
       <AnswerEditor
         category={category}
@@ -155,11 +180,15 @@ describe("AnswerEditor", () => {
         disabled={false}
         onChange={vi.fn()}
         onCommit={vi.fn()}
-        onClose={onClose}
+        onClose={vi.fn()}
       />,
     );
-    await user.click(screen.getByText("Voltar"));
-    expect(onClose).toHaveBeenCalled();
+    // `block: "center"` é o que mantém o campo livre do cabeçalho `sticky`
+    // em cima e da barra do STOP `fixed` embaixo.
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ block: "center" }),
+    );
+    scrollIntoView.mockRestore();
   });
 
   it("shows the default hint when the answer starts with the letter", () => {

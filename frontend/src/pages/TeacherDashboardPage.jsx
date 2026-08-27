@@ -504,23 +504,61 @@ function useGridAutoload(round, grid, loadGrid) {
   }, [round?.id, round?.status, grid, loadGrid]);
 }
 
+/**
+ * Painel de uma aba. Só monta o conteúdo da aba ativa (as demais abas
+ * disparam requisições ao montar, então mantê-las montadas custaria
+ * tráfego à toa), mas preserva a ligação `tabpanel` ↔ `tab` do padrão.
+ */
+function TabPanel({ tabKey, active, children }) {
+  if (tabKey !== active) return null;
+  return (
+    <div role="tabpanel" id={`panel-${tabKey}`} aria-labelledby={`tab-${tabKey}`} tabIndex={-1}>
+      {children}
+    </div>
+  );
+}
+
 function DashboardHeader({ tab, setTab, room, connected, teacher, logout }) {
   return (
     <header className="topbar">
       <span className="topbar__brand">STOP · PROFESSOR</span>
-      <nav className="tabs" role="tablist" aria-label="Seções do painel">
-        {TABS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            role="tab"
-            className="tab"
-            aria-selected={tab === item.key}
-            onClick={() => setTab(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
+      {/*
+        Padrao de abas da WAI-ARIA: alem de `role`/`aria-selected`, cada aba
+        aponta para o painel que controla e a navegacao por teclado usa as
+        setas com "roving tabindex" (so a aba ativa e tabulavel). Sem isso a
+        estrutura anunciava "aba" para leitores de tela sem entregar o
+        comportamento que o padrao promete.
+      */}
+      <nav
+        className="tabs"
+        role="tablist"
+        aria-label="Seções do painel"
+        onKeyDown={(event) => {
+          const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+          if (!step) return;
+          event.preventDefault();
+          const index = TABS.findIndex((item) => item.key === tab);
+          setTab(TABS[(index + step + TABS.length) % TABS.length].key);
+        }}
+      >
+        {TABS.map((item) => {
+          const selected = tab === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              id={`tab-${item.key}`}
+              aria-controls={`panel-${item.key}`}
+              className="tab"
+              aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => setTab(item.key)}
+            >
+              {item.label}
+            </button>
+          );
+        })}
       </nav>
       <div className="row small">
         {room ? <ConnectionBadge connected={connected} /> : null}
@@ -540,25 +578,56 @@ function DashboardHeader({ tab, setTab, room, connected, teacher, logout }) {
  */
 function QuickActions({ game, round, busy, actions }) {
   if (!game) return null;
+
+  // Partida encerrada nao tem mais acao de jogo possivel: "Finalizar
+  // partida" some (clicar de novo nao faz sentido) e da lugar ao unico
+  // caminho que resta — comecar uma partida nova.
+  const finished = game.status === "FINISHED";
+  const playing = Boolean(round) && round.status === "PLAYING";
+
   return (
-    <div className="card row spread">
-      <span className="small muted">Ações rápidas</span>
-      <div className="row">
-        {round && round.status === "PLAYING" ? (
-          <button type="button" className="btn btn--danger" disabled={busy} onClick={actions.stopRound}>
-            Finalizar rodada
+    <div className="card gamebar" aria-label="Ações rápidas">
+      {/* Estado do sistema sempre visivel: o professor nunca precisa
+          deduzir em que fase a partida esta a partir dos botoes. */}
+      <div className="gamebar__status">
+        <span className="small muted">Ações rápidas</span>
+        <div className="gamebar__title">
+          <strong>{game.name}</strong>
+          <span className={`badge ${finished ? "badge--finished" : "badge--playing"}`}>
+            {finished ? "Partida encerrada" : playing ? "Rodada em andamento" : "Partida aberta"}
+          </span>
+        </div>
+      </div>
+
+      <div className="gamebar__actions">
+        {finished ? (
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={busy}
+            onClick={() => actions.selectGame(null)}
+          >
+            Nova partida
           </button>
-        ) : null}
-        <button
-          type="button"
-          className="btn btn--ghost"
-          disabled={busy}
-          onClick={() => {
-            if (window.confirm("Encerrar esta partida e começar outra?")) actions.finishGame();
-          }}
-        >
-          Finalizar partida
-        </button>
+        ) : (
+          <>
+            {playing ? (
+              <button type="button" className="btn btn--danger" disabled={busy} onClick={actions.stopRound}>
+                Finalizar rodada
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm("Encerrar esta partida e começar outra?")) actions.finishGame();
+              }}
+            >
+              Finalizar partida
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -827,23 +896,25 @@ export function TeacherDashboardPage() {
         <Alert kind="error">{error}</Alert>
       </div>
 
-      {tab === "control" ? (
+      {/* Cada aba renderiza dentro do seu proprio `tabpanel`, ligado de
+          volta a aba que o controla (`aria-labelledby`). */}
+      <TabPanel tabKey="control" active={tab}>
         <ControlTab catalog={catalog} gameState={gameState} realtime={realtime} busy={busy} actions={actions} setTab={setTab} />
-      ) : null}
+      </TabPanel>
 
-      {tab === "correction" ? (
+      <TabPanel tabKey="correction" active={tab}>
         <CorrectionTab round={realtime.round} busy={busy} grids={grids} view={realtime.view} actions={actions} />
-      ) : null}
+      </TabPanel>
 
-      {tab === "config" ? (
+      <TabPanel tabKey="config" active={tab}>
         <ConfigTab catalog={catalog} token={token} guard={guard} stats={stats} deleteRound={actions.deleteRound} busy={busy} />
-      ) : null}
+      </TabPanel>
 
-      {tab === "categories" ? (
+      <TabPanel tabKey="categories" active={tab}>
         <CategoriesTab categorySets={catalog.categorySets} token={token} guard={guard} loadBasics={catalog.loadBasics} />
-      ) : null}
+      </TabPanel>
 
-      {tab === "reports" ? (
+      <TabPanel tabKey="reports" active={tab}>
         <ReportsTab
           catalog={catalog}
           reportResults={reportResults}
@@ -854,7 +925,7 @@ export function TeacherDashboardPage() {
           guard={guard}
           busy={busy}
         />
-      ) : null}
+      </TabPanel>
 
       <EmojiBursts items={emojiBursts.items} />
     </div>

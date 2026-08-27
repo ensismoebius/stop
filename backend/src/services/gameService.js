@@ -44,7 +44,9 @@ export const gameService = {
     const current = await roundRepository.findCurrentByGame(id);
     if (current && current.status !== "FINISHED") {
       const { default: roundService } = await import("./roundService.js");
-      await roundService.cancel(current.id);
+      await roundService.cancel(current.id, {
+        message: "A partida foi encerrada pelo professor. Confira o resultado final.",
+      });
     }
 
     const updated = await gameRepository.update(id, { status: "FINISHED", finishedAt: new Date() });

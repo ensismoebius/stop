@@ -3,7 +3,7 @@
 O uso real do STOP é: computador do professor roda backend + frontend, ativa um
 hotspot Wi-Fi (geralmente **sem internet**, intencionalmente — só a rede local
 importa), e os celulares dos alunos se conectam a esse hotspot para acessar
-`http://<ip-do-hotspot>:5173`. Duas armadilhas reais já apareceram nesse cenário
+`http://<ip-do-hotspot>:5173`. Três armadilhas reais já apareceram nesse cenário
 específico — nenhuma delas visível em desenvolvimento normal (`localhost`).
 
 ## 1. Proxy do Vite reescrevendo o header `Host`
@@ -74,6 +74,44 @@ trabalho, não do app. Mencionado aqui porque é a explicação completa do "por
 vezes funciona e às vezes não" ao testar em sala de aula sem essa configuração
 ativa: **sem** o spoof, um hotspot sem internet real vai intermitentemente perder
 alunos que o SO decidiu desviar para dados móveis.
+
+## 3. Bundle velho: a correção existe no repositório e não existe na tela
+
+**Sintoma:** uma correção de frontend está no código, passa nos testes, foi
+revisada — e simplesmente **não acontece** no navegador. Nenhum erro, nenhum aviso.
+Repetidamente, para a mesma correção.
+
+**Causa:** em sala de aula quem serve o frontend é o próprio backend, a partir de
+`frontend/dist` já compilado (`app.js`: `express.static(frontendDist)` + fallback do
+SPA). Não há Vite em modo dev nesse cenário. Editar `frontend/src/` não muda
+absolutamente nada até rodar `npm run build` — o navegador continua recebendo o
+bundle antigo, e como nada falha, parece que a correção nunca foi feita.
+
+Aconteceu de verdade aqui: o pódio pós-"Finalizar partida" ficou invisível por
+várias rodadas de "já está implementado" porque o `dist` servido era de horas antes
+de o código do pódio existir.
+
+**Proteção:** `createApp()` compara a data de modificação mais recente de
+`frontend/src` com a de `frontend/dist` e, se o fonte for mais novo, registra um
+`WARN` alto na subida:
+
+```
+WARN frontend/dist esta DESATUALIZADO: frontend/src foi alterado 12 min depois do
+     ultimo build. O navegador vai receber o bundle antigo.
+     Rode: cd frontend && npm run build
+```
+
+É só um aviso — nunca derruba o servidor. Mas se ele aparecer no log, **qualquer**
+teste de frontend feito naquela instância é inválido.
+
+**Regra prática:** mexeu em `frontend/src` → `npm run build`; mexeu em
+`backend/src` → reiniciar o processo. E o navegador guarda o bundle em cache, então
+o teste manual final pede recarga forçada (Ctrl+Shift+R) — o hash no nome do arquivo
+(`index-<hash>.js`) é a forma rápida de conferir qual bundle está de fato no ar:
+
+```bash
+curl -s http://127.0.0.1:3000/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js'
+```
 
 ## Verificando ausência de dependência de internet no próprio app
 

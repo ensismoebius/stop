@@ -48,7 +48,7 @@ describe("CollaborativeCorrection", () => {
       />,
     );
     expect(screen.getByText("Corrija um colega — Fruta")).toBeInTheDocument();
-    expect(screen.getByText("Letra A")).toBeInTheDocument();
+    expect(screen.getByText(/Começa com a letra\s+A/)).toBeInTheDocument();
     expect(screen.getByText("Abacaxi")).toBeInTheDocument();
     expect(screen.getByText("Progresso: 0 / 2")).toBeInTheDocument();
   });
@@ -63,7 +63,23 @@ describe("CollaborativeCorrection", () => {
         letter={null}
       />,
     );
-    expect(screen.queryByText(/^Letra /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/letra/i)).not.toBeInTheDocument();
+  });
+
+  it("tells the corrector the rule is CONTAINS when the round uses it", () => {
+    // Sem isso o aluno que corrige nao sabe por qual criterio julgar.
+    render(
+      <CollaborativeCorrection
+        reviews={[review()]}
+        completedIds={new Set()}
+        onDecide={vi.fn()}
+        deciding={false}
+        letter="A"
+        letterRule="CONTAINS"
+      />,
+    );
+    expect(screen.getByText(/Contém a letra\s+A/)).toBeInTheDocument();
+    expect(screen.queryByText(/Começa com/)).not.toBeInTheDocument();
   });
 
   it("renders an em dash placeholder for a blank answer", () => {
