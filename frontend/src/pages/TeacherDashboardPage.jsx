@@ -212,6 +212,13 @@ function useDashboardView({ token, room, state, sync, now }) {
 function useDashboardRealtime({ token, room, sync, now, emojiBursts, reloadGame, setError, setTab, loadGrid, setGrid, setGroupedGrid }) {
   const [collabProgress, setCollabProgress] = useState(null);
 
+  // Ajustes da sala, atualizados AO VIVO pelo evento leve `roomSettingsChanged`
+  // (o slider/painel do professor reflete imediatamente, sem esperar o próximo
+  // publish completo que trocar de rodada). A linha de base vem de `view.settings`
+  // via efeito abaixo; `setLiveSettings` é declarado antes dos handlers (que o
+  // usam) para evitar acesso no temporal dead zone.
+  const [liveSettings, setLiveSettings] = useState(null);
+
   const handlers = useMemo(
     () => ({
       onState: (state) => sync(state?.serverTime),
@@ -250,14 +257,25 @@ function useDashboardRealtime({ token, room, sync, now, emojiBursts, reloadGame,
         reloadGame();
       },
       emojiReceived: (payload) => emojiBursts.push(payload.emoji),
+      // Ajustes da sala vindos de outro painel/mediacao — refletir na hora.
+      roomSettingsChanged: (settings) => setLiveSettings?.((prev) => ({ ...prev, ...settings })),
     }),
-    [loadGrid, reloadGame, sync, emojiBursts, setTab, setError],
+    [loadGrid, reloadGame, sync, emojiBursts, setTab, setError, setLiveSettings],
   );
 
   const { connected, state } = useDashboardSocket({ token, room, handlers });
   const { view, round, seconds } = useDashboardView({ token, room, state, sync, now });
 
-  return { connected, view, round, seconds, collabProgress, setCollabProgress };
+  // Toda projeção de estado completa (publish de troca de rodada, REST de
+  // fallback) traz os `settings` autoritativos — a linha de base; o evento
+  // leve apenas sobrepõe entre um publish e outro.
+  useEffect(() => {
+    if (view?.settings) {
+      setLiveSettings((prev) => ({ ...(prev ?? {}), ...view.settings }));
+    }
+  }, [view?.settings]);
+
+  return { connected, view, round, seconds, collabProgress, setCollabProgress, liveSettings, setLiveSettings };
 }
 
 /** Estatísticas/histórico da partida atual — recarregados na aba "Configuração" ou assim que uma rodada é pontuada. */
@@ -661,7 +679,7 @@ function QuickActions({ game, round, busy, actions }) {
 /** Aba "Controle da partida": ações rápidas, RoundControl, RoomControl, monitor de jogadores e ranking ao vivo. */
 function ControlTab({ catalog, gameState, realtime, busy, actions, setTab, token, guard, onRoomSettings }) {
   const { game, room, qrCode, usedLetters } = gameState;
-  const { round, seconds, view, collabProgress } = realtime;
+  const { round, seconds, view, collabProgress, liveSettings } = realtime;
   const { classes, games, categorySets } = catalog;
   return (
     <div className="panel panel--control">
@@ -701,7 +719,7 @@ function ControlTab({ catalog, gameState, realtime, busy, actions, setTab, token
           room={room}
           qrCode={qrCode}
           busy={busy}
-          settings={view?.settings}
+          settings={liveSettings ?? view?.settings}
           onToggleHidePoints={(hidePoints) => onRoomSettings({ hidePoints })}
           onVolumeChange={(volume) => onRoomSettings({ volume })}
           onToggleMuted={(muted) => onRoomSettings({ muted })}

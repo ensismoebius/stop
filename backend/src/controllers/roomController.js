@@ -3,8 +3,8 @@ import roomService from "../services/roomService.js";
 import viewService from "../services/viewService.js";
 import roomRepository from "../repositories/roomRepository.js";
 import { syncStats } from "../sockets/syncRegistry.js";
+import * as realtime from "../sockets/realtime.js";
 import { applyRoomSettings } from "../services/room/roomSettings.js";
-import roomState from "../services/room/roomState.js";
 
 function baseUrlFromRequest(req) {
   const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
@@ -69,8 +69,14 @@ export const roomController = {
       room.code,
       typeof req.body === "object" && req.body !== null ? req.body : {},
     );
-    // Propaga a mudança para a tela pública via outbound queue (latest-wins).
-    await roomState.publish(room.code);
+    // Difusão LEVE, sem o `publish()` pesado: nada de `bumpStateVersion`,
+    // recarregar ranking ou reconstruir as três projeções — o volume é
+    // ajustado em rajadas (arrastar o slider) e cada click não deve custar
+    // uma transação de banco. Um evento pequeno vai para as telas e os
+    // painéis de professor; a convergência total continua garantida pelos
+    // publishes normais (troca de rodada), que incluem `settings`.
+    realtime.toScreens(room.code, "roomSettingsChanged", settings);
+    realtime.toTeachers(room.code, "roomSettingsChanged", settings);
     return res.json({ roomCode: room.code, settings });
   }),
 };

@@ -1,5 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Field from "../common/Field.jsx";
+
+/** Atraso antes de mandar o volume — arrastar o slider dispara dezenas de
+ *  `change`; a requisição só vai depois que o usuário para (ou solta). */
+const VOLUME_DEBOUNCE_MS = 260;
 
 /** QR Code + código de entrada da sala já criada, ou o botão para criar (spec 5 e 36). */
 function GameRoom({ room, qrCode, onCreateRoom, busy, closed }) {
@@ -142,6 +146,42 @@ export function RoomControl({
   const volume = typeof settings?.volume === "number" ? settings.volume : 0.65;
   const muted = Boolean(settings?.muted);
 
+  // Volume local imediato (o slider move sem esperar a rede) + envio
+  // debounced: o valor mais recente é mandado 260ms depois de o usuário
+  // parar de mexer, e é liberado já no fim do arrasto (mouseup/touchend).
+  const [draftVolume, setDraftVolume] = useState(volume);
+  const volumeTimerRef = useRef(null);
+  const pendingVolumeRef = useRef(null);
+
+  const scheduleVolumeSend = (value) => {
+    pendingVolumeRef.current = value;
+    if (volumeTimerRef.current) clearTimeout(volumeTimerRef.current);
+    volumeTimerRef.current = setTimeout(() => {
+      volumeTimerRef.current = null;
+      if (pendingVolumeRef.current !== null) {
+        const v = pendingVolumeRef.current;
+        pendingVolumeRef.current = null;
+        onVolumeChange?.(v);
+      }
+    }, VOLUME_DEBOUNCE_MS);
+  };
+
+  const flushVolume = () => {
+    if (volumeTimerRef.current) clearTimeout(volumeTimerRef.current);
+    volumeTimerRef.current = null;
+    if (pendingVolumeRef.current !== null) {
+      const v = pendingVolumeRef.current;
+      pendingVolumeRef.current = null;
+      onVolumeChange?.(v);
+    }
+  };
+
+  // Acompanha o valor autoritativo vindo do servidor (ex.: outro painel de
+  // professor mudou o volume) sem pisar no arrasto em andamento do usuário.
+  useEffect(() => {
+    setDraftVolume(volume);
+  }, [volume]);
+
   return (
     <section className="card stack">
       <h2>Sala</h2>
@@ -201,12 +241,19 @@ export function RoomControl({
                   min="0"
                   max="1"
                   step="0.05"
-                  value={volume}
+                  value={draftVolume}
                   disabled={muted}
                   aria-label="Volume da tela pública"
-                  onChange={(event) => onVolumeChange?.(Number(event.target.value))}
+                  onChange={(event) => {
+                    const v = Number(event.target.value);
+                    setDraftVolume(v);
+                    scheduleVolumeSend(v);
+                  }}
+                  onPointerUp={flushVolume}
+                  onKeyUp={flushVolume}
+                  onBlur={flushVolume}
                 />
-                <span className="small tabular">{Math.round(volume * 100)}%</span>
+                <span className="small tabular">{Math.round(draftVolume * 100)}%</span>
               </div>
             </div>
           ) : null}

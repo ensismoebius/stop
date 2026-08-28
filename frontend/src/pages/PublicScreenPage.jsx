@@ -20,7 +20,7 @@ import EmojiBursts from "../components/common/EmojiBursts.jsx";
 import StopSplash from "../components/common/StopSplash.jsx";
 
 /** Handlers de socket da tela pública: só efeitos locais (som/progresso) — o estado em si chega via REST/fallback. */
-function buildScreenHandlers({ sync, audio, setStopSplash, setCollabProgress, emojiBursts }) {
+function buildScreenHandlers({ sync, audio, setStopSplash, setCollabProgress, emojiBursts, setLiveSettings }) {
   return {
     onState: (state) => sync(state?.serverTime),
     // O som do sorteio agora acompanha a animacao (tique a cada giro e
@@ -40,6 +40,9 @@ function buildScreenHandlers({ sync, audio, setStopSplash, setCollabProgress, em
       audio.playVoice();
       setStopSplash(true);
     },
+    // Ajustes da sala mudados pelo professor chegam por um evento LEVE,
+    // sem reconstruir o estado inteiro — o slider de volume não deve travar.
+    roomSettingsChanged: (settings) => setLiveSettings?.(settings),
     // Correcao colaborativa (spec 36): so o progresso agregado, nunca
     // respostas individuais na tela publica.
     collaborativeCorrectionStarted: (payload) => setCollabProgress(payload),
@@ -181,8 +184,15 @@ function useScreenState(code) {
   const emojiBursts = useEmojiBursts();
   const [stopSplash, setStopSplash] = useState(false);
 
+  // Ajustes da sala: a linha de base vem da projeção de estado (`view.settings`),
+  // e o evento LEVE `roomSettingsChanged` os atualiza ao vivo sem esperar o
+  // próximo publish completo — o slider do professor não trava o painel.
+  // Declarado antes dos handlers para evitar acesso no temporal dead zone.
+  const [liveSettings, setLiveSettings] = useState(null);
+
   const handlers = useMemo(
-    () => buildScreenHandlers({ sync, audio, setStopSplash, setCollabProgress, emojiBursts }),
+    () =>
+      buildScreenHandlers({ sync, audio, setStopSplash, setCollabProgress, emojiBursts, setLiveSettings }),
     [audio, sync, emojiBursts],
   );
 
@@ -197,18 +207,28 @@ function useScreenState(code) {
   const qrCode = useScreenQrCode(code);
   const view = state ?? fallback;
 
+  // Toda projeção de estado completa (publish de troca de rodada, REST de
+  // fallback) traz os `settings` autoritativos — eles são a linha de base,
+  // e o evento leve apenas sobrepõe entre um publish e outro.
+  useEffect(() => {
+    if (view?.settings) {
+      setLiveSettings((prev) => ({ ...(prev ?? {}), ...view.settings }));
+    }
+  }, [view?.settings]);
+
+
   useEffect(() => {
     if (view?.serverTime) sync(view.serverTime);
   }, [view?.serverTime, sync]);
 
-  // Volume/mudo da TV comandados remotamente pelo professor: cada broadcast
-  // que muda os ajustes da sala é aplicado na preferência de áudio local.
+  // Volume/mudo da TV comandados remotamente pelo professor: cada mudança
+  // dos ajustes é aplicada na preferência de áudio local.
   // O ref guarda o último valor aplicado — `setVolume`/`toggle` criam objeto
   // novo a cada troca de preferência, então sem o guard o efeito (que
   // depende de `audio`, re-criado a cada render) entraria em loop.
   const appliedRemote = useRef({ volume: undefined, muted: undefined });
-  const remoteVolume = view?.settings?.volume;
-  const remoteMuted = view?.settings?.muted;
+  const remoteVolume = liveSettings?.volume;
+  const remoteMuted = liveSettings?.muted;
   useEffect(() => {
     if (typeof remoteVolume === "number" && appliedRemote.current.volume !== remoteVolume) {
       appliedRemote.current.volume = remoteVolume;
@@ -262,6 +282,7 @@ function useScreenState(code) {
     emojiBursts,
     stopSplash,
     setStopSplash,
+    liveSettings,
   };
 }
 
@@ -407,6 +428,7 @@ export function PublicScreenPage() {
     emojiBursts,
     stopSplash,
     setStopSplash,
+    liveSettings,
   } = useScreenState(code);
 
   const submit = useCallback(
@@ -446,7 +468,7 @@ export function PublicScreenPage() {
           entries={view?.ranking ?? []}
           audio={audio}
           finished={finished}
-          hidePoints={Boolean(view?.settings?.hidePoints)}
+          hidePoints={Boolean(liveSettings?.hidePoints)}
         />
         <EmojiBursts items={emojiBursts.items} />
       </div>

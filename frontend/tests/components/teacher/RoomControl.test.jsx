@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import RoomControl from "../../../src/components/teacher/RoomControl.jsx";
 
@@ -261,5 +261,74 @@ describe("RoomControl", () => {
       />,
     );
     expect(screen.queryByRole("checkbox", { name: /Ocultar pontos/ })).not.toBeInTheDocument();
+  });
+
+  it("debounces the volume slider so a drag sends a single coalesced update", async () => {
+    vi.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onVolumeChange = vi.fn();
+
+    render(
+      <RoomControl
+        classes={classes}
+        games={[]}
+        game={{ id: 1, name: "Jogo A", class: { name: "9A" } }}
+        room={{ code: "STOP-77" }}
+        qrCode={null}
+        onCreateGame={vi.fn()}
+        onSelectGame={vi.fn()}
+        onCreateRoom={vi.fn()}
+        busy={false}
+        settings={{ volume: 0.5, muted: false }}
+        onVolumeChange={onVolumeChange}
+      />,
+    );
+
+    const slider = screen.getByRole("slider", { name: "Volume da tela pública" });
+
+    // Simula arrastar: vários `change` em sequência antes de soltar o botão.
+    fireEvent.change(slider, { target: { value: "0.55" } });
+    fireEvent.change(slider, { target: { value: "0.60" } });
+    fireEvent.change(slider, { target: { value: "0.65" } });
+    // Nada enviado ainda — o timer de debounce não disparou.
+    expect(onVolumeChange).not.toHaveBeenCalled();
+
+    // Solta o ponteiro: o valor mais recente é liberado imediatamente.
+    fireEvent.pointerUp(slider);
+    expect(onVolumeChange).toHaveBeenCalledTimes(1);
+    expect(onVolumeChange).toHaveBeenCalledWith(0.65);
+
+    vi.useRealTimers();
+  });
+
+  it("flushes the pending volume only after the debounce when the slider is not released", async () => {
+    vi.useFakeTimers();
+    const onVolumeChange = vi.fn();
+
+    render(
+      <RoomControl
+        classes={classes}
+        games={[]}
+        game={{ id: 1, name: "Jogo A", class: { name: "9A" } }}
+        room={{ code: "STOP-77" }}
+        qrCode={null}
+        onCreateGame={vi.fn()}
+        onSelectGame={vi.fn()}
+        onCreateRoom={vi.fn()}
+        busy={false}
+        settings={{ volume: 0.5, muted: false }}
+        onVolumeChange={onVolumeChange}
+      />,
+    );
+
+    const slider = screen.getByRole("slider", { name: "Volume da tela pública" });
+    fireEvent.change(slider, { target: { value: "0.9" } });
+    expect(onVolumeChange).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(300);
+    expect(onVolumeChange).toHaveBeenCalledTimes(1);
+    expect(onVolumeChange).toHaveBeenCalledWith(0.9);
+
+    vi.useRealTimers();
   });
 });

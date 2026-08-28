@@ -397,6 +397,31 @@ describe("PublicScreenPage", () => {
     audioMock.enabled = true;
   });
 
+  it("aplica volume e mudo remotamente pelo evento LEVE roomSettingsChanged, sem esperar um publish completo", () => {
+    audioMock.enabled = true;
+    socketReturn = {
+      connected: true,
+      state: { round: { status: "PLAYING" }, settings: { volume: 0.5, muted: false } },
+    };
+    renderPage("/screen/STOP-1");
+    expect(audioMock.setVolume).toHaveBeenLastCalledWith(0.5);
+
+    // O professor arrasta o slider: o ajuste chega por um evento pequeno
+    // (não por uma projeção de estado completa), e a TV aplica na hora.
+    act(() => {
+      lastHandlers.roomSettingsChanged({ volume: 0.85 });
+    });
+    expect(audioMock.setVolume).toHaveBeenLastCalledWith(0.85);
+
+    // E o mudo, quando ligado de longe:
+    act(() => {
+      lastHandlers.roomSettingsChanged({ muted: true });
+    });
+    expect(audioMock.toggle).toHaveBeenCalled();
+
+    audioMock.enabled = true;
+  });
+
   it("unlocks audio on the very first interaction anywhere on the page, unattended (spec bells-and-whistles)", async () => {
     // A tela pública normalmente é um TV ligado na sala sem ninguém
     // clicando no botão de mudo — sem esse desbloqueio genérico a música

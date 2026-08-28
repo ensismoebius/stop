@@ -32,6 +32,7 @@ const NAMED_EVENTS = [
   "roundCancelled",
   "nextRound",
   "roomStatusChanged",
+  "roomSettingsChanged",
   "emojiReceived",
 ];
 
