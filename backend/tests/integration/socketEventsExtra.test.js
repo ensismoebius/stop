@@ -212,8 +212,11 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     await vi.waitFor(
       () => {
         expect(warnSpy).toHaveBeenCalledWith(
-          "Falha ao tratar desconexao no banco",
-          "falha simulada ao marcar desconexão",
+          "Falha ao tratar desconexao no banco — seguindo com a limpeza em memoria",
+          expect.objectContaining({
+            playerSessionId: expect.any(String),
+            error: expect.objectContaining({ message: "falha simulada ao marcar desconexão" }),
+          }),
         );
       },
       { timeout: 2000 },
@@ -239,7 +242,13 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
 
     await vi.waitFor(
       () => {
-        expect(warnSpy).toHaveBeenCalledWith("Falha ao tratar desconexao no banco", "motivo sem .message");
+        expect(warnSpy).toHaveBeenCalledWith(
+          "Falha ao tratar desconexao no banco — seguindo com a limpeza em memoria",
+          expect.objectContaining({
+            socketId: expect.any(String),
+            error: expect.objectContaining({ message: "motivo sem .message" }),
+          }),
+        );
       },
       { timeout: 2000 },
     );

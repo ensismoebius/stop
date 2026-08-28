@@ -11,6 +11,8 @@
  * curto resolve o conflito porque a outra transação já comitou (last-write-wins).
  */
 
+import logger from "./logger.js";
+
 const CONFLICT_PATTERNS = /(p2034|1213|deadlock|record has changed since last read|error code:?\s*1020)/i;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,7 +32,14 @@ export async function retryOnWriteConflict(operation, { tries = 3, delayMs = 30 
       lastError = error;
       const message = `${error?.message ?? ""} ${error?.code ?? ""} ${error?.meta?.message ?? ""}`;
       if (!CONFLICT_PATTERNS.test(message)) throw error;
-      if (attempt < tries - 1) await sleep(delayMs * (attempt + 1));
+      if (attempt < tries - 1) {
+        logger.debug("Conflito de escrita no banco — nova tentativa", {
+          attempt: attempt + 1,
+          tries,
+          error: { name: error?.name ?? "Error", message: error?.message ?? String(error), code: error?.code ?? null },
+        });
+        await sleep(delayMs * (attempt + 1));
+      }
     }
   }
   throw lastError;

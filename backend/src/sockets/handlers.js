@@ -31,8 +31,23 @@ function toErrorPayload(error) {
   if (error instanceof AppError) {
     return { code: error.code, message: error.message, details: error.details ?? null };
   }
-  logger.error("Erro em handler de socket", error);
+  // Fora do contrato de domínio: a resposta ao cliente é genérica, mas o erro
+  // completo precisa aparecer no log com contexto pra ser copiado na hora do
+  // diagnóstico. O log propriamente dito fica em `wrap`, que tem o contexto.
   return { code: "INTERNAL_ERROR", message: "Erro interno do servidor" };
+}
+
+/** Contexto seguro (sem tokens) de um socket para os logs de diagnóstico. */
+function socketContext(socket, extra = {}) {
+  const context = socket.data.context;
+  return {
+    socketId: socket.id,
+    role: context?.role ?? null,
+    room: context?.room?.code ?? null,
+    roomId: context?.room?.id ?? null,
+    playerSessionId: context?.session?.id ?? null,
+    ...extra,
+  };
 }
 
 /**
@@ -76,6 +91,20 @@ function wrap(socket, schema, handler, options = {}) {
       }
       if (typeof ack === "function") ack({ ok: true, data: result ?? null });
     } catch (error) {
+      // Ponto de captura de TODA falha não-validada de um comando socket
+      // (inclusive as que não deveriam ocorrer — ex. MySQL 1020 transiente).
+      // Log completo com papel/sala/playerSessionId + nome do comando + o
+      // erro original, para copiar na hora do diagnóstico. Nunca derruba a
+      // conexao: devolve erro ao cliente e converge.
+      logger.error(`Erro em comando de socket '${options.command ?? "?"}'`, {
+        ...socketContext(socket),
+        error: {
+          name: error?.name ?? "Error",
+          message: error?.message ?? String(error),
+          code: error?.code ?? null,
+          stack: error?.stack ?? null,
+        },
+      });
       const payloadError = toErrorPayload(error);
       socket.emit("error", payloadError);
       if (typeof ack === "function") ack({ ok: false, error: payloadError });
@@ -108,6 +137,13 @@ async function handlePlayerJoin(client, context, code) {
   await client.join(realtime.rooms.players(code));
   await client.join(realtime.rooms.player(context.session.id));
   await playerSessionRepository.markConnected(context.session.id, client.id);
+
+  logger.info(`Aluno entrou na sala ${code}`, {
+    socketId: client.id,
+    room: code,
+    playerSessionId: context.session.id,
+    studentId: context.session.student.id,
+  });
 
   // O ack de entrada carrega a posição (roomEpoch, stateVersion) corrente:
   // é o primeiro estado que o barreira de sincronização do cliente adota.
@@ -145,12 +181,14 @@ async function handleJoinRoom(client, data) {
     const state = await viewService.teacherState(code, { version });
     state.syncStats = syncStatsFor(context.room.code, version);
     client.emit("roomState", state);
+    logger.debug(`Professor conectou na sala ${code}`, { socketId: client.id, room: code });
     return state;
   }
 
   await client.join(realtime.rooms.screens(code));
   const state = await viewService.publicState(code, { version });
   client.emit("roomState", state);
+  logger.debug(`Tela publica conectou na sala ${code}`, { socketId: client.id, room: code });
   return state;
 }
 
@@ -179,15 +217,28 @@ async function handleDisconnect(socket, reason) {
   } catch (error) {
     // Escrita falhou (conflito transiente 1020 apos retries): nao sabemos
     // se este socket ainda era o dono — segue com a limpeza como failsafe.
-    logger.warn("Falha ao tratar desconexao no banco", error?.message ?? error);
+    logger.warn("Falha ao tratar desconexao no banco — seguindo com a limpeza em memoria", {
+      ...socketContext(socket, { reason }),
+      error: { name: error?.name ?? "Error", message: error?.message ?? String(error), code: error?.code ?? null },
+    });
   }
 
   if (stillCurrent) {
+    logger.debug(`Aluno desconectou da sala ${context.room.code}`, {
+      ...socketContext(socket, { reason }),
+    });
     dropClientSync(context);
     realtime.toTeachers(context.room.code, "playerLeft", {
       playerSessionId: context.session.id,
       reason,
     });
+  } else {
+    // Caso "sempre a sessao mais recente vence" em acao: o socket antigo caiu
+    // mas a sessao ja pertencia a outra conexao — nada a limpar nem a avisar.
+    logger.info(
+      `Desconexao descartada: socket antigo (sessao ${context.session.id} ja pertence a conexao mais nova)`,
+      { ...socketContext(socket, { reason }) },
+    );
   }
   // Coalescido e barato: recalcula o painel do professor com o estado real.
   roundService.broadcastStateSoon(context.room.code);

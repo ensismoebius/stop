@@ -31,6 +31,17 @@ export function createSocketServer(httpServer) {
     registerHandlers(socket);
   });
 
+  // Falha de handshake (rede/roteador barato, cliente antigo, payload grande
+  // demais): registra só o básico pra diagnostico de "aluno nao consegue
+  // conectar", sem expor headers que possam carregar tokens.
+  ioServer.on("connection_error", (error) => {
+    logger.warn("Falha no handshake de WebSocket", {
+      code: error?.code ?? "UNKNOWN",
+      message: error?.message ?? String(error),
+      reason: error?.req?.url ?? null,
+    });
+  });
+
   return ioServer;
 }
 

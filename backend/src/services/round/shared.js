@@ -1,5 +1,6 @@
 import { badRequest, notFound } from "../../lib/errors.js";
 import env from "../../config/env.js";
+import logger from "../../lib/logger.js";
 import roundRepository from "../../repositories/roundRepository.js";
 import roomRepository from "../../repositories/roomRepository.js";
 import * as realtime from "../../sockets/realtime.js";
@@ -62,7 +63,16 @@ export function broadcastStateSoon(roomCode) {
     roomCode,
     setTimeout(() => {
       coalescedByRoom.delete(roomCode);
-      broadcastState(roomCode);
+      // Ponto que não deveria falhar: difusão coalescida do estado após
+      // join/ready/disconnect. `publish` já trata erros internos e avisa,
+      // mas esta proteção extra garante que nenhuma rejeição estoure como
+      // unhandled no timer — com contexto para copiar no diagnóstico.
+      broadcastState(roomCode).catch((error) => {
+        logger.warn(`Falha na difusao coalescida da sala ${roomCode}`, {
+          room: roomCode,
+          error: { name: error?.name ?? "Error", message: error?.message ?? String(error), code: error?.code ?? null },
+        });
+      });
     }, COALESCE_WINDOW_MS),
   );
 }

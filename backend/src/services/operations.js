@@ -1,4 +1,5 @@
 import prisma from "../lib/prisma.js";
+import logger from "../lib/logger.js";
 
 /**
  * Idempotência de comandos de escrita (spec 3.1). O cliente gera um
@@ -53,7 +54,16 @@ export async function claimOperation({ operationId, roomId, playerSessionId, com
     const existing = await resolveExisting(roomId, operationId);
     if (existing && existing.status === "DONE") return existing.responseJson;
     // PENDING esgotada a espera ou FAILED: o processamento anterior nao
-    // terminou de forma confiavel — assume o registro e reexecuta.
+    // terminou de forma confiavel — assume o registro e reexecuta. Esse é
+    // um sinal de diagnóstico importante: um retry legítimo não deveria
+    // precisar reexecutar (o vencedor costuma ser rápido).
+    logger.warn("Comando duplicado em processamento no limite da janela — assumindo e reexecutando", {
+      operationId,
+      command,
+      roomId,
+      playerSessionId,
+      pendingStatus: existing?.status ?? null,
+    });
   }
 
   const record = { roomId, id: operationId };
