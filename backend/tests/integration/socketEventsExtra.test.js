@@ -214,7 +214,7 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
         expect(warnSpy).toHaveBeenCalledWith(
           "Falha ao tratar desconexao no banco — seguindo com a limpeza em memoria",
           expect.objectContaining({
-            playerSessionId: expect.any(String),
+            playerSessionId: expect.any(Number),
             error: expect.objectContaining({ message: "falha simulada ao marcar desconexão" }),
           }),
         );
