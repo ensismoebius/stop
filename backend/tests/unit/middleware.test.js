@@ -25,7 +25,7 @@ describe("middleware/validate", () => {
 
   it("parseSocketPayload trata payload ausente como objeto vazio", () => {
     const result = parseSocketPayload(schema, undefined);
-    expect(result.ok).toBe(false);
+    expect(result.valid).toBe(false);
     expect(result.issues.length).toBeGreaterThan(0);
   });
 });
