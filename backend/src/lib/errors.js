@@ -1,4 +1,6 @@
+/** Erro de aplicacao: carrega status HTTP e codigo estavel para serializar como `{ error }`. */
 export class AppError extends Error {
+  /** Registra status HTTP e codigo estavel para a API; `details` e opcional. */
   constructor(message, { status = 400, code = "BAD_REQUEST", details } = {}) {
     super(message);
     this.name = "AppError";
@@ -7,6 +9,7 @@ export class AppError extends Error {
     this.details = details;
   }
 
+  /** Converte em payload de resposta: `{ error: { code, message, details } }`. */
   toJSON() {
     return { error: { code: this.code, message: this.message, details: this.details } };
   }

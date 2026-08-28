@@ -11,6 +11,7 @@ vi.mock("../../src/services/api.js", () => ({
   },
 }));
 
+/** Renders StudentHistoryPage for the given initial route entry. */
 function renderPage(initialEntry = "/historico") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>

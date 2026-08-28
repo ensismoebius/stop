@@ -11,6 +11,7 @@ import logger from "../lib/logger.js";
  */
 const timers = new Map();
 
+/** Agenda (ou reagenda) `callback` para `delayMs`, registrando sob `key`. */
 export function scheduleTimer(key, delayMs, callback) {
   clearTimer(key);
   const handle = setTimeout(() => {
@@ -24,6 +25,7 @@ export function scheduleTimer(key, delayMs, callback) {
   return handle;
 }
 
+/** Cancela o temporizador de `key`, se existir. */
 export function clearTimer(key) {
   const handle = timers.get(key);
   if (handle) {
@@ -32,10 +34,12 @@ export function clearTimer(key) {
   }
 }
 
+/** Diz se existe um temporizador ativo sob `key`. */
 export function hasTimer(key) {
   return timers.has(key);
 }
 
+/** Cancela todos os temporizadores registrados (usado em shutdown/testes). */
 export function clearAllTimers() {
   for (const handle of timers.values()) clearTimeout(handle);
   timers.clear();

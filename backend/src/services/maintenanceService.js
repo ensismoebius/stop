@@ -53,14 +53,14 @@ async function importAll(backup) {
   }
 
   await prisma.$transaction(
-    async (tx) => {
+    async (transaction) => {
       for (const model of [...MODELS_IN_DEPENDENCY_ORDER].reverse()) {
-        await tx[model].deleteMany({});
+        await transaction[model].deleteMany({});
       }
       for (const model of MODELS_IN_DEPENDENCY_ORDER) {
         const rows = backup.data[model] ?? [];
         if (rows.length === 0) continue;
-        await tx[model].createMany({ data: rows });
+        await transaction[model].createMany({ data: rows });
       }
     },
     { timeout: 60_000 },

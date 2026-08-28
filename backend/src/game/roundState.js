@@ -26,15 +26,20 @@ const TRANSITIONS = Object.freeze({
   FINISHED: [],
 });
 
-export function canTransition(from, to) {
+/** Quais estados um dado estado pode atingir, ou false se o estado nao existe. */
+export function canTransition(from, target) {
   const allowed = TRANSITIONS[from];
   if (!allowed) return false;
-  return allowed.includes(to);
+  return allowed.includes(target);
 }
 
-export function assertTransition(from, to) {
-  if (!canTransition(from, to)) {
-    const error = new Error(`Transição de rodada inválida: ${from} -> ${to}`);
+/**
+ * Lanca erro 409 quando a transicao nao e permitida; usado pelos servicos
+ * para garantir que o ciclo de vida da rodada nunca pule etapas.
+ */
+export function assertTransition(from, target) {
+  if (!canTransition(from, target)) {
+    const error = new Error(`Transição de rodada inválida: ${from} -> ${target}`);
     error.code = "INVALID_ROUND_TRANSITION";
     error.status = 409;
     throw error;
@@ -42,6 +47,7 @@ export function assertTransition(from, to) {
   return true;
 }
 
+/** Lista de estados atingiveis a partir de `from` (copia, nunca muta o grafo). */
 export function nextStates(from) {
   return [...(TRANSITIONS[from] ?? [])];
 }

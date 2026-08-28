@@ -1,3 +1,4 @@
+/** Cabecalho da tela publica com o titulo do jogo e o codigo da sala. */
 export function GameTitle({ name, roomCode }) {
   return (
     <div className="screen__top">

@@ -5,6 +5,7 @@ import { PlayerProvider, usePlayer } from "../../src/state/PlayerContext.jsx";
 
 const STORAGE_KEY = "stop:player";
 
+/** Test component that reads usePlayer and exposes save/clear buttons. */
 function Consumer() {
   const { player, save, clear } = usePlayer();
   return (

@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MaintenancePanel from "../../../src/components/teacher/MaintenancePanel.jsx";
 
+/** Renders MaintenancePanel with stub callbacks plus prop overrides. */
 function renderPanel(props = {}) {
   return render(
     <MaintenancePanel

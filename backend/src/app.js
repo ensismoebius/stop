@@ -1,5 +1,5 @@
 import path from "node:path";
-import fs from "node:fs";
+import nodeFs from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
@@ -18,9 +18,9 @@ const frontendSrc = path.resolve(__dirname, "../../frontend/src");
 /** Data de modificacao mais recente da arvore — usada so pelo aviso abaixo. */
 function newestMtimeMs(dir) {
   let newest = 0;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of nodeFs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    const mtime = entry.isDirectory() ? newestMtimeMs(full) : fs.statSync(full).mtimeMs;
+    const mtime = entry.isDirectory() ? newestMtimeMs(full) : nodeFs.statSync(full).mtimeMs;
     if (mtime > newest) newest = mtime;
   }
   return newest;
@@ -38,7 +38,7 @@ function newestMtimeMs(dir) {
  */
 function warnIfStaleBundle() {
   try {
-    if (!fs.existsSync(frontendSrc)) return;
+    if (!nodeFs.existsSync(frontendSrc)) return;
     const builtAt = newestMtimeMs(frontendDist);
     const editedAt = newestMtimeMs(frontendSrc);
     if (editedAt > builtAt) {
@@ -53,6 +53,7 @@ function warnIfStaleBundle() {
   }
 }
 
+/** Monta o aplicativo Express: middlewares, rotas /api e entrega do frontend compilado. */
 export function createApp() {
   const app = express();
 
@@ -89,7 +90,7 @@ export function createApp() {
 
   // Em producao/rede local o mesmo servidor entrega o frontend, permitindo
   // que os alunos acessem apenas http://IP:PORT (spec 37).
-  if (fs.existsSync(frontendDist)) {
+  if (nodeFs.existsSync(frontendDist)) {
     warnIfStaleBundle();
     app.use(express.static(frontendDist));
     app.get(/^\/(?!api).*/, (_req, res) => {

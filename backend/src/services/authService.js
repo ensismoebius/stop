@@ -8,12 +8,13 @@ import playerSessionRepository from "../repositories/playerSessionRepository.js"
 const ADMIN_AUDIENCE = "stop-admin";
 
 export const authService = {
+  /** Autentica o professor por email/senha e devolve um token JWT administrativo. */
   async login({ email, password }) {
     const teacher = await prisma.teacher.findUnique({ where: { email: email.toLowerCase() } });
     // Compara sempre, mesmo sem usuario, para nao vazar existencia por tempo.
     const hash = teacher?.passwordHash ?? "$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidix";
-    const ok = await bcrypt.compare(password, hash);
-    if (!teacher || !teacher.active || !ok) {
+    const passwordMatches = await bcrypt.compare(password, hash);
+    if (!teacher || !teacher.active || !passwordMatches) {
       throw unauthorized("Credenciais inválidas");
     }
 
@@ -29,6 +30,7 @@ export const authService = {
     };
   },
 
+  /** Valida um token JWT administrativo e devolve o professor correspondente. */
   verifyAdminToken(token) {
     try {
       const payload = jwt.verify(token, env.sessionSecret, { audience: ADMIN_AUDIENCE });

@@ -106,11 +106,13 @@ export function normalizeFace(spec) {
  */
 const pad = (n) => n.toString(36).padStart(2, "0");
 
+/** Codifica o rosto normalizado em uma string compacta base36. */
 export function encodeFace(spec) {
   const safe = normalizeFace(spec);
   return FACE_PREFIX + ORDER.map((key) => pad(safe[key])).join("");
 }
 
+/** Decodifica a string compacta de volta em um rosto normalizado. */
 export function decodeFace(value) {
   if (typeof value !== "string" || !value.startsWith(FACE_PREFIX)) return null;
   const code = value.slice(FACE_PREFIX.length);
@@ -124,6 +126,7 @@ export function decodeFace(value) {
 
 export const isFaceSpec = (value) => decodeFace(value) !== null;
 
+/** Gera um rosto aleatorio dentro dos limites de cada parte. */
 export function randomFace() {
   const spec = {};
   for (const key of ORDER) spec[key] = Math.floor(Math.random() * LIMITS[key]);

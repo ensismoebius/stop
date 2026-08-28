@@ -28,19 +28,19 @@ function detail(error) {
  * Sem isso, um banco vazio so se manifesta como HTTP 500 no primeiro login,
  * sem indicar a causa. Aqui a instrucao aparece no log do servidor.
  *
- * @returns {Promise<{ ok: boolean, reason?: string }>}
+ * @returns {Promise<{ healthy: boolean, reason?: string }>}
  */
 export async function checkDatabase() {
   try {
     await prisma.teacher.count();
-    return { ok: true };
+    return { healthy: true };
   } catch (error) {
     if (error?.code === "P2021" || error?.code === "P2022") {
       logger.error(
         "Banco de dados sem o schema do STOP. Rode as migracoes antes de usar a aplicacao:\n" +
           "  cd backend && npx prisma migrate deploy && npm run seed",
       );
-      return { ok: false, reason: "SCHEMA_MISSING" };
+      return { healthy: false, reason: "SCHEMA_MISSING" };
     }
     // Conexao recusada, host errado ou credencial invalida chegam aqui.
     // O Prisma 6 lanca PrismaClientInitializationError, as vezes sem `code`.
@@ -54,13 +54,14 @@ export async function checkDatabase() {
           "  Verifique DATABASE_URL no .env e se o MySQL esta no ar " +
           "(docker compose up -d mysql).",
       );
-      return { ok: false, reason: "UNREACHABLE" };
+      return { healthy: false, reason: "UNREACHABLE" };
     }
     logger.error(`Falha ao verificar o banco de dados: ${detail(error)}`);
-    return { ok: false, reason: "UNKNOWN" };
+    return { healthy: false, reason: "UNKNOWN" };
   }
 }
 
+/** Encerra a conexao com o banco; usado em shutdown gracioso e nos testes. */
 export async function disconnectPrisma() {
   try {
     await prisma.$disconnect();

@@ -17,10 +17,12 @@ const KEYFRAMES = [
   { h: 24, top: [4, 6, 25], bottom: [16, 12, 33], glow: [40, 30, 70], stars: 1 },
 ];
 
+/** Interpolacao linear simples entre dois numeros. */
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+/** Interpola linearmente duas cores RGB e devolve como string `rgb(...)`. */
 function lerpRgb(a, b, t) {
   return `rgb(${a.map((channel, index) => Math.round(lerp(channel, b[index], t))).join(", ")})`;
 }

@@ -1,5 +1,6 @@
 import { formatClock } from "../../hooks/useServerClock.js";
 
+/** Contagem regressiva exibida na tela publica, destacada quando urgente. */
 export function Countdown({ seconds, running }) {
   const urgent = running && seconds !== null && seconds <= 10;
   return (

@@ -1,5 +1,5 @@
 import http from "node:http";
-import os from "node:os";
+import nodeOs from "node:os";
 import env from "./config/env.js";
 import logger from "./lib/logger.js";
 import { createApp } from "./app.js";
@@ -8,23 +8,25 @@ import { recoverActiveRounds } from "./game/recovery.js";
 import { clearAllTimers } from "./game/timers.js";
 import { checkDatabase, disconnectPrisma } from "./lib/prisma.js";
 
+/** Enderecos IPv4 da maquina nas interfaces nao-internas (para o aviso de rede local). */
 function localAddresses() {
-  return Object.values(os.networkInterfaces())
+  return Object.values(nodeOs.networkInterfaces())
     .flat()
     .filter((iface) => iface && iface.family === "IPv4" && !iface.internal)
     .map((iface) => iface.address);
 }
 
+/** Sobe o servidor HTTP + Socket.IO, recupera rodadas e registra shutdown gracioso. */
 async function main() {
   const app = createApp();
   const httpServer = http.createServer(app);
-  const io = createSocketServer(httpServer);
+  const ioServer = createSocketServer(httpServer);
 
   // O servidor sobe mesmo com o banco indisponivel para que /api/health
   // continue respondendo, mas o diagnostico fica explicito no log.
   const database = await checkDatabase();
 
-  if (database.ok) {
+  if (database.healthy) {
     try {
       const recovered = await recoverActiveRounds();
       if (recovered > 0) logger.info(`${recovered} rodada(s) recuperada(s)`);
@@ -44,7 +46,7 @@ async function main() {
   const shutdown = async (signal) => {
     logger.info(`Recebido ${signal}; encerrando`);
     clearAllTimers();
-    io.close();
+    ioServer.close();
     httpServer.close();
     await disconnectPrisma();
     process.exit(0);

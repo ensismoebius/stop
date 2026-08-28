@@ -43,6 +43,7 @@ export const roomService = {
     throw conflict("Não foi possível gerar um código de sala único");
   },
 
+  /** Busca uma sala pelo codigo publico; lance 404 quando nao existe. */
   async getByCode(code) {
     const room = await roomRepository.findByCode(code);
     if (!room) throw notFound("Sala não encontrada");
@@ -61,6 +62,7 @@ export const roomService = {
     };
   },
 
+  /** Monta a URL publica de entrada na sala a partir do basеUrl (ou do env). */
   joinUrl(code, baseUrl) {
     const base = (baseUrl || env.publicBaseUrl || "").replace(/\/+$/, "");
     return `${base}/join/${code}`;
@@ -157,6 +159,7 @@ export const roomService = {
     return payload;
   },
 
+  /** Altera o status da sala (OPEN/CLOSED) e difunde a mudanca para a sala. */
   async setStatus(code, status) {
     const room = await roomService.getByCode(code);
     const updated = await roomRepository.update(room.id, { status });

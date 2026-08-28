@@ -8,6 +8,7 @@ const app = createApp();
 
 let token;
 
+/** Login do professor de teste e devolve o token de admin. */
 async function makeToken() {
   const response = await request(app)
     .post("/api/auth/login")

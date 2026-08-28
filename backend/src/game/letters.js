@@ -7,6 +7,7 @@ import { normalizeLetter } from "./normalize.js";
  */
 export const DEFAULT_LETTER_POOL = "ABCDEFGHIJLMNOPRSTUV".split("");
 
+/** Normaliza e deduplica o pool de letras; usa o padrao quando vazio/invalido. */
 export function parseLetterPool(pool) {
   if (!pool) return [...DEFAULT_LETTER_POOL];
   const letters = (Array.isArray(pool) ? pool : String(pool).split(""))

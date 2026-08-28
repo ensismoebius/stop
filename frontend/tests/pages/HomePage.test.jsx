@@ -13,11 +13,13 @@ vi.mock("../../src/services/api.js", () => ({
   },
 }));
 
+/** Marker route component that renders the current :code param. */
 function JoinScreenStub() {
   const { code } = useParams();
   return <div>join-screen:{code}</div>;
 }
 
+/** Renders HomePage inside a router with the join route stubbed. */
 function renderHome() {
   return render(
     <MemoryRouter initialEntries={["/"]}>

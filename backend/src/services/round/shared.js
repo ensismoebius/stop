@@ -7,6 +7,7 @@ import roomState from "../room/roomState.js";
 
 export const lockKey = (roundId) => `round:${roundId}`;
 
+/** A sala aberta da partida (ou a primeira encontrada); erro quando nao ha sala. */
 export async function resolveRoom(gameId) {
   const rooms = await roomRepository.listByGame(gameId);
   const open = rooms.find((room) => room.status === "OPEN") ?? rooms[0];
@@ -14,6 +15,7 @@ export async function resolveRoom(gameId) {
   return open;
 }
 
+/** A rodada pelo id; lance 404 quando nao existe. */
 export async function getRoundOrFail(roundId) {
   const round = await roundRepository.findById(roundId);
   if (!round) throw notFound("Rodada não encontrada");

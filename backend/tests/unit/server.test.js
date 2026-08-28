@@ -32,7 +32,7 @@ let originalPort;
 
 beforeEach(() => {
   vi.resetModules();
-  checkDatabaseMock.mockReset().mockResolvedValue({ ok: true });
+  checkDatabaseMock.mockReset().mockResolvedValue({ healthy: true });
   disconnectPrismaMock.mockReset().mockResolvedValue(undefined);
   recoverActiveRoundsMock.mockReset().mockResolvedValue(2);
   originalPort = process.env.PORT;
@@ -89,7 +89,7 @@ describe("src/server.js (bootstrap do processo)", () => {
   });
 
   it("quando o banco está indisponível, não tenta recuperar rodadas ativas", async () => {
-    checkDatabaseMock.mockResolvedValue({ ok: false, reason: "UNREACHABLE" });
+    checkDatabaseMock.mockResolvedValue({ healthy: false, reason: "UNREACHABLE" });
     await import("../../src/server.js");
     await new Promise((resolve) => setTimeout(resolve, 150));
 

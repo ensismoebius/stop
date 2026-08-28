@@ -1,6 +1,7 @@
 import authService from "../services/authService.js";
 import { forbidden, unauthorized } from "../lib/errors.js";
 
+/** Extrai o token do header `Authorization: Bearer <token>` (ou `null`). */
 function extractBearer(req) {
   const header = req.headers.authorization ?? "";
   if (header.toLowerCase().startsWith("bearer ")) {

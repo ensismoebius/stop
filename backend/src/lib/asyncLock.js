@@ -9,6 +9,7 @@
 export class AsyncLock {
   #queues = new Map();
 
+  /** Serializa `task` por chave: a proxima chamada so roda apos a atual terminar. */
   async run(key, task) {
     const previous = this.#queues.get(key) ?? Promise.resolve();
     let release;

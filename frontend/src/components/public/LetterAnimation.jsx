@@ -16,6 +16,7 @@ function buildDelays(ticks, min, max) {
   return delays;
 }
 
+/** Gera a lista de particulas de confete espalhadas ao redor da letra. */
 function buildConfetti(count) {
   return Array.from({ length: count }, (_, i) => ({
     id: i,

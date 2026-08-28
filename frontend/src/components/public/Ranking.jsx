@@ -57,6 +57,7 @@ function useCountUp(target, active) {
   return active ? value : 0;
 }
 
+/** Mostra um vencedor no podium, sempre exibindo os pontos. */
 function PodiumWinner({ entry, revealed }) {
   const total = useCountUp(entry.total, revealed);
   return (

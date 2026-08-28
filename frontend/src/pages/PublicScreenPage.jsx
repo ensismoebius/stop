@@ -54,6 +54,7 @@ function buildScreenHandlers({ sync, audio, setStopSplash, setCollabProgress, em
 
 // Estado inicial por REST: a TV mostra a partida mesmo antes de o
 // WebSocket completar o handshake (e depois de uma queda de rede).
+/** Busca o estado inicial da partida por REST, com atualizacao periodica. */
 function useScreenFallback(code) {
   const [fallback, setFallback] = useState(null);
   useEffect(() => {
@@ -79,6 +80,7 @@ function useScreenFallback(code) {
 // QR Code de entrada (spec 36): a tela publica e o lugar natural para
 // exibi-lo — os alunos escaneiam de longe, sem depender do painel do
 // professor estar aberto.
+/** Carrega o QR Code de entrada da sala. */
 function useScreenQrCode(code) {
   const [qrCode, setQrCode] = useState(null);
   useEffect(() => {
@@ -92,6 +94,7 @@ function useScreenQrCode(code) {
 }
 
 // Efeito sonoro nos ultimos segundos (spec 22).
+/** Toca um bipe nos ultimos segundos da rodada. */
 function useScreenBeep(playing, seconds, audio) {
   const [lastBeep, setLastBeep] = useState(null);
   useEffect(() => {
@@ -106,6 +109,7 @@ function useScreenBeep(playing, seconds, audio) {
 // hora do dia não muda mais rápido que isso, então não há razão para um
 // timer mais agressivo. Só liga o timer enquanto o pódio está de fato na
 // tela; nas outras fases o valor não é usado e o timer seria desperdício.
+/** Calcula as cores do ceu do podio conforme a hora, atualizado a cada minuto. */
 function usePodiumSky(now, active) {
   // `now` é logicamente estável (é sempre "hora do servidor agora"), mas o
   // `useServerClock` real só garante identidade estável via useCallback —
@@ -130,6 +134,7 @@ function usePodiumSky(now, active) {
 // ambiente (os telefones dos alunos continuam só com os bipes curtos de
 // useAudio: 50 aparelhos tocando trilhas fora de sincronia seria pior que
 // não ter música nenhuma).
+/** Toca a trilha de fundo correspondente a fase atual da partida. */
 function useScreenMusic(playing, finished, audio) {
   useEffect(() => {
     if (finished) audio.playMusic("PODIUM");
@@ -148,6 +153,7 @@ function useScreenMusic(playing, finished, audio) {
 // verdade era recusado em silencio. Aqui destravamos no primeiro gesto
 // de qualquer tipo na pagina inteira (clique, toque, tecla) — o que
 // vier primeiro, sem exigir que seja num elemento especifico.
+/** Destrava o audio no primeiro gesto do usuario na pagina. */
 function useUnlockAudioOnFirstInteraction(audio) {
   const unlockedRef = useRef(false);
   useEffect(() => {

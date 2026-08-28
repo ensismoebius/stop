@@ -12,12 +12,14 @@ import { badRequest, conflict, notFound } from "../lib/errors.js";
 export const gameService = {
   list: (filters) => gameRepository.list(filters),
 
+  /** Uma partida pelo id; lance 404 quando nao existe. */
   async get(id) {
     const game = await gameRepository.findById(id);
     if (!game) throw notFound("Partida não encontrada");
     return game;
   },
 
+  /** Cria uma partida para a turma indicada (status inicial CREATED). */
   async create({ name, classId, teacherId }) {
     const turma = await classRepository.findById(classId);
     if (!turma) throw badRequest("Turma inexistente");

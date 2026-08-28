@@ -27,6 +27,7 @@ async function loadContext(roomCode) {
   return { room, round, participants };
 }
 
+/** Empacota o contexto carregado + ranking + versão como base das projeções. */
 function baseCtx(ctx, ranking, version) {
   return {
     room: ctx.room,

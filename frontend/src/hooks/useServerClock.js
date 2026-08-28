@@ -47,6 +47,7 @@ export function useCountdown(endsAt, now) {
   return remaining;
 }
 
+/** Formata segundos como cronometro "MM:SS", ou "--:--" quando nulo. */
 export function formatClock(seconds) {
   if (seconds === null || seconds === undefined) return "--:--";
   const safe = Math.max(0, Math.floor(seconds));

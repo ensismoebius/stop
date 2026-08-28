@@ -3,6 +3,7 @@ import { errorHandler, notFoundHandler } from "../../src/middleware/errorHandler
 import { AppError, badRequest } from "../../src/lib/errors.js";
 import logger from "../../src/lib/logger.js";
 
+/** Resposta Express simulada que registra status/body/end/headers. */
 function fakeRes() {
   return {
     statusCode: null,

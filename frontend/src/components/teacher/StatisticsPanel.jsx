@@ -1,3 +1,4 @@
+/** Resumo geral da partida (spec 43). */
 function SummaryStats({ totals }) {
   return (
     <section className="card stack">
@@ -42,6 +43,7 @@ function SummaryStats({ totals }) {
   );
 }
 
+/** Tabela genérica de estatísticas (título, cabeçalhos e linhas por `keyField`). */
 function StatsTable({ title, headers, data, keyField, columns }) {
   return (
     <section className="card stack">
@@ -70,42 +72,57 @@ function StatsTable({ title, headers, data, keyField, columns }) {
   );
 }
 
-function PerCategoryStats({ byCategory }) {
+/** Mapeamento de cada dimensão (categoria/tema) para a tabela a renderizar. */
+const DIMENSION_VIEWS = {
+  category: {
+    title: "Desempenho por categoria",
+    headers: ["Categoria", "Respostas", "Preenchidas", "Válidas", "Pontos"],
+    keyField: "category",
+    columns: [
+      { key: "category" },
+      { key: "answers" },
+      { key: "filled" },
+      { key: "valid" },
+      { key: "totalScore" },
+    ],
+  },
+  theme: {
+    title: "Desempenho por tema",
+    headers: ["Tema", "Rodadas", "Válidas", "Inválidas", "Pontos"],
+    keyField: "theme",
+    columns: [
+      { key: "theme" },
+      { key: "rounds" },
+      { key: "validAnswers" },
+      { key: "invalidAnswers" },
+      { key: "totalScore" },
+    ],
+  },
+};
+
+/**
+ * Desempenho por categoria; com `variant="theme"` a mesma tabela é reusada
+ * para o desempenho por tema, trocando o mapeamento de título/colunas.
+ */
+function PerCategoryStats({ byCategory, variant = "category" }) {
+  const view = DIMENSION_VIEWS[variant];
   return (
     <StatsTable
-      title="Desempenho por categoria"
-      headers={["Categoria", "Respostas", "Preenchidas", "Válidas", "Pontos"]}
+      title={view.title}
+      headers={view.headers}
       data={byCategory}
-      keyField="category"
-      columns={[
-        { key: "category" },
-        { key: "answers" },
-        { key: "filled" },
-        { key: "valid" },
-        { key: "totalScore" },
-      ]}
+      keyField={view.keyField}
+      columns={view.columns}
     />
   );
 }
 
+/** Desempenho por tema, renderizado via `PerCategoryStats` com outro mapeamento. */
 function PerThemeStats({ byTheme }) {
-  return (
-    <StatsTable
-      title="Desempenho por tema"
-      headers={["Tema", "Rodadas", "Válidas", "Inválidas", "Pontos"]}
-      data={byTheme}
-      keyField="theme"
-      columns={[
-        { key: "theme" },
-        { key: "rounds" },
-        { key: "validAnswers" },
-        { key: "invalidAnswers" },
-        { key: "totalScore" },
-      ]}
-    />
-  );
+  return <PerCategoryStats byCategory={byTheme} variant="theme" />;
 }
 
+/** Histórico das rodadas, com remoção (confirmada) de rodada pontuada. */
 function RoundHistoryTable({ history, onDeleteRound, busy }) {
   if (!history) return null;
 

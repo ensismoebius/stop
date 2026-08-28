@@ -28,78 +28,80 @@ export async function missingRequiredCategories(round, playerSessionId) {
  * Materializa a grade de correcao: garante uma linha por aluno elegivel
  * e categoria, com sugestao automatica de estado (spec 18/19/21).
  */
-export async function openCorrection(roundId, { skipLock = false } = {}) {
-  const run = async () => {
-    const round = await getRoundOrFail(roundId);
-    if (round.status === ROUND_STATUS.CORRECTION) return round;
-    if (round.status !== ROUND_STATUS.COLLABORATIVE_CORRECTION) {
-      throw conflict(`Não é possível corrigir uma rodada no estado ${round.status}`);
-    }
+async function runOpenCorrection(roundId) {
+  const round = await getRoundOrFail(roundId);
+  if (round.status === ROUND_STATUS.CORRECTION) return round;
+  if (round.status !== ROUND_STATUS.COLLABORATIVE_CORRECTION) {
+    throw conflict(`Não é possível corrigir uma rodada no estado ${round.status}`);
+  }
 
-    const participants = await roundParticipantRepository.listByRound(roundId);
-    const eligible = participants.filter(
-      (participant) => participant.status !== PLAYER_STATUS.ELIMINATED,
-    );
-    const existing = await answerRepository.listByRound(roundId);
-    const byKey = new Map(
-      existing.map((answer) => [`${answer.playerSessionId}:${answer.roundCategoryId}`, answer]),
-    );
+  const participants = await roundParticipantRepository.listByRound(roundId);
+  const eligible = participants.filter(
+    (participant) => participant.status !== PLAYER_STATUS.ELIMINATED,
+  );
+  const existing = await answerRepository.listByRound(roundId);
+  const byKey = new Map(
+    existing.map((answer) => [`${answer.playerSessionId}:${answer.roundCategoryId}`, answer]),
+  );
 
-    const creates = [];
-    const updates = [];
-    for (const participant of eligible) {
-      for (const category of round.categories) {
-        const key = `${participant.playerSessionId}:${category.id}`;
-        const answer = byKey.get(key);
-        if (!answer) {
-          creates.push({
-            roundId,
-            playerSessionId: participant.playerSessionId,
-            roundCategoryId: category.id,
-            value: "",
-            normalizedValue: "",
-            reviewState: REVIEW_STATE.BLANK,
-          });
-          continue;
-        }
-        if (answer.reviewState !== REVIEW_STATE.PENDING) continue;
-        const suggested = suggestReviewState(answer.value, round.letter, round.letterRule);
-        // Respostas coerentes com a letra ja entram como validas; o
-        // professor ajusta o que estiver semanticamente errado.
-        updates.push({
-          id: answer.id,
-          reviewState: suggested === REVIEW_STATE.PENDING ? REVIEW_STATE.VALID : suggested,
+  const creates = [];
+  const updates = [];
+  for (const participant of eligible) {
+    for (const category of round.categories) {
+      const key = `${participant.playerSessionId}:${category.id}`;
+      const answer = byKey.get(key);
+      if (!answer) {
+        creates.push({
+          roundId,
+          playerSessionId: participant.playerSessionId,
+          roundCategoryId: category.id,
+          value: "",
+          normalizedValue: "",
+          reviewState: REVIEW_STATE.BLANK,
         });
+        continue;
       }
+      if (answer.reviewState !== REVIEW_STATE.PENDING) continue;
+      const suggested = suggestReviewState(answer.value, round.letter, round.letterRule);
+      // Respostas coerentes com a letra ja entram como validas; o
+      // professor ajusta o que estiver semanticamente errado.
+      updates.push({
+        id: answer.id,
+        reviewState: suggested === REVIEW_STATE.PENDING ? REVIEW_STATE.VALID : suggested,
+      });
     }
+  }
 
-    if (creates.length > 0) await prisma.answer.createMany({ data: creates, skipDuplicates: true });
-    if (updates.length > 0) {
-      await prisma.$transaction(
-        updates.map((update) =>
-          prisma.answer.update({ where: { id: update.id }, data: { reviewState: update.reviewState } }),
-        ),
-      );
-    }
+  if (creates.length > 0) await prisma.answer.createMany({ data: creates, skipDuplicates: true });
+  if (updates.length > 0) {
+    await prisma.$transaction(
+      updates.map((update) =>
+        prisma.answer.update({ where: { id: update.id }, data: { reviewState: update.reviewState } }),
+      ),
+    );
+  }
 
-    assertTransition(round.status, ROUND_STATUS.CORRECTION);
-    await roundRepository.transitionIfStatus(roundId, ROUND_STATUS.COLLABORATIVE_CORRECTION, {
-      status: ROUND_STATUS.CORRECTION,
-    });
+  assertTransition(round.status, ROUND_STATUS.CORRECTION);
+  await roundRepository.transitionIfStatus(roundId, ROUND_STATUS.COLLABORATIVE_CORRECTION, {
+    status: ROUND_STATUS.CORRECTION,
+  });
 
-    const updated = await getRoundOrFail(roundId);
-    const room = await resolveRoom(round.gameId);
-    realtime.toRoom(room.code, "correctionStarted", { roundId, status: updated.status });
-    // Sem isso o `round.status` que o professor/aluno/tela publica tem em
-    // cache local nunca avanca para CORRECTION: `correctionStarted` sozinho
-    // so aciona o carregamento da grade (loadGrid no professor), nao
-    // atualiza o `roomState` que os tres tipos de cliente guardam — o
-    // botao "Pontuar rodada" (gated em round.status) nunca apareceria.
-    await broadcastState(room.code);
-    return updated;
-  };
+  const updated = await getRoundOrFail(roundId);
+  const room = await resolveRoom(round.gameId);
+  realtime.toRoom(room.code, "correctionStarted", { roundId, status: updated.status });
+  // Sem isso o `round.status` que o professor/aluno/tela publica tem em
+  // cache local nunca avanca para CORRECTION: `correctionStarted` sozinho
+  // so aciona o carregamento da grade (loadGrid no professor), nao
+  // atualiza o `roomState` que os tres tipos de cliente guardam — o
+  // botao "Pontuar rodada" (gated em round.status) nunca apareceria.
+  await broadcastState(room.code);
+  return updated;
+}
 
-  return skipLock ? run() : gameLock.run(lockKey(roundId), run);
+/** Abre a grade de correcao da rodada (reset de resposta pendente à valida). */
+export async function openCorrection(roundId, { skipLock = false } = {}) {
+  if (skipLock) return runOpenCorrection(roundId);
+  return gameLock.run(lockKey(roundId), () => runOpenCorrection(roundId));
 }
 
 /** Pontua cada resposta e devolve o total base (sem bonus) por jogador. */
@@ -349,7 +351,7 @@ export async function groupedCorrectionGrid(roundId) {
         // sugerido automaticamente); caso contrario o professor ve MISTO.
         reviewState: group.reviewStates.size === 1 ? [...group.reviewStates][0] : "MIXED",
       }))
-      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, "pt-BR"));
+      .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value, "pt-BR"));
     return {
       id: category.id,
       name: category.name,

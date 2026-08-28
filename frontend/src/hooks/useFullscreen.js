@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/** Elemento atualmente em tela cheia (com fallbacks de vendor prefix). */
 function currentElement() {
   return (
     document.fullscreenElement ??
@@ -9,6 +10,7 @@ function currentElement() {
   );
 }
 
+/** Solicita tela cheia para o elemento informado, tolerando recusas. */
 async function requestOn(element) {
   const node = element ?? document.documentElement;
   const request =

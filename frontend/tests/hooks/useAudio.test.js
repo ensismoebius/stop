@@ -3,6 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 
 const STORAGE_KEY = "stop:audio";
 
+/** Cria um oscilador de áudio fake para o MockAudioContext. */
 function makeOscillator() {
   return {
     type: "",
@@ -15,6 +16,7 @@ function makeOscillator() {
   };
 }
 
+/** Cria um nó de ganho (gain) fake para o MockAudioContext. */
 function makeGain() {
   return {
     gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
@@ -22,7 +24,9 @@ function makeGain() {
   };
 }
 
+/** Contexto de áudio fake: resume, oscilador e ganho controláveis. */
 class MockAudioContext {
+  /** Estado inicial suspenso com resume que resolve. */
   constructor() {
     this.state = "suspended";
     this.currentTime = 0;
@@ -33,15 +37,18 @@ class MockAudioContext {
     });
   }
 
+  /** Retorna um oscilador fake pronto para start/connect. */
   createOscillator() {
     return makeOscillator();
   }
 
+  /** Retorna um nó de ganho fake. */
   createGain() {
     return makeGain();
   }
 }
 
+/** Importa o módulo de áudio limpo e devolve o hook useAudio. */
 async function loadHook() {
   const mod = await import("../../src/hooks/useAudio.js");
   return mod.useAudio;
@@ -176,7 +183,9 @@ describe("useAudio", () => {
   });
 
   it("unlock() swallows a rejected resume()", async () => {
+    /** Contexto cujo resume() é sempre rejeitado. */
     class RejectingContext extends MockAudioContext {
+      /** Sobrescreve o resume com uma promessa rejeitada. */
       constructor() {
         super();
         this.resume = vi.fn(() => Promise.reject(new Error("denied")));

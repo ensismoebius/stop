@@ -8,6 +8,7 @@ const categorySets = [
   { id: 2, name: "Química" },
 ];
 
+/** Builds the full RoundControl prop set, overridable per test. */
 function baseProps(overrides = {}) {
   return {
     round: null,

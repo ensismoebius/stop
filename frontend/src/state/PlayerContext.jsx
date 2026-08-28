@@ -4,6 +4,7 @@ const STORAGE_KEY = "stop:player";
 
 const PlayerContext = createContext(null);
 
+/** Le a sessao do aluno gravada no sessionStorage. */
 function read() {
   try {
     const stored = window.sessionStorage.getItem(STORAGE_KEY);
@@ -39,6 +40,7 @@ export function PlayerProvider({ children }) {
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
 
+/** Acessa a sessao do aluno (spec 46). */
 export function usePlayer() {
   const context = useContext(PlayerContext);
   if (!context) throw new Error("usePlayer precisa estar dentro de PlayerProvider");

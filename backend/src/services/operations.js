@@ -40,10 +40,10 @@ async function resolveExisting(roomId, operationId) {
 }
 
 /**
- * Executa `fn` exatamente uma vez por `operationId` dentro da sala.
- * Devolve o resultado gravado num reenvio (duplicado) sem chamar `fn`.
+ * Executa `operation` exatamente uma vez por `operationId` dentro da sala.
+ * Devolve o resultado gravado num reenvio (duplicado) sem chamar `operation`.
  */
-export async function claimOperation({ operationId, roomId, playerSessionId, command }, fn) {
+export async function claimOperation({ operationId, roomId, playerSessionId, command }, operation) {
   try {
     await prisma.processedOperation.create({
       data: { id: operationId, roomId, playerSessionId, command, status: "PENDING" },
@@ -58,7 +58,7 @@ export async function claimOperation({ operationId, roomId, playerSessionId, com
 
   const record = { roomId, id: operationId };
   try {
-    const result = await fn();
+    const result = await operation();
     await prisma.processedOperation.upsert({
       where: { roomId_id: record },
       create: {

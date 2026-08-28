@@ -41,6 +41,7 @@ const STUDENTS = [
   ["202612352", "Elisa Rocha"],
 ];
 
+/** Cria o professor admin e um conjunto de categorias de exemplo. */
 async function main() {
   const email = (process.env.ADMIN_EMAIL ?? "professor@stop.local").toLowerCase();
   const password = process.env.ADMIN_PASSWORD ?? "stop-admin";

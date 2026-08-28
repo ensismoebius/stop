@@ -1,5 +1,6 @@
 import { io as createClient } from "socket.io-client";
 import authService from "../../src/services/authService.js";
+import roomService from "../../src/services/roomService.js";
 
 /**
  * Emite um evento e aguarda o ack com timeout.
@@ -84,4 +85,21 @@ export async function joinScreen(url, roomCode, clients) {
   const ack = await emitAck(client, "joinRoom", { roomCode, role: "screen" });
   if (!ack.ok) throw new Error("Falha ao entrar como tela pública");
   return client;
+}
+
+/**
+ * Cria a sessão de um aluno do cenário e abre o cliente Socket.IO dela.
+ * Evita duplicar o fluxo `roomService.join` + `joinPlayer` nos testes.
+ * @param {string} url - URL do servidor
+ * @param {Array} clients - Array para rastrear clientes
+ * @param {object} scenario - Cenário de teste (com `room.code` e `students`)
+ * @param {number} studentIndex - Índice do aluno no cenário (padrão 0)
+ * @returns {Promise<{client: Socket, playerSessionId: string, playerToken: string}>}
+ */
+export async function joinPlayerForScenario(url, clients, scenario, studentIndex = 0) {
+  const session = await roomService.join(
+    scenario.room.code,
+    scenario.students[studentIndex].registrationNumber,
+  );
+  return joinPlayer(url, scenario.room.code, session.playerToken, clients);
 }

@@ -4,8 +4,9 @@ import logger from "../lib/logger.js";
 import * as realtime from "./realtime.js";
 import registerHandlers from "./handlers.js";
 
+/** Cria o servidor Socket.IO sobre o HTTP server e vincula os handlers por conexao. */
 export function createSocketServer(httpServer) {
-  const io = new Server(httpServer, {
+  const ioServer = new Server(httpServer, {
     cors: {
       // Em rede local o IP do professor varia; a autorizacao real acontece
       // no `joinRoom` (spec 34/37).
@@ -23,14 +24,14 @@ export function createSocketServer(httpServer) {
     maxHttpBufferSize: 1e5,
   });
 
-  realtime.setIo(io);
+  realtime.setIo(ioServer);
 
-  io.on("connection", (socket) => {
+  ioServer.on("connection", (socket) => {
     logger.debug(`Socket conectado: ${socket.id}`);
-    registerHandlers(io, socket);
+    registerHandlers(socket);
   });
 
-  return io;
+  return ioServer;
 }
 
 export default createSocketServer;

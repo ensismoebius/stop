@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { createApp } from "../../src/app.js";
 import { createSocketServer } from "../../src/sockets/index.js";
 import { createScenario, prisma, resetDatabase, waitForRoundStatus, fillAllAnswers } from "../helpers/fixtures.js";
-import { emitAck, joinTeacher, joinPlayer, createTestClient } from "../helpers/socket.js";
+import { emitAck, joinTeacher, joinPlayer, joinPlayerForScenario, createTestClient } from "../helpers/socket.js";
 import roomService from "../../src/services/roomService.js";
 import roundService from "../../src/services/roundService.js";
 
@@ -37,11 +37,7 @@ afterEach(() => {
   clients = [];
 });
 
-async function joinedPlayer(studentIndex = 0) {
-  const session = await roomService.join(scenario.room.code, scenario.students[studentIndex].registrationNumber);
-  return joinPlayer(url, scenario.room.code, session.playerToken, clients);
-}
-
+/** Cria, sorteia a letra e inicia uma rodada, esperando entrar em PLAYING. */
 async function playingRound() {
   const round = await roundService.create({
     gameId: scenario.game.id,
@@ -56,7 +52,7 @@ const processed = async () => prisma.processedOperation.findMany({ orderBy: { id
 
 describe("idempotência de comandos (spec 3.1)", () => {
   it("submitAnswer com o mesmo operationId executa uma única vez e reenvio devolve o resultado gravado", async () => {
-    const player = await joinedPlayer();
+    const player = await joinPlayerForScenario(url, clients, scenario);
     const round = await playingRound();
     const category = round.categories[0];
     const operationId = "op-submit-1";
@@ -92,7 +88,7 @@ describe("idempotência de comandos (spec 3.1)", () => {
   });
 
   it("ready com o mesmo operationId não atualiza a sessão duas vezes", async () => {
-    const player = await joinedPlayer();
+    const player = await joinPlayerForScenario(url, clients, scenario);
     const operationId = "op-ready-1";
 
     const first = await emitAck(player.client, "ready", { operationId });
@@ -109,8 +105,8 @@ describe("idempotência de comandos (spec 3.1)", () => {
   });
 
   it("requestStop com o mesmo operationId não reentra no conflito nem encerra duas vezes", async () => {
-    await joinedPlayer(0);
-    const first = await joinedPlayer(1);
+    await joinPlayerForScenario(url, clients, scenario, 0);
+    const first = await joinPlayerForScenario(url, clients, scenario, 1);
     const round = await playingRound();
     await fillAllAnswers(round, first.playerSessionId, { prefix: "A" });
     const operationId = "op-stop-1";
@@ -134,7 +130,7 @@ describe("idempotência de comandos (spec 3.1)", () => {
   });
 
   it("dois comandos concorrentes com o mesmo operationId executam o efeito uma vez", async () => {
-    const player = await joinedPlayer();
+    const player = await joinPlayerForScenario(url, clients, scenario);
     const round = await playingRound();
     const category = round.categories[0];
     const operationId = "op-concurrent-1";
@@ -156,7 +152,7 @@ describe("idempotência de comandos (spec 3.1)", () => {
   });
 
   it("falha no comando apaga o registro — retry com o mesmo id reexecuta", async () => {
-    const player = await joinedPlayer();
+    const player = await joinPlayerForScenario(url, clients, scenario);
     const round = await roundService.create({
       gameId: scenario.game.id,
       categorySetId: scenario.categorySet.id,

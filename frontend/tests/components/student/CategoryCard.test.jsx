@@ -5,6 +5,7 @@ import CategoryCard from "../../../src/components/student/CategoryCard.jsx";
 
 const category = { id: "c1", name: "Fruta" };
 
+/** Renders CategoryCard inside a list with the given prop overrides. */
 function renderCard(props = {}) {
   return render(
     <ul>

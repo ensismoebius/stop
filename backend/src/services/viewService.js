@@ -101,6 +101,7 @@ function roundSummary(round) {
   };
 }
 
+/** Quantidade de respostas preenchidas por aluno (exclui as ainda em branco). */
 async function filledCountByPlayer(roundId) {
   const rows = await prisma.answer.groupBy({
     by: ["playerSessionId"],
@@ -152,6 +153,7 @@ export const viewService = {
   roundSummary,
   loadRanking,
 
+  /** Sala + rodada corrente (se houver) de um código, com 404 quando a sala não existe. */
   async loadRoomContext(roomCode) {
     const room = await roomRepository.findByCode(roomCode);
     if (!room) throw notFound("Sala não encontrada");
@@ -177,7 +179,7 @@ export const viewService = {
         : round
           ? await roundParticipantRepository.listByRound(round.id)
           : [];
-    const participantBySession = new Map(participants.map((p) => [p.playerSessionId, p]));
+    const participantBySession = new Map(participants.map((participant) => [participant.playerSessionId, participant]));
     const filled = round ? await filledCountByPlayer(round.id) : new Map();
     const requiredCount = round
       ? round.categories.filter((category) => category.required).length
@@ -226,7 +228,7 @@ export const viewService = {
          : round
            ? await roundParticipantRepository.listByRound(round.id)
            : [];
-     const activePlayers = participants.filter((p) => p.status === "PLAYING").length;
+     const activePlayers = participants.filter((participant) => participant.status === "PLAYING").length;
  
      return withVersion(
        {
@@ -238,8 +240,8 @@ export const viewService = {
          connectedPlayers: room.sessions.filter((session) => Boolean(session.socketId)).length,
          totalPlayers: room.sessions.length,
          activePlayers,
-         submittedPlayers: participants.filter((p) => p.status === "SUBMITTED").length,
-         eliminatedPlayers: participants.filter((p) => p.status === "ELIMINATED").length,
+         submittedPlayers: participants.filter((participant) => participant.status === "SUBMITTED").length,
+         eliminatedPlayers: participants.filter((participant) => participant.status === "ELIMINATED").length,
          ranking: ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId),
        },
        ctx.version,
@@ -262,7 +264,7 @@ export const viewService = {
         : round
           ? await roundParticipantRepository.listByRound(round.id)
           : [];
-    const participantBySession = new Map(participants.map((p) => [p.playerSessionId, p]));
+    const participantBySession = new Map(participants.map((participant) => [participant.playerSessionId, participant]));
 
     const answersByPlayer = new Map();
     if (round) {

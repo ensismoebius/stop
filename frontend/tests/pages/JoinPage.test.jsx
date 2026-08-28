@@ -29,11 +29,13 @@ vi.mock("../../src/components/student/AvatarPicker.jsx", () => ({
   ),
 }));
 
+/** Marker route component that dumps the current player from context. */
 function PlaySpy() {
   const { player } = usePlayer();
   return <div>play-screen:{player ? JSON.stringify(player) : "no-player"}</div>;
 }
 
+/** Renders JoinPage at /join/:code with a /play route spy. */
 function renderPage(code = "STOP-1") {
   return render(
     <MemoryRouter initialEntries={[`/join/${code}`]}>

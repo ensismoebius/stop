@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { createApp } from "../../src/app.js";
 import { createSocketServer } from "../../src/sockets/index.js";
 import { createScenario, prisma, resetDatabase } from "../helpers/fixtures.js";
-import { emitAck, joinTeacher, joinPlayer } from "../helpers/socket.js";
+import { emitAck, joinTeacher, joinPlayerForScenario } from "../helpers/socket.js";
 import roomService from "../../src/services/roomService.js";
 import roundService from "../../src/services/roundService.js";
 import { dropRoom } from "../../src/sockets/syncRegistry.js";
@@ -41,11 +41,6 @@ afterEach(() => {
   clients = [];
 });
 
-async function joinedPlayer(studentIndex = 0) {
-  const session = await roomService.join(scenario.room.code, scenario.students[studentIndex].registrationNumber);
-  return joinPlayer(url, scenario.room.code, session.playerToken, clients);
-}
-
 const roomVersion = async () => {
   const room = await prisma.room.findUnique({
     where: { id: scenario.room.id },
@@ -67,9 +62,9 @@ describe("versionamento de estado (baseline: recuperação)", () => {
   });
 
   it("requestState: CURRENT quando o cliente está em dia, ROOM_STATE quando está atrás", async () => {
-    const player = await joinedPlayer();
+    const player = await joinPlayerForScenario(url, clients, scenario);
     // Outro aluno entrando bumps a versão para além da que o player adotou.
-    await joinedPlayer(1);
+    await joinPlayerForScenario(url, clients, scenario, 1);
     await settleBroadcasts();
 
     const behind = await emitAck(player.client, "requestState", {});
@@ -89,7 +84,7 @@ describe("versionamento de estado (baseline: recuperação)", () => {
 
   it("um roomState difundido para o aluno carrega as versões anexadas", async () => {
     const teacher = await joinTeacher(url, scenario.room.code, clients);
-    const player = await joinedPlayer();
+    const player = await joinPlayerForScenario(url, clients, scenario);
     const received = await new Promise((resolve) => {
       player.client.once("roomState", resolve);
       roundService.broadcastState(scenario.room.code);
@@ -102,7 +97,7 @@ describe("versionamento de estado (baseline: recuperação)", () => {
   });
 
   it("o estado do professor mede syncStats progressivamente (expected/synchronized/stale/recovering)", async () => {
-    const p1 = await joinedPlayer(0);
+    const p1 = await joinPlayerForScenario(url, clients, scenario, 0);
     const teacher = await joinTeacher(url, scenario.room.code, clients);
 
     // Professor em dia: o aluno conectado ainda não reportou posição → recovering.

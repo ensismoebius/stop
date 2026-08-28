@@ -49,6 +49,7 @@ afterEach(() => {
   clients = [];
 });
 
+/** Entra com todos os alunos do cenário na sala (um cliente Socket.IO cada). */
 async function joinPlayers() {
   const sessions = [];
   for (const student of scenario.students) {

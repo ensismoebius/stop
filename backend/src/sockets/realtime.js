@@ -6,7 +6,7 @@ import logger from "../lib/logger.js";
  * Os servicos nao conhecem o objeto `io`: apenas publicam eventos por
  * destino. Isso mantem as regras testaveis sem servidor de sockets.
  */
-let io = null;
+let socketIo = null;
 
 export const rooms = {
   all: (code) => `room:${code}`,
@@ -16,20 +16,23 @@ export const rooms = {
   player: (playerSessionId) => `player:${playerSessionId}`,
 };
 
+/** Injeta a instancia do Socket.IO (chamado na criacao do servidor). */
 export function setIo(instance) {
-  io = instance;
+  socketIo = instance;
 }
 
+/** Devolve a instancia injetada do Socket.IO (ou `null` antes da criacao). */
 export function getIo() {
-  return io;
+  return socketIo;
 }
 
+/** Difunde um evento para o alvo (sala, perfil ou aluno) quando há Socket.IO. */
 function emit(target, event, payload) {
-  if (!io) {
+  if (!socketIo) {
     logger.debug(`Socket.IO indisponivel; evento ${event} descartado`);
     return;
   }
-  io.to(target).emit(event, payload);
+  socketIo.to(target).emit(event, payload);
 }
 
 /** Todos os clientes conectados a sala (alunos, professor e tela publica). */
@@ -58,11 +61,11 @@ export const toPlayer = (playerSessionId, event, payload) =>
  */
 export function requestAck(target, event, payload, timeoutMs) {
   return new Promise((resolve) => {
-    if (!io) {
+    if (!socketIo) {
       resolve({ acked: 0, total: 0, timedOut: false });
       return;
     }
-    io.in(target)
+    socketIo.in(target)
       .timeout(timeoutMs)
       .emit(event, payload, (err, responses) => {
         const total = Array.isArray(responses) ? responses.length : 0;

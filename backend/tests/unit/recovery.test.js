@@ -34,6 +34,7 @@ vi.mock("../../src/services/round/collaborativeCorrection.js", () => ({
 import roundService from "../../src/services/roundService.js";
 import { recoverActiveRounds } from "../../src/game/recovery.js";
 
+/** Retorna as fixtures por status para desviar o mock do repositório. */
 function byStatus(fixtures) {
   return async ({ where }) => fixtures[where.status] ?? [];
 }

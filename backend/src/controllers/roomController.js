@@ -6,6 +6,7 @@ import { syncStats } from "../sockets/syncRegistry.js";
 import * as realtime from "../sockets/realtime.js";
 import { applyRoomSettings } from "../services/room/roomSettings.js";
 
+/** Reconstrói o base URL (proto + host) a partir do proxy reverso, se houver. */
 function baseUrlFromRequest(req) {
   const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
   const host = req.headers["x-forwarded-host"] ?? req.get("host");

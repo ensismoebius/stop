@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useAutoFullscreen } from "../../src/hooks/useAutoFullscreen.js";
 
+/** Installs a requestFullscreen stub on the given element, returning the spy. */
 function stubRequestFullscreen(target = document.documentElement) {
   const request = vi.fn(() => Promise.resolve());
   target.requestFullscreen = request;

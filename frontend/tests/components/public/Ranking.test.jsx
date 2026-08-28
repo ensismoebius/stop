@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, within } from "@testing-library/react";
 import Ranking from "../../../src/components/public/Ranking.jsx";
 
+/** Cria um participante com valores padrão, sobrescrevíveis por `overrides`. */
 function entry(overrides = {}) {
   return { studentId: "s1", name: "Ana", total: 30, position: 1, avatarUrl: null, ...overrides };
 }

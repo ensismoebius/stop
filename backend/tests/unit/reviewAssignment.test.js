@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assignReviews } from "../../src/game/reviewAssignment.js";
 
+/** Participante mínimo para o algoritmo de distribuição: sessão + ids de respostas. */
 function participant(playerSessionId, answerIds) {
   return { playerSessionId, answers: answerIds.map((id) => ({ id })) };
 }

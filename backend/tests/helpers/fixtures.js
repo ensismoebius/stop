@@ -37,6 +37,7 @@ export async function resetDatabase() {
   );
 }
 
+/** Cria um professor com credenciais fixas conhecidas pelos testes (spec 6). */
 export async function createTeacher({ email = "professor@stop.local", password = "stop-admin" } = {}) {
   return prisma.teacher.create({
     data: {
@@ -48,6 +49,7 @@ export async function createTeacher({ email = "professor@stop.local", password =
   });
 }
 
+/** Cria uma turma com os alunos nomeados (matriculas 20261000N). */
 export async function createClassWithStudents(names = ["Joao da Silva", "Maria Oliveira", "Pedro Santos"]) {
   const turma = await prisma.class.create({ data: { name: "React Native 2026/1", code: "RN-TEST" } });
   const students = [];
@@ -65,6 +67,7 @@ export async function createClassWithStudents(names = ["Joao da Silva", "Maria O
   return { turma, students };
 }
 
+/** Cria um conjunto de categorias ativo com as categorias nomeadas. */
 export async function createCategorySet({
   name = "React Native — Componentes",
   categories = ["Componente", "Prop", "Evento"],

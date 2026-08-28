@@ -2,6 +2,7 @@ import studentRepository from "../repositories/studentRepository.js";
 import classRepository from "../repositories/classRepository.js";
 import { badRequest, notFound } from "../lib/errors.js";
 
+/** Garante que todas as turmas indicadas existem; erro com a primeira ausente. */
 async function assertClassesExist(classIds) {
   const found = await classRepository.findByIds(classIds);
   const foundIds = new Set(found.map((turma) => turma.id));
@@ -12,6 +13,7 @@ async function assertClassesExist(classIds) {
 export const studentService = {
   list: (filters) => studentRepository.list(filters),
 
+  /** Um aluno pelo id; lance 404 quando não existe. */
   async get(id) {
     const student = await studentRepository.findById(id);
     if (!student) throw notFound("Aluno não encontrado");
@@ -33,22 +35,26 @@ export const studentService = {
     return (student.enrollments ?? []).some((enrollment) => enrollment.classId === classId);
   },
 
+  /** Cria um aluno com as matrículas nas turmas informadas. */
   async create(data) {
     await assertClassesExist(data.classIds);
     return studentRepository.create(data);
   },
 
+  /** Atualiza um aluno, revalidando as turmas quando a matrícula mudar. */
   async update(id, data) {
     await studentService.get(id);
     if (data.classIds) await assertClassesExist(data.classIds);
     return studentRepository.update(id, data);
   },
 
+  /** Remove (inativa) um aluno. */
   async remove(id) {
     await studentService.get(id);
     return studentRepository.remove(id);
   },
 
+  /** Cria vários alunos de uma turma de uma vez e devolve a contagem criada. */
   async bulkCreate({ classId, students }) {
     const turma = await classRepository.findById(classId);
     if (!turma) throw badRequest("Turma inexistente");

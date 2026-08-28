@@ -23,6 +23,7 @@ vi.mock("../src/hooks/useAutoFullscreen.js", () => ({
   default: (...args) => useAutoFullscreenMock(...args),
 }));
 
+/** Renders <App /> at the given route so tests assert routing/composition. */
 function renderAt(path) {
   return render(
     <MemoryRouter initialEntries={[path]}>

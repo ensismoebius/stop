@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import CollaborativeCorrection from "../../../src/components/student/CollaborativeCorrection.jsx";
 
+/** Builds a review object with defaults, overridable per test. */
 function review(overrides = {}) {
   return { reviewId: "r1", categoryName: "Fruta", value: "Abacaxi", ...overrides };
 }

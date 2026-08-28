@@ -132,6 +132,10 @@ function pickTrack(key) {
 // Cache por arquivo (nao por fase): cada trilha candidata tem seu proprio
 // <audio>, criado sob demanda na primeira vez que e sorteada.
 const musicPlayers = {};
+/**
+ * Obtém (criando sob demanda) o player de loop de uma trilha por arquivo —
+ * o cache é por `src`, não por fase.
+ */
 function getMusicPlayerForSrc(src) {
   if (!src) return null;
   if (musicPlayers[src]) return musicPlayers[src];
@@ -215,6 +219,116 @@ function fadeMusic(el, src, to, ms) {
   fadeFrames[src] = requestAnimationFrame(step);
 }
 
+/** Obtém o AudioContext único do hook, instanciando na primeira chamada. */
+function ensureAudioContext(contextRef) {
+  if (contextRef.current) return contextRef.current;
+  const Ctor = window.AudioContext ?? window.webkitAudioContext;
+  if (!Ctor) return null;
+  contextRef.current = new Ctor();
+  return contextRef.current;
+}
+
+/**
+ * Sintetiza um cue de `steps` no contexto dado: por passo, um oscilador
+ * triangular com envelope de ganho exponencial, respeitando o volume.
+ */
+function playCue(context, steps, volume) {
+  let start = context.currentTime;
+  for (const step of steps) {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(step.freq, start);
+    const peak = (step.gain ?? 0.18) * volume;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(peak, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + step.duration);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(start);
+    oscillator.stop(start + step.duration + 0.02);
+    start += step.duration;
+  }
+}
+
+/**
+ * Deve ser chamado a partir de um gesto do usuário (spec 23). Um play()+
+ * pause() dentro do gesto "destrava" o elemento `<audio>` para autoplay
+ * programático depois — o mesmo truque, só que para HTMLMediaElement em vez
+ * do AudioContext.
+ */
+function unlockAudio(ensureContext) {
+  const context = ensureContext();
+  if (context && context.state === "suspended") context.resume().catch(() => {});
+  for (const tracks of Object.values(MUSIC_TRACKS)) {
+    for (const src of tracks) {
+      // A trilha ativa não passa pelo play()+pause() de "priming" abaixo:
+      // se playMusic() já tentou tocá-la antes de qualquer gesto (o caso
+      // comum — a tela abre com a rodada já em PLAYING), esse play() aqui
+      // teria sucesso agora que há gesto, e o .then(() => el.pause())
+      // pausaria de volta a MESMA trilha que devia estar tocando de
+      // verdade. Ela é tratada à parte, logo abaixo.
+      if (src === activeTrack.src) continue;
+      const el = getMusicPlayerForSrc(src);
+      if (!el) continue;
+      try {
+        el.play()
+          ?.then(() => el.pause())
+          ?.catch(() => {});
+      } catch {
+        /* autoplay bloqueado ou play() não implementado: silencioso de proposito */
+      }
+    }
+  }
+  // A trilha ativa pode ter ficado pausada esperando permissão do
+  // navegador (o play() de playMusic() foi recusado antes deste gesto),
+  // ou tocando em silêncio via o fallback mudo de `safePlay` — agora que
+  // temos um gesto de verdade, destrava o som e, se preciso, retoma a
+  // reprodução de fato.
+  if (activeTrack.src) {
+    const el = getMusicPlayerForSrc(activeTrack.src);
+    if (!el) return;
+    if (el.muted) el.muted = false;
+    if (el.paused) safePlay(el);
+  }
+}
+
+/**
+ * Troca para a fase `key`, com crossfade; repetir a mesma fase é no-op.
+ * A trilha e sorteada entre as candidatas de `MUSIC_TRACKS[key]` a cada
+ * troca — assim partida apos partida a musica varia.
+ */
+function switchMusicTrack(key, preference) {
+  if (activeTrack.key === key) return;
+  const previous = activeTrack;
+  const src = pickTrack(key);
+  activeTrack = { key, src };
+  if (previous.src) fadeMusic(getMusicPlayerForSrc(previous.src), previous.src, 0, 500);
+  if (!preference.enabled || !src) return;
+  const el = getMusicPlayerForSrc(src);
+  if (!el) return;
+  try {
+    el.currentTime = 0;
+  } catch {
+    /* metadados ainda não carregados nesse navegador: toca do ponto atual mesmo assim */
+  }
+  fadeMusic(el, src, preference.volume * MUSIC_GAIN, 900);
+}
+
+/** Fade-out da trilha ativa até pausar; zera a referência de reprodução. */
+function stopActiveTrack() {
+  if (!activeTrack.key) return;
+  const { src } = activeTrack;
+  activeTrack = { key: null, src: null };
+  if (src) fadeMusic(getMusicPlayerForSrc(src), src, 0, 700);
+}
+
+/** Preferência nova (volume/mudo) com uma trilha tocando: ao vivo. */
+function followVolume(preference) {
+  if (!activeTrack.src) return;
+  const el = getMusicPlayerForSrc(activeTrack.src);
+  fadeMusic(el, activeTrack.src, preference.enabled ? preference.volume * MUSIC_GAIN : 0, 400);
+}
+
 /**
  * Audio hook for the STOP game. Provides synthesized sound cues via
  * WebAudio, a preloaded voice clip for the STOP moment, looping background
@@ -234,55 +348,9 @@ export function useAudio() {
     }
   }, [preference]);
 
-  const ensureContext = useCallback(() => {
-    if (contextRef.current) return contextRef.current;
-    const Ctor = window.AudioContext ?? window.webkitAudioContext;
-    if (!Ctor) return null;
-    contextRef.current = new Ctor();
-    return contextRef.current;
-  }, []);
+  const ensureContext = useCallback(() => ensureAudioContext(contextRef), []);
 
-  /**
-   * Must be called from a user gesture (spec 23). Um play()+pause() dentro
-   * do gesto "destrava" o elemento `<audio>` para autoplay programático
-   * depois — o mesmo truque, só que para HTMLMediaElement em vez do
-   * AudioContext logo abaixo.
-   */
-  const unlock = useCallback(() => {
-    const context = ensureContext();
-    if (context && context.state === "suspended") context.resume().catch(() => {});
-    for (const tracks of Object.values(MUSIC_TRACKS)) {
-      for (const src of tracks) {
-        // A trilha ativa não passa pelo play()+pause() de "priming" abaixo:
-        // se playMusic() já tentou tocá-la antes de qualquer gesto (o caso
-        // comum — a tela abre com a rodada já em PLAYING), esse play() aqui
-        // teria sucesso agora que há gesto, e o .then(() => el.pause())
-        // pausaria de volta a MESMA trilha que devia estar tocando de
-        // verdade. Ela é tratada à parte, logo abaixo.
-        if (src === activeTrack.src) continue;
-        const el = getMusicPlayerForSrc(src);
-        if (!el) continue;
-        try {
-          el.play()
-            ?.then(() => el.pause())
-            ?.catch(() => {});
-        } catch {
-          /* autoplay bloqueado ou play() não implementado: silencioso de proposito */
-        }
-      }
-    }
-    // A trilha ativa pode ter ficado pausada esperando permissão do
-    // navegador (o play() de playMusic() foi recusado antes deste gesto),
-    // ou tocando em silêncio via o fallback mudo de `safePlay` — agora que
-    // temos um gesto de verdade, destrava o som e, se preciso, retoma a
-    // reprodução de fato.
-    if (activeTrack.src) {
-      const el = getMusicPlayerForSrc(activeTrack.src);
-      if (!el) return;
-      if (el.muted) el.muted = false;
-      if (el.paused) safePlay(el);
-    }
-  }, [ensureContext]);
+  const unlock = useCallback(() => unlockAudio(ensureContext), [ensureContext]);
 
   const play = useCallback(
     (cue) => {
@@ -292,22 +360,7 @@ export function useAudio() {
       const context = ensureContext();
       if (!context) return;
       if (context.state === "suspended") context.resume().catch(() => {});
-
-      let start = context.currentTime;
-      for (const step of steps) {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = "triangle";
-        oscillator.frequency.setValueAtTime(step.freq, start);
-        const peak = (step.gain ?? 0.18) * preference.volume;
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(peak, start + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + step.duration);
-        oscillator.connect(gain).connect(context.destination);
-        oscillator.start(start);
-        oscillator.stop(start + step.duration + 0.02);
-        start += step.duration;
-      }
+      playCue(context, steps, preference.volume);
     },
     [ensureContext, preference],
   );
@@ -324,44 +377,14 @@ export function useAudio() {
     }
   }, [preference]);
 
-  /**
-   * Troca para a fase `key`, com crossfade; repetir a mesma fase é no-op.
-   * A trilha e sorteada entre as candidatas de `MUSIC_TRACKS[key]` a cada
-   * troca — assim partida apos partida a musica varia.
-   */
-  const playMusic = useCallback(
-    (key) => {
-      if (activeTrack.key === key) return;
-      const previous = activeTrack;
-      const src = pickTrack(key);
-      activeTrack = { key, src };
-      if (previous.src) fadeMusic(getMusicPlayerForSrc(previous.src), previous.src, 0, 500);
-      if (!preference.enabled || !src) return;
-      const el = getMusicPlayerForSrc(src);
-      if (!el) return;
-      try {
-        el.currentTime = 0;
-      } catch {
-        /* metadados ainda não carregados nesse navegador: toca do ponto atual mesmo assim */
-      }
-      fadeMusic(el, src, preference.volume * MUSIC_GAIN, 900);
-    },
-    [preference],
-  );
+  const playMusic = useCallback((key) => switchMusicTrack(key, preference), [preference]);
 
-  const stopMusic = useCallback(() => {
-    if (!activeTrack.key) return;
-    const { src } = activeTrack;
-    activeTrack = { key: null, src: null };
-    if (src) fadeMusic(getMusicPlayerForSrc(src), src, 0, 700);
-  }, []);
+  const stopMusic = useCallback(stopActiveTrack, []);
 
   // Mudou o volume ou o mudo enquanto uma trilha tocava: acompanha ao vivo,
   // sem esperar a próxima troca de fase para aplicar a preferência nova.
   useEffect(() => {
-    if (!activeTrack.src) return;
-    const el = getMusicPlayerForSrc(activeTrack.src);
-    fadeMusic(el, activeTrack.src, preference.enabled ? preference.volume * MUSIC_GAIN : 0, 400);
+    followVolume(preference);
   }, [preference]);
 
   return useMemo(

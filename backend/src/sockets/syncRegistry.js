@@ -12,7 +12,7 @@
  * entradas, e isso é interpretado como "N/A", não como alerta.
  */
 
-const byRoom = new Map(); // roomCode -> Map(key -> { roomEpoch, stateVersion, at })
+const byRoom = new Map(); // roomCode -> Map(key -> { roomEpoch, stateVersion })
 
 /** Chave por tipo de cliente: player/screen usam a sessão; teacher é 1 por sala. */
 function keyFor(context) {
@@ -22,13 +22,13 @@ function keyFor(context) {
 }
 
 /** Atualiza a última posição de sincronização reportada por um cliente. */
-export function recordClientSync(context, { roomEpoch, stateVersion, at = Date.now() }) {
+export function recordClientSync(context, { roomEpoch, stateVersion }) {
   let perRoom = byRoom.get(context.room.code);
   if (!perRoom) {
     perRoom = new Map();
     byRoom.set(context.room.code, perRoom);
   }
-  perRoom.set(keyFor(context), { roomEpoch, stateVersion, at });
+  perRoom.set(keyFor(context), { roomEpoch, stateVersion });
 }
 
 /** Remove a entrada de um cliente (disconnect). */

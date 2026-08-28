@@ -7,29 +7,36 @@
 // breaking anything that reads or writes localStorage/sessionStorage
 // (AuthContext, PlayerContext, etc.). Replace both with a plain in-memory
 // implementation of the Web Storage interface before any test runs.
+/** In-memory Web Storage implementation replacing Node's shadowing globals. */
 class MemoryStorage {
   #store = new Map();
 
+  /** Number of stored key/value pairs. */
   get length() {
     return this.#store.size;
   }
 
+  /** Returns the key at the given index, or null when out of range. */
   key(index) {
     return Array.from(this.#store.keys())[index] ?? null;
   }
 
+  /** Returns the value for a key, or null when absent. */
   getItem(key) {
     return this.#store.has(String(key)) ? this.#store.get(String(key)) : null;
   }
 
+  /** Stores a string value under a stringified key. */
   setItem(key, value) {
     this.#store.set(String(key), String(value));
   }
 
+  /** Deletes the entry for the given key. */
   removeItem(key) {
     this.#store.delete(String(key));
   }
 
+  /** Removes every stored entry. */
   clear() {
     this.#store.clear();
   }

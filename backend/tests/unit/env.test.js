@@ -8,6 +8,7 @@ vi.mock("dotenv", () => ({ default: { config: vi.fn() }, config: vi.fn() }));
 
 const ORIGINAL_ENV = { ...process.env };
 
+/** Restaura o process.env original vazio/criado pelos testes. */
 function restoreEnv() {
   for (const key of Object.keys(process.env)) {
     if (!(key in ORIGINAL_ENV)) delete process.env[key];
@@ -15,6 +16,7 @@ function restoreEnv() {
   Object.assign(process.env, ORIGINAL_ENV);
 }
 
+/** Recarrega o módulo de env com os mocks em vigor e devolve-o. */
 async function loadEnv() {
   vi.resetModules();
   const mod = await import("../../src/config/env.js");

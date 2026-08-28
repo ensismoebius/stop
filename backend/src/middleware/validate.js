@@ -1,5 +1,6 @@
 import { badRequest } from "../lib/errors.js";
 
+/** Normaliza os erros do zod para `{ path, message }[]`. */
 function format(error) {
   return error.issues.map((issue) => ({
     path: issue.path.join("."),
@@ -21,9 +22,9 @@ export const validateBody = (schema) => (req, _res, next) => {
 export function parseSocketPayload(schema, payload) {
   const result = schema.safeParse(payload ?? {});
   if (!result.success) {
-    return { ok: false, issues: format(result.error) };
+    return { valid: false, issues: format(result.error) };
   }
-  return { ok: true, data: result.data };
+  return { valid: true, data: result.data };
 }
 
 export default validateBody;

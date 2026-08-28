@@ -1,11 +1,13 @@
 import { AppError } from "../lib/errors.js";
 import logger from "../lib/logger.js";
 
+/** Resposta 404 padrao para rotas inexistentes. */
 export function notFoundHandler(_req, res) {
   res.status(404).json({ error: { code: "NOT_FOUND", message: "Rota não encontrada" } });
 }
 
 // eslint-disable-next-line no-unused-vars
+/** Converte erros lancados pelas rotas em respostas JSON previsiveis (AppError/Prisma). */
 export function errorHandler(error, _req, res, _next) {
   if (error instanceof AppError) {
     return res.status(error.status).json(error.toJSON());

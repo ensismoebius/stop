@@ -7,7 +7,9 @@ import { ApiError } from "../../src/services/api.js";
 import api from "../../src/services/api.js";
 
 vi.mock("../../src/services/api.js", () => {
+  /** Minimal ApiError stand-in for asserting login error handling. */
   class ApiError extends Error {
+    /** Sets the error name and copies extra fields onto the instance. */
     constructor(message, opts) {
       super(message);
       this.name = "ApiError";
@@ -23,6 +25,7 @@ vi.mock("../../src/services/api.js", () => {
   };
 });
 
+/** Renders the login page inside AuthProvider. */
 function renderPage() {
   return render(
     <AuthProvider>

@@ -30,16 +30,16 @@ function shuffled(list) {
  * @returns {Map<number|string, (number|string)[]>} avaliador -> answerIds atribuidos.
  */
 export function assignReviews(participants, count) {
-  const assignments = new Map(participants.map((p) => [p.playerSessionId, []]));
+  const assignments = new Map(participants.map((player) => [player.playerSessionId, []]));
   if (count <= 0 || participants.length < 2) return assignments;
 
-  const pool = participants.flatMap((p) =>
-    p.answers.map((answer) => ({ answerId: answer.id, authorId: p.playerSessionId })),
+  const pool = participants.flatMap((player) =>
+    player.answers.map((answer) => ({ answerId: answer.id, authorId: player.playerSessionId })),
   );
   if (pool.length === 0) return assignments;
 
   const load = new Map(pool.map((entry) => [entry.answerId, 0]));
-  const graderOrder = shuffled(participants.map((p) => p.playerSessionId));
+  const graderOrder = shuffled(participants.map((player) => player.playerSessionId));
 
   for (const graderId of graderOrder) {
     const assignedHere = assignments.get(graderId);
@@ -49,7 +49,7 @@ export function assignReviews(participants, count) {
     // que o resultado nao dependa so da ordem original do pool — favorece
     // as respostas menos avaliadas ate agora, mantendo o balanceamento.
     const candidates = shuffled(pool.filter((entry) => entry.authorId !== graderId));
-    candidates.sort((a, b) => load.get(a.answerId) - load.get(b.answerId));
+    candidates.sort((left, right) => load.get(left.answerId) - load.get(right.answerId));
 
     for (const entry of candidates) {
       if (assignedHere.length >= count) break;

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+/** Recarrega o módulo realtime com mocks em vigor. */
 async function loadRealtime() {
   vi.resetModules();
   return import("../../src/sockets/realtime.js");

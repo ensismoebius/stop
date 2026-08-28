@@ -180,6 +180,7 @@ function AnswerGrid({ players, categories, busy, cellsRef, setFocus, handleKeyDo
   );
 }
 
+/** Resume os estados de revisao (pendentes e validas) das respostas. */
 function reviewSummary(players) {
   let pending = 0;
   let valid = 0;

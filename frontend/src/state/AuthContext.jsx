@@ -71,6 +71,7 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+/** Acessa a sessao administrativa do professor (spec 35). */
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth precisa estar dentro de AuthProvider");

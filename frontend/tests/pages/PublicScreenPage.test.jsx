@@ -97,6 +97,7 @@ vi.mock("../../src/components/common/StopSplash.jsx", () => ({
   ),
 }));
 
+/** Renders PublicScreenPage for the given initial route entry. */
 function renderPage(initialEntry) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>

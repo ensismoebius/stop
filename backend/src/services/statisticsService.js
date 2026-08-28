@@ -1,6 +1,7 @@
 import prisma from "../lib/prisma.js";
 import gameService from "./gameService.js";
 
+/** Acumula uma rodada no agregado por tema (criando a entrada quando nao existe). */
 function accumulateThemeStats(byTheme, round) {
   const theme = byTheme.get(round.themeName) ?? {
     theme: round.themeName,
@@ -14,6 +15,7 @@ function accumulateThemeStats(byTheme, round) {
   return theme;
 }
 
+/** Acumula uma resposta no agregado por categoria e atualiza os totais do tema. */
 function accumulateCategoryStats(byCategory, categoryById, answer, theme) {
   const category = categoryById.get(answer.roundCategoryId);
   const key = category?.name ?? `#${answer.roundCategoryId}`;
@@ -39,6 +41,7 @@ function accumulateCategoryStats(byCategory, categoryById, answer, theme) {
   byCategory.set(key, entry);
 }
 
+/** Acumula a participacao de um aluno numa rodada (pontos, eliminacoes, stops). */
 function accumulateStudentStats(byStudent, round, participant) {
   const student = participant.playerSession.student;
   const entry = byStudent.get(student.id) ?? {
@@ -89,6 +92,7 @@ function accumulateRoundStats(rounds) {
   return { byStudent, byTheme, byCategory, stopTimes };
 }
 
+/** Agrega os totais da partida (volumes e medias) a partir das rodadas. */
 function buildTotals(rounds, stopTimes) {
   const totalAnswers = rounds.reduce((sum, round) => sum + round.answers.length, 0);
   const filledAnswers = rounds.reduce(
@@ -119,7 +123,7 @@ function buildTotals(rounds, stopTimes) {
     averageSecondsToStop:
       stopTimes.length === 0
         ? null
-        : Number((stopTimes.reduce((a, b) => a + b, 0) / stopTimes.length).toFixed(1)),
+        : Number((stopTimes.reduce((left, right) => left + right, 0) / stopTimes.length).toFixed(1)),
   };
 }
 
@@ -128,6 +132,7 @@ function buildTotals(rounds, stopTimes) {
  * Os dados brutos ja estao preservados; aqui apenas agregamos.
  */
 export const statisticsService = {
+  /** Estatisticas agregadas de uma partida: totais e breakdowns por aluno/tema/categoria. */
   async forGame(gameId) {
     const game = await gameService.get(gameId);
 
@@ -148,9 +153,11 @@ export const statisticsService = {
     return {
       game: { id: game.id, name: game.name, status: game.status },
       totals: buildTotals(rounds, stopTimes),
-      byStudent: [...byStudent.values()].sort((a, b) => b.total - a.total),
+      byStudent: [...byStudent.values()].sort((left, right) => right.total - left.total),
       byTheme: [...byTheme.values()],
-      byCategory: [...byCategory.values()].sort((a, b) => a.category.localeCompare(b.category, "pt-BR")),
+      byCategory: [...byCategory.values()].sort((left, right) =>
+        left.category.localeCompare(right.category, "pt-BR"),
+      ),
     };
   },
 };

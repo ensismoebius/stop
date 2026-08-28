@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_LOG_LEVEL = process.env.LOG_LEVEL;
 
+/** Recarrega o logger limpo de módulos (mock de argv/pino a cada teste). */
 async function loadLogger() {
   vi.resetModules();
   const mod = await import("../../src/lib/logger.js");

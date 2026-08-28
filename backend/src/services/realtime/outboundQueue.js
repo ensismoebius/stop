@@ -20,6 +20,7 @@ const EVENT = "roomState";
 
 const pendingByRoom = new Map();
 
+/** Separa o snapshot nas entregas por perfil (professor, tela e cada aluno). */
 function collectDeliveries(snapshot) {
   const deliveries = [
     { key: "teacher", target: { type: "teachers" }, payload: snapshot.state.teacher },
@@ -35,12 +36,14 @@ function collectDeliveries(snapshot) {
   return deliveries;
 }
 
+/** Entrega um único payload ao destino certo da sala. */
 function deliver(roomCode, { target, payload }) {
   if (target.type === "teachers") realtime.toTeachers(roomCode, EVENT, payload);
   else if (target.type === "screens") realtime.toScreens(roomCode, EVENT, payload);
   else realtime.toPlayer(target.id, EVENT, payload);
 }
 
+/** Descarrega de uma vez todos os pendentes de uma sala (latest-wins). */
 function flushRoom(roomCode) {
   const byKey = pendingByRoom.get(roomCode);
   if (!byKey) return;
@@ -48,6 +51,7 @@ function flushRoom(roomCode) {
   for (const { target, payload } of byKey.values()) deliver(roomCode, { target, payload });
 }
 
+/** Agenda o flush da sala para o próximo tick do event loop. */
 function scheduleFlush(roomCode) {
   setImmediate(() => flushRoom(roomCode));
 }

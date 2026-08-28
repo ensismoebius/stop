@@ -9,6 +9,7 @@ import StudentHistoryPage from "./pages/StudentHistoryPage.jsx";
 import TeacherDashboardPage from "./pages/TeacherDashboardPage.jsx";
 import PublicScreenPage from "./pages/PublicScreenPage.jsx";
 
+/** Componente raiz da aplicacao: define o roteamento e os provedores de contexto. */
 export function App() {
   // Primeiro toque em qualquer lugar da pagina expande para tela cheia,
   // como no Kahoot — o navegador exige um gesto do usuario para permitir

@@ -52,6 +52,7 @@ function useGroupedCorrectionNavigation(categories, onReviewGroup) {
   return { activeCategoryId, setActiveCategoryId, active, actionable, groups, rowRefs, decide };
 }
 
+/** Abas de navegacao entre as categorias da correcao. */
 function CategoryTabs({ categories, active, actionable, setActiveCategoryId }) {
   return (
     <div className="row" role="tablist" aria-label="Categorias">
@@ -71,6 +72,7 @@ function CategoryTabs({ categories, active, actionable, setActiveCategoryId }) {
   );
 }
 
+/** Linha com um grupo de respostas e os botoes de decidir (valida/invalida). */
 function GroupRow({ group, groupIndex, busy, rowRefs, decide }) {
   return (
     <div className="group-row spread">
@@ -104,6 +106,7 @@ function GroupRow({ group, groupIndex, busy, rowRefs, decide }) {
   );
 }
 
+/** Lista os grupos de respostas da categoria ativa. */
 function GroupList({ active, groups, busy, rowRefs, decide }) {
   return (
     <div className="stack">

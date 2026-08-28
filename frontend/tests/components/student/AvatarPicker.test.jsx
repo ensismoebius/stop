@@ -7,6 +7,7 @@ import { FACE_COUNTS } from "../../../src/data/faceParts.js";
 
 /** Always resolves onload, mimicking a decoded image. */
 class SuccessImage {
+  /** Records the assigned src, sizes it, and resolves onload asynchronously. */
   set src(value) {
     this._src = value;
     this.width = 200;
@@ -14,6 +15,7 @@ class SuccessImage {
     queueMicrotask(() => this.onload && this.onload());
   }
 
+  /** Returns the last assigned src. */
   get src() {
     return this._src;
   }
@@ -21,11 +23,13 @@ class SuccessImage {
 
 /** Always fails to decode. */
 class FailingImage {
+  /** Records the assigned src and triggers onerror asynchronously. */
   set src(value) {
     this._src = value;
     queueMicrotask(() => this.onerror && this.onerror());
   }
 
+  /** Returns the last assigned src. */
   get src() {
     return this._src;
   }

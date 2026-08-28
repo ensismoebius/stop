@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+/** Le `name` do ambiente; usa `fallback` e lanca erro quando o valor final e vazio. */
 function required(name, fallback) {
   const value = process.env[name] ?? fallback;
   if (value === undefined || value === "") {
@@ -10,6 +11,7 @@ function required(name, fallback) {
   return value;
 }
 
+/** Le `name` como inteiro base 10; usa `fallback` quando ausente/vazio. */
 function int(name, fallback) {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
@@ -20,6 +22,7 @@ function int(name, fallback) {
   return parsed;
 }
 
+/** Le `name` como lista CSV (itens aparados e sem vazios); usa `fallback` quando ausente. */
 function list(name, fallback) {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -40,6 +43,7 @@ const KNOWN_PLACEHOLDERS = {
   ADMIN_PASSWORD: new Set(["stop-admin"]),
 };
 
+/** Em producao exige valor real e nao-placeholder para `name`; em dev usa `devFallback`. */
 function productionSecret(name, devFallback) {
   if (!isProduction) return process.env[name] ?? devFallback;
   const value = required(name);

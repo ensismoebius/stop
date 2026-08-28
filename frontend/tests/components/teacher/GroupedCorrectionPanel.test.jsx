@@ -3,6 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GroupedCorrectionPanel from "../../../src/components/teacher/GroupedCorrectionPanel.jsx";
 
+/** Builds a grouped correction-grid fixture, overridable per test. */
 function makeGrid(overrides = {}) {
   return {
     round: { letter: "A", themeName: "Animais" },

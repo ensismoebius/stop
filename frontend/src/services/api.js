@@ -1,6 +1,8 @@
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
+/** Erro de API carregando status, codigo e detalhes da resposta. */
 export class ApiError extends Error {
+  /** Constrói o erro com dados opcionais de status, código e detalhes. */
   constructor(message, { status, code, details } = {}) {
     super(message);
     this.name = "ApiError";
@@ -10,6 +12,7 @@ export class ApiError extends Error {
   }
 }
 
+/** Executa a requisicao HTTP para a API e devolve os dados JSON. */
 async function request(path, { method = "GET", body, adminToken, playerToken } = {}) {
   const headers = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";

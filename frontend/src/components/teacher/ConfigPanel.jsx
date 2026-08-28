@@ -296,6 +296,7 @@ function TurmasSection({ classes, selectedClassId, onSelectClass, onCreateClass,
   );
 }
 
+/** Converte o texto colado em uma lista de alunos (matricula + nome). */
 function parseBulkStudents(text) {
   return text
     .split("\n")

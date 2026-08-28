@@ -12,6 +12,7 @@ const STEPS = [
   { key: "next", label: "Próxima" },
 ];
 
+/** Mapeia o status da rodada para a etapa correspondente do fluxo. */
 function stepStateFor(status) {
   if (!status || status === "FINISHED") return "theme";
   if (status === "CREATED") return "letter";
@@ -74,6 +75,7 @@ function ChooseThemePhase({
   );
 }
 
+/** Fase de sorteio da letra da rodada. */
 function LetterPhase({ round, busy, onDrawLetter, onCancel }) {
   return (
     <div className="phase phase--letter">
@@ -92,6 +94,7 @@ function LetterPhase({ round, busy, onDrawLetter, onCancel }) {
   );
 }
 
+/** Fase de prontidao: mostra a letra sorteada e inicia a rodada. */
 function ReadyPhase({ round, busy, onStart, onDrawLetter, onCancel }) {
   return (
     <div className="phase phase--ready">
@@ -110,6 +113,7 @@ function ReadyPhase({ round, busy, onStart, onDrawLetter, onCancel }) {
   );
 }
 
+/** Fase de sincronizacao antes do inicio da rodada. */
 function StartingPhase({ round, busy, onCancel }) {
   return (
     <div className="phase phase--starting">
@@ -122,6 +126,7 @@ function StartingPhase({ round, busy, onCancel }) {
   );
 }
 
+/** Fase de jogo em andamento com cronometro e botao de encerrar. */
 function PlayingPhase({ round, seconds, busy, onStop, onCancel }) {
   return (
     <div className="phase phase--playing">
@@ -145,6 +150,7 @@ function PlayingPhase({ round, seconds, busy, onStop, onCancel }) {
   );
 }
 
+/** Fase de correcao colaborativa, com progresso das avaliacoes. */
 function CollaborativeCorrectionPhase({ collabProgress, busy, onFinishCollaborativeCorrection, onCancel }) {
   const done = collabProgress?.completedAssignments ?? 0;
   const total = collabProgress?.totalAssignments ?? 0;
@@ -172,6 +178,7 @@ function CollaborativeCorrectionPhase({ collabProgress, busy, onFinishCollaborat
   );
 }
 
+/** Fase de correcao, encaminhando para a aba de correcao ou pontuacao. */
 function CorrectionPhase({ busy, onGoToCorrection, onScore, onCancel }) {
   return (
     <div className="phase phase--correction">
@@ -273,6 +280,7 @@ function renderPhase(status, props) {
   return null;
 }
 
+/** Barra visual com as etapas do fluxo da rodada. */
 function RoundFlowSteps({ currentIndex }) {
   return (
     <div className="flow" aria-label="Fluxo da rodada">
@@ -353,6 +361,7 @@ function useRoundFormFields(categorySets, disabled) {
   return { categorySetId, themeField, durationField, letterRuleField, payload };
 }
 
+/** Faixa com as letras ja usadas na partida, destacando a atual. */
 function UsedLettersStrip({ usedLetters, currentLetter }) {
   const letters = (usedLetters ?? []).filter(Boolean);
   if (letters.length === 0) return null;

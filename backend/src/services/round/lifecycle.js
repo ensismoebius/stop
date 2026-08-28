@@ -27,7 +27,7 @@ const CONFIRM_BROADCAST_DELAY_MS = env.isTest ? 0 : 1500;
  * A copia impede que alteracoes futuras no cadastro alterem uma partida
  * ja realizada (spec 17).
  */
-export async function create({ gameId, categorySetId, durationSeconds, themeName, letterRule }) {
+async function runCreateRound({ gameId, categorySetId, durationSeconds, themeName, letterRule }) {
   const game = await gameRepository.findById(gameId);
   if (game?.status === "FINISHED") {
     throw conflict("Esta partida já foi finalizada e não pode receber novas rodadas.");
@@ -53,8 +53,8 @@ export async function create({ gameId, categorySetId, durationSeconds, themeName
   // unico passo logico: uma falha no meio deixaria uma rodada sem
   // categorias (que passaria a aceitar STOP imediato, spec 11) ou o jogo
   // "ACTIVE" com nenhuma rodada de fato criada.
-  const round = await prisma.$transaction(async (tx) => {
-    const created = await tx.round.create({
+  const round = await prisma.$transaction(async (transaction) => {
+    const created = await transaction.round.create({
       data: {
         gameId,
         roundNumber,
@@ -67,7 +67,7 @@ export async function create({ gameId, categorySetId, durationSeconds, themeName
       },
     });
 
-    await tx.roundCategory.createMany({
+    await transaction.roundCategory.createMany({
       data: categories.map((category, index) => ({
         roundId: created.id,
         categoryId: category.categoryId ?? category.id ?? null,
@@ -79,12 +79,12 @@ export async function create({ gameId, categorySetId, durationSeconds, themeName
     });
 
     // Novo round: eliminacoes anteriores nao valem mais (spec 27).
-    await tx.playerSession.updateMany({
+    await transaction.playerSession.updateMany({
       where: { roomId: room.id, status: { in: ["PLAYING", "SUBMITTED", "ELIMINATED", "FINISHED"] } },
       data: { status: PLAYER_STATUS.READY },
     });
 
-    await tx.game.updateMany({
+    await transaction.game.updateMany({
       where: { id: gameId, status: "CREATED" },
       data: { status: "ACTIVE", startedAt: new Date() },
     });
@@ -98,6 +98,11 @@ export async function create({ gameId, categorySetId, durationSeconds, themeName
   });
   await broadcastState(room.code);
   return created;
+}
+
+/** Cria a rodada e copia as categorias do conjunto escolhido (spec 17). */
+export async function create(params) {
+  return runCreateRound(params);
 }
 
 /** Sorteio da letra: sempre no servidor (spec 15/16). */

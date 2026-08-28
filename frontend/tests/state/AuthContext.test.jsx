@@ -10,6 +10,7 @@ vi.mock("../../src/services/api.js", () => ({
   default: { login: vi.fn(), me: vi.fn() },
 }));
 
+/** Componente de prova que consome o contexto e expõe o estado em data-testids. */
 function Consumer() {
   const auth = useAuth();
   return (
@@ -18,7 +19,7 @@ function Consumer() {
       <span data-testid="authenticated">{String(auth.authenticated)}</span>
       <span data-testid="token">{auth.token ?? "none"}</span>
       <span data-testid="teacher">{auth.teacher?.name ?? "none"}</span>
-      <button onClick={() => auth.login("a@b.com", "pw").catch(() => {})}>login</button>
+      <button onClick={() => auth.login("a@b.com", "password").catch(() => {})}>login</button>
       <button onClick={() => auth.logout()}>logout</button>
     </div>
   );

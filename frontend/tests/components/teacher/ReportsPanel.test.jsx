@@ -33,6 +33,7 @@ const results = [
   },
 ];
 
+/** Renders ReportsPanel with the standard filter fixtures plus prop overrides. */
 function renderPanel(props = {}) {
   return render(
     <ReportsPanel

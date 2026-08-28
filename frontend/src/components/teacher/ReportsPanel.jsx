@@ -15,6 +15,7 @@ const CSV_HEADER = [
   "Medalha",
 ];
 
+/** Escapa um valor para celula CSV, envolvendo entre aspas. */
 function escapeCsvCell(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }

@@ -83,7 +83,7 @@ async function categoryStats({ discipline, classId, gameId } = {}) {
       fillRate: entry.answers === 0 ? 0 : Number((entry.filled / entry.answers).toFixed(3)),
       accuracyRate: entry.filled === 0 ? 0 : Number((entry.valid / entry.filled).toFixed(3)),
     }))
-    .sort((a, b) => a.accuracyRate - b.accuracyRate || a.category.localeCompare(b.category, "pt-BR"));
+    .sort((left, right) => left.accuracyRate - right.accuracyRate || left.category.localeCompare(right.category, "pt-BR"));
 }
 
 export const reportService = { search, categoryStats };

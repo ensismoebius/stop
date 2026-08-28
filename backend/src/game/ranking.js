@@ -7,9 +7,9 @@
  * @param {{ studentId: number, name: string, total: number }[]} entries
  */
 export function buildRanking(entries) {
-  const sorted = [...entries].sort((a, b) => {
-    if (b.total !== a.total) return b.total - a.total;
-    return String(a.name ?? "").localeCompare(String(b.name ?? ""), "pt-BR");
+  const sorted = [...entries].sort((left, right) => {
+    if (right.total !== left.total) return right.total - left.total;
+    return String(left.name ?? "").localeCompare(String(right.name ?? ""), "pt-BR");
   });
 
   let position = 0;

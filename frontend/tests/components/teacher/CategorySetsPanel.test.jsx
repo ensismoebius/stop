@@ -12,6 +12,7 @@ const baseSet = {
   ],
 };
 
+/** Renders CategorySetsPanel with sensible defaults plus prop overrides. */
 function renderPanel(props = {}) {
   return render(
     <CategorySetsPanel

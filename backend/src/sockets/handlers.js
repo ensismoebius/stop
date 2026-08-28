@@ -26,6 +26,7 @@ import telemetryRepository from "../repositories/telemetryRepository.js";
 import { recordClientSync, dropClientSync, syncStats as syncStatsFor } from "./syncRegistry.js";
 import claimOperation from "../services/operations.js";
 
+/** Converte qualquer erro em payload serializavel de resposta ao cliente. */
 function toErrorPayload(error) {
   if (error instanceof AppError) {
     return { code: error.code, message: error.message, details: error.details ?? null };
@@ -44,14 +45,14 @@ function toErrorPayload(error) {
  * resultado gravado em vez de reexecutar (spec 3.1). Sem `operationId`
  * cai no caminho antigo — compatível com clientes legados.
  */
-function wrap(socket, schema, fn, options = {}) {
+function wrap(socket, schema, handler, options = {}) {
   return async (payload, ack) => {
     const operationId =
       options.idempotent && typeof payload?.operationId === "string" && payload.operationId.trim()
         ? payload.operationId.trim()
         : null;
-    const parsed = schema ? parseSocketPayload(schema, payload) : { ok: true, data: payload };
-    if (!parsed.ok) {
+    const parsed = schema ? parseSocketPayload(schema, payload) : { valid: true, data: payload };
+    if (!parsed.valid) {
       const error = { code: "BAD_PAYLOAD", message: "Dados inválidos", details: parsed.issues };
       socket.emit("error", error);
       if (typeof ack === "function") ack({ ok: false, error });
@@ -68,10 +69,10 @@ function wrap(socket, schema, fn, options = {}) {
             playerSessionId: context.session?.id ?? null,
             command: options.command,
           },
-          () => fn(socket, parsed.data),
+          () => handler(socket, parsed.data),
         );
       } else {
-        result = await fn(socket, parsed.data);
+        result = await handler(socket, parsed.data);
       }
       if (typeof ack === "function") ack({ ok: true, data: result ?? null });
     } catch (error) {
@@ -82,6 +83,7 @@ function wrap(socket, schema, fn, options = {}) {
   };
 }
 
+/** Recupera o contexto de sala gravado no socket; lance erro quando ausente. */
 function requireContext(socket) {
   if (!socket.data.context) {
     throw new AppError("Entre em uma sala antes de executar esta ação", {
@@ -92,6 +94,7 @@ function requireContext(socket) {
   return socket.data.context;
 }
 
+/** Exige que o socket pertenca a um aluno (sessao ativa) e devolve o contexto. */
 function requirePlayer(socket) {
   const context = requireContext(socket);
   if (context.role !== "player" || !context.session) {
@@ -100,6 +103,7 @@ function requirePlayer(socket) {
   return context;
 }
 
+/** Entrada de aluno: vincula salas, marca conectado e devolve o estado inicial dele. */
 async function handlePlayerJoin(client, context, code) {
   await client.join(realtime.rooms.players(code));
   await client.join(realtime.rooms.player(context.session.id));
@@ -124,6 +128,7 @@ async function handlePlayerJoin(client, context, code) {
   return state;
 }
 
+/** Entrada em sala: autentica, vincula salas por papel e entrega o estado inicial. */
 async function handleJoinRoom(client, data) {
   const context = await authenticateJoin(data);
   const code = context.room.code;
@@ -177,6 +182,7 @@ async function handleIdentifyStudent(_client, data) {
   return roomService.identify(data.roomCode, data.registrationNumber);
 }
 
+/** Marca o aluno como pronto para comecar a rodada (spec 6/10). */
 async function handleReady(client) {
   const context = requirePlayer(client);
   await playerSessionRepository.update(context.session.id, { status: "READY" });
@@ -212,6 +218,7 @@ async function handleSendEmoji(client, data) {
   return { sent: true };
 }
 
+/** Envia uma resposta da rodada corrente e devolve o novo total do aluno. */
 async function handleSubmitAnswer(client, data) {
   const context = requirePlayer(client);
   const result = await answerService.submit({
@@ -343,25 +350,26 @@ async function handleApplicationHeartbeat(client, request) {
   };
 }
 
-export function registerHandlers(io, socket) {
+/** Registra no socket corrente os handlers validados de cada evento do protocolo. */
+export function registerHandlers(socket) {
   /** Registra um evento validado no socket corrente. */
-  const on = (event, schema, fn, options = {}) =>
-    socket.on(event, wrap(socket, schema, fn, { ...options, command: options.command ?? event }));
+  const registerEvent = (event, schema, handler, options = {}) =>
+    socket.on(event, wrap(socket, schema, handler, { ...options, command: options.command ?? event }));
 
-  on("joinRoom", socketJoinRoomSchema, handleJoinRoom);
-  on("identifyStudent", socketIdentifySchema, handleIdentifyStudent);
+  registerEvent("joinRoom", socketJoinRoomSchema, handleJoinRoom);
+  registerEvent("identifyStudent", socketIdentifySchema, handleIdentifyStudent);
   // Comandos de escrita com idempotência (spec 3.1): o cliente gera um
   // `operationId` e o servidor desduplica reenvios (ack perdido / retry).
-  on("ready", socketReadySchema, handleReady, { idempotent: true });
-  on("sendEmoji", socketEmojiSchema, handleSendEmoji);
-  on("submitAnswer", socketAnswerSchema, handleSubmitAnswer, { idempotent: true });
-  on("updateAnswer", socketAnswerSchema, handleSubmitAnswer, { idempotent: true });
-  on("requestStop", socketRoundSchema, handleRequestStop, { idempotent: true });
-  on("fullscreenExited", socketFullscreenSchema, handleFullscreenExited, { idempotent: true });
-  on("submitReview", socketReviewSchema, handleSubmitReview, { idempotent: true });
-  on("telemetry", socketTelemetrySchema, handleTelemetry);
-  on("requestState", null, handleRequestState);
-  on("applicationHeartbeat", socketHeartbeatSchema, handleApplicationHeartbeat);
+  registerEvent("ready", socketReadySchema, handleReady, { idempotent: true });
+  registerEvent("sendEmoji", socketEmojiSchema, handleSendEmoji);
+  registerEvent("submitAnswer", socketAnswerSchema, handleSubmitAnswer, { idempotent: true });
+  registerEvent("updateAnswer", socketAnswerSchema, handleSubmitAnswer, { idempotent: true });
+  registerEvent("requestStop", socketRoundSchema, handleRequestStop, { idempotent: true });
+  registerEvent("fullscreenExited", socketFullscreenSchema, handleFullscreenExited, { idempotent: true });
+  registerEvent("submitReview", socketReviewSchema, handleSubmitReview, { idempotent: true });
+  registerEvent("telemetry", socketTelemetrySchema, handleTelemetry);
+  registerEvent("requestState", null, handleRequestState);
+  registerEvent("applicationHeartbeat", socketHeartbeatSchema, handleApplicationHeartbeat);
 
   socket.on("disconnect", (reason) => handleDisconnect(socket, reason));
 }

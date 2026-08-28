@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import CorrectionPanel from "../../../src/components/teacher/CorrectionPanel.jsx";
 
+/** Builds a correction-grid fixture with two players, overridable per test. */
 function makeGrid(overrides = {}) {
   return {
     round: { letter: "A", themeName: "Animais" },

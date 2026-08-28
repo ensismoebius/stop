@@ -120,6 +120,79 @@ function GameSelector({ classes, games, onCreateGame, onSelectGame, busy }) {
   );
 }
 
+/** Cabeçalho da partida em andamento + botão para trocar de partida. */
+function ActiveGameHeader({ game, onSelectGame }) {
+  return (
+    <div className="spread">
+      <div>
+        <div className="small muted">Partida</div>
+        <strong>{game.name}</strong>
+        <div className="small muted">{game.class?.name}</div>
+      </div>
+      <div className="row">
+        <button type="button" className="btn btn--ghost" onClick={() => onSelectGame(null)}>
+          Trocar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Ajustes AO VIVO da tela publica, aplicados por broadcast: ocultar pontos
+ * no ranking e controles de volume/mudo do som da TV. Valem já para a
+ * próxima projeção que a tela publica receber.
+ */
+function LiveSettings({
+  hidePoints,
+  muted,
+  draftVolume,
+  onToggleHidePoints,
+  onToggleMuted,
+  onVolumeChange,
+  onVolumeRelease,
+}) {
+  return (
+    <div className="stack">
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={hidePoints}
+          onChange={(event) => onToggleHidePoints?.(event.target.checked)}
+        />
+        <span>Ocultar pontos na tela pública (ranking)</span>
+      </label>
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={muted}
+          onChange={(event) => onToggleMuted?.(event.target.checked)}
+        />
+        <span>Mudo na tela pública</span>
+      </label>
+
+      <div className="spread">
+        <span className="small">Volume da tela pública</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={draftVolume}
+          disabled={muted}
+          aria-label="Volume da tela pública"
+          onChange={(event) => onVolumeChange(Number(event.target.value))}
+          onPointerUp={onVolumeRelease}
+          onKeyUp={onVolumeRelease}
+          onBlur={onVolumeRelease}
+        />
+        <span className="small tabular">{Math.round(draftVolume * 100)}%</span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Criacao da sala e QR Code (spec 5 e 36).
  *
@@ -176,6 +249,11 @@ export function RoomControl({
     }
   };
 
+  const handleVolumeChange = (value) => {
+    setDraftVolume(value);
+    scheduleVolumeSend(value);
+  };
+
   // Acompanha o valor autoritativo vindo do servidor (ex.: outro painel de
   // professor mudou o volume) sem pisar no arrasto em andamento do usuário.
   useEffect(() => {
@@ -188,18 +266,7 @@ export function RoomControl({
 
       {game ? (
         <div className="stack">
-          <div className="spread">
-            <div>
-              <div className="small muted">Partida</div>
-              <strong>{game.name}</strong>
-              <div className="small muted">{game.class?.name}</div>
-            </div>
-            <div className="row">
-              <button type="button" className="btn btn--ghost" onClick={() => onSelectGame(null)}>
-                Trocar
-              </button>
-            </div>
-          </div>
+          <ActiveGameHeader game={game} onSelectGame={onSelectGame} />
 
           <GameRoom
             room={room}
@@ -211,51 +278,16 @@ export function RoomControl({
             closed={game.status === "FINISHED" || room?.status === "CLOSED"}
           />
 
-          {/* Ajustes AO VIVO da tela publica, aplicados por broadcast: ocultar
-              pontos no ranking e controles de volume/mudo do som da TV. Valem
-              já para a próxima projeção que a tela publica receber. */}
           {room ? (
-            <div className="stack">
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={hidePoints}
-                  onChange={(event) => onToggleHidePoints?.(event.target.checked)}
-                />
-                <span>Ocultar pontos na tela pública (ranking)</span>
-              </label>
-
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={muted}
-                  onChange={(event) => onToggleMuted?.(event.target.checked)}
-                />
-                <span>Mudo na tela pública</span>
-              </label>
-
-              <div className="spread">
-                <span className="small">Volume da tela pública</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={draftVolume}
-                  disabled={muted}
-                  aria-label="Volume da tela pública"
-                  onChange={(event) => {
-                    const v = Number(event.target.value);
-                    setDraftVolume(v);
-                    scheduleVolumeSend(v);
-                  }}
-                  onPointerUp={flushVolume}
-                  onKeyUp={flushVolume}
-                  onBlur={flushVolume}
-                />
-                <span className="small tabular">{Math.round(draftVolume * 100)}%</span>
-              </div>
-            </div>
+            <LiveSettings
+              hidePoints={hidePoints}
+              muted={muted}
+              draftVolume={draftVolume}
+              onToggleHidePoints={onToggleHidePoints}
+              onToggleMuted={onToggleMuted}
+              onVolumeChange={handleVolumeChange}
+              onVolumeRelease={flushVolume}
+            />
           ) : null}
         </div>
       ) : (

@@ -25,6 +25,7 @@ const students = [
   },
 ];
 
+/** Renders ConfigPanel with the standard fixture data plus prop overrides. */
 function renderPanel(props = {}) {
   return render(
     <ConfigPanel

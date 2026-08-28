@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api } from "../../src/services/api.js";
 
+/** Builds a minimal fetch Response-like stub from a JSON body. */
 function jsonResponse(body, { status = 200, ok = true } = {}) {
   return {
     status,
