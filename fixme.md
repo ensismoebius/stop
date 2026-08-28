@@ -79,11 +79,16 @@ Missing the PLAYING push + half-open socket = stuck for the whole round.
   `connected`, re-request the authoritative state via `emitAck(socket, "requestState")`
   or the REST `playerState` — both endpoints already exist and return the full state.
   This turns any missed push into a seconds-long recovery instead of a stuck screen.
-  *Implemented: `withTransitionRefresh` (14 transition events also trigger
-  `requestState`) + 3 s periodic backstop in `StudentGamePage.jsx`; reconnect on
-  failed refresh.*
-- [ ] Same watchdog can also cover the footer "you are not in fullscreen" state so a
-  silently-restarted round still picks up `PLAYING`.
+  *Implemented: `StudentGamePage.jsx` roda um watchdog em TODAS as fases da rodada
+  (não só na espera), com `setTimeout` encadeado + jitter aleatório + backoff com teto
+  (`WATCHDOG_STALE_MS` 3s / `WATCHDOG_MAX_MS` 12s). O refresh delega ao `refresh`
+  versão-aware do hook (`requestState` com a posição adotada) e cai no REST
+  (`adoptState`) sem hook; refresh falho → `disconnect()` + `connect()` para o
+  `joinRoom` reentregar o estado.*
+- [x] Same watchdog can also cover the footer "you are not in fullscreen" state so a
+  silently-restarted round still picks up `PLAYING`. *Coberto de brinde: com o
+  watchdog ativo em todas as fases, o refresh reconcilia efeitos perdidos — inclusive
+  um `fullscreenExited` que eliminaria o aluno.*
 
 ### 2. Coalesce the burst + stop redundant ranking
 
@@ -154,6 +159,31 @@ Missing the PLAYING push + half-open socket = stuck for the whole round.
 
 > Note on coalescing: the debounce of join/`ready` `broadcastState` and the
 > "compute ranking once per broadcast" are item **#2** above.
+
+---
+
+## Confiabilidade adicional (versões + idempotência + medição)
+
+Bloco novo por cima da recuperação acima (spec 3.1 — versões/idempotência):
+
+- **Posição autoritativa `(roomEpoch, stateVersion)`** e barreira única de entrada no
+  cliente (`state/synchronization.js` → `useRoomSocket`): todo estado que entra
+  (push `roomState`, ack de `joinRoom`, `requestState`, fallback REST) é comparado por
+  posição e **estados antigos/atrasados são descartados** sem regredir o cliente.
+  `requestState` virou versão-aware: servidor responde `CURRENT` (posição já atual) ou
+  `ROOM_STATE` (snapshot). `applicationHeartbeat` distingue relógio atrás de estado
+  atrás (`SyncStatus`).
+- **Comandos idempotentes**: `emitCommand` no cliente reenvia com o MESMO `operationId`
+  quando o ack some (TIMEOUT); servidor desduplica via `ProcessedOperation`
+  (`claimOperation`) e re-joga a resposta gravada (`ready`, `submitAnswer`,
+  `updateAnswer`, `requestStop`, `fullscreenExited`, `submitReview`).
+- **Professor enxerga a sincronização**: pill "Sincronizado/Sincronizando N/M" no header
+  (dados de `syncStats` anexados ao `roomState` do professor).
+
+Coberto por testes: barreira (frontend `synchronization.test.js`), `emitCommand`
+(`socket.test.js`), `useRoomSocket` com push atrasado, idempotência backend
+(`idempotency.test.js`) e versionamento/syncStats (`stateVersioning.test.js`).
+Contagens finais: backend **347**, frontend **700**, `vite build` limpo.
 
 ---
 

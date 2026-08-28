@@ -160,3 +160,56 @@ O `roomState` é fire-and-forget, então o cliente não espera passivamente por 
 - **Heartbeat** (`sockets/index.js`): `pingInterval 10s / pingTimeout 15s`
   (era 20s/25s) para derrubar mais cedo conexões meio-abertas que routers baratos
   "engolem".
+
+## Camada de confiabilidade (versões + idempotência)
+
+### Posição autoritativa `(roomEpoch, stateVersion)`
+
+`Room.roomEpoch`/`Room.stateVersion` são `Int` (schema.prisma) e sobem a cada difusão
+autoritativa; todo `roomState`/resposta de `requestState` carrega as duas posições. O
+cliente mantém a última posição adotada e compara toda fonte autoritativa contra ela.
+
+**Barreira única de entrada** — `frontend/src/state/synchronization.js`
+(`applyAuthoritative`, usado pelo `useRoomSocket.applyAuthoritativeState`): todo estado
+autoritativo que entra no dispositivo (push `roomState`, ack de `joinRoom`, resposta de
+`requestState`, fallback REST) passa por uma função que compara `(roomEpoch,
+stateVersion)` e **descarta estados mais antigos que a posição adotada, sem rebater o
+que o cliente já tem**. A ordem de chegada fica irrelevante: um push enviado antes de uma
+reconexão e entregue depois dela não regride o estado novo (`roomEpoch` protege entre
+sessões de sala; `stateVersion` ordena dentro da sessão). Estados sem metadados de
+versão (push "cru"/mock) são adotados preservando a posição corrente — um snapshot
+autoritativo nunca é rejeitado por falta de versão.
+
+### `requestState` versão-aware e heartbeat de aplicação
+
+O cliente manda a posição que adotou; o servidor (`handlers.js:254`) responde:
+
+- **`CURRENT`** — a posição informada já é a atual: nada novo a enviar;
+- **`ROOM_STATE`** — posição antiga/não informada: snapshot autoritativo completo
+  (`roomEpoch`, `stateVersion`, `serverTime` + projeção do papel).
+
+Enquanto conectado, o hook dispara `applicationHeartbeat` com a posição + `sentAt`
+(`useRoomSocket.js:130`), e o servidor devolve `serverTime`/posição/`stale` — é o que
+distingue "só clock para trás" (posição igual → `SYNCHRONIZED`) de "estado atrás"
+(`DEGRADED`/`RECOVERING`). `SyncStatus` em `synchronization.js` modela
+`IDLE/CONNECTING/SYNCHRONIZED/RECOVERING/DEGRADED/UNREACHABLE`.
+
+### Comandos idempotentes (spec 3.1)
+
+- **Cliente** (`socket.js:emitCommand`): anexa um `operationId` único ao payload e, se o
+  ack não voltar (TIMEOUT — resposta perdida/atrasada), reenvia com o **mesmo** id.
+- **Servidor** (`services/operations.js:claimOperation` + `handlers.js:wrap`): cria a
+  linha `ProcessedOperation (roomId, id)` como trava `PENDING`; numa colisão P2002
+  (concorrente com o mesmo id) espera ~150ms e, se `DONE`, **replay** do `responseJson`
+  gravado — o reenvio nunca executa o efeito duas vezes. Falha no handler apaga o
+  registro para o retry re-executar.
+- Aplicado a `ready`, `submitAnswer`, `updateAnswer`, `requestStop`, `fullscreenExited`,
+  `submitReview`. `sendEmoji` continua `emitAck` puro (efeito efêmero, sem estado).
+
+### Medição de sincronização do professor
+
+`broadcastState` apura `syncStats { expected, synchronized, stale, recovering }` a partir
+do `syncRegistry.js` e anexa ao estado do professor. `TeacherDashboardPage.jsx` renderiza
+uma pill no header — "Sincronizado N/M" (verde) ou "Sincronizando N/M" (âmbar, com o
+count de `stale` no tooltip) — sinalizando quando há aluno defasado do estado
+autoritativo.

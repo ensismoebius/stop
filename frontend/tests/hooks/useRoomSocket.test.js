@@ -160,6 +160,49 @@ describe("useRoomSocket", () => {
     expect(onState).toHaveBeenCalledWith({ round: 2 });
   });
 
+  it("discards a delayed OLD roomState so a late push cannot regress the adopted state", () => {
+    const socket = createFakeSocket();
+    createSocket.mockReturnValue(socket);
+    emitAck.mockResolvedValue({
+      ok: true,
+      data: { roomEpoch: 1, stateVersion: 0, round: null },
+    });
+    const onState = vi.fn();
+
+    const { result } = renderHook(() =>
+      useRoomSocket({
+        roomCode: "ABCD",
+        role: "player",
+        playerToken: "tok",
+        handlers: { onState },
+      }),
+    );
+
+    // Chega primeiro o push novo (round chegou a PLAYING).
+    act(() =>
+      socket.trigger("roomState", {
+        roomEpoch: 1,
+        stateVersion: 1,
+        round: { status: "PLAYING" },
+      }),
+    );
+    expect(result.current.state.round.status).toBe("PLAYING");
+
+    const callsBeforeLatePush = onState.mock.calls.length;
+
+    // Push enviado antes, entregue depois (versao antiga): nao pode regredir.
+    act(() =>
+      socket.trigger("roomState", {
+        roomEpoch: 1,
+        stateVersion: 0,
+        round: { status: "READY" },
+      }),
+    );
+
+    expect(result.current.state.round.status).toBe("PLAYING");
+    expect(onState.mock.calls.length).toBe(callsBeforeLatePush);
+  });
+
   it("calls onError on a pushed error event", () => {
     const socket = createFakeSocket();
     createSocket.mockReturnValue(socket);

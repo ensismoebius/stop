@@ -122,3 +122,84 @@ describe("emitAck", () => {
     clearTimeoutSpy.mockRestore();
   });
 });
+
+describe("emitCommand", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("attaches a fresh operationId and resolves on the first ack", async () => {
+    const { emitCommand } = await import("../../src/socket/socket.js");
+    const socket = {
+      emit: vi.fn((event, payload, cb) => cb({ ok: true, data: { applied: true } })),
+    };
+
+    const result = await emitCommand(socket, "ready", { roundId: 7 });
+
+    expect(result).toEqual({ ok: true, data: { applied: true } });
+    expect(socket.emit).toHaveBeenCalledTimes(1);
+    expect(socket.emit.mock.calls[0][0]).toBe("ready");
+    const payload = socket.emit.mock.calls[0][1];
+    expect(payload.roundId).toBe(7);
+    expect(payload.operationId).toBeTypeOf("string");
+    expect(payload.operationId.length).toBeGreaterThan(0);
+  });
+
+  it("resends a timed-out command with the SAME operationId and succeeds on the retry", async () => {
+    const { emitCommand } = await import("../../src/socket/socket.js");
+    const socket = {
+      emit: vi.fn((event, payload, cb) => {
+        // Primeira tentativa: ack perdido. Segunda: sucesso (idempotente).
+        if (socket.emit.mock.calls.length === 2) cb({ ok: true, data: { applied: true } });
+      }),
+    };
+
+    const promise = emitCommand(socket, "requestStop", { roundId: 9 }, { timeout: 1000, retryDelay: 100 });
+    await vi.advanceTimersByTimeAsync(1000); // 1a tentativa estoura
+    expect(socket.emit).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(200); // sleep(retryDelay) -> 2a tentativa
+
+    const result = await promise;
+    expect(result).toEqual({ ok: true, data: { applied: true } });
+    expect(socket.emit).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] = socket.emit.mock.calls;
+    expect(secondCall[1]).toEqual(firstCall[1]); // mesmo payload
+    expect(secondCall[1].operationId).toBe(firstCall[1].operationId); // mesmo id
+  });
+
+  it("does NOT retry when the server rejects for a reason other than TIMEOUT", async () => {
+    const { emitCommand } = await import("../../src/socket/socket.js");
+    const socket = {
+      emit: vi.fn((event, payload, cb) =>
+        cb({ ok: false, error: { code: "NOT_READY", message: "Rodada nao iniciada" } }),
+      ),
+    };
+
+    const result = await emitCommand(socket, "submitAnswer", { categoryId: 1 }, { timeout: 1000 });
+
+    expect(result).toMatchObject({ ok: false, error: { code: "NOT_READY" } });
+    expect(socket.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a distinct operationId for distinct commands", async () => {
+    const { emitCommand } = await import("../../src/socket/socket.js");
+    const socket = { emit: vi.fn((event, payload, cb) => cb({ ok: true, data: {} })) };
+
+    await emitCommand(socket, "ready", {});
+    await emitCommand(socket, "ready", {});
+
+    const [firstCall, secondCall] = socket.emit.mock.calls;
+    expect(firstCall[1].operationId).not.toBe(secondCall[1].operationId);
+  });
+});
+
+describe("createOperationId", () => {
+  it("returns a distinct identifier on every call", async () => {
+    const { createOperationId } = await import("../../src/socket/socket.js");
+    expect(createOperationId()).not.toBe(createOperationId());
+  });
+});
