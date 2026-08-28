@@ -182,14 +182,17 @@ export function renderPage({ player = PLAYER } = {}) {
   );
 }
 
+/** Últimos handlers registrados pelo `useRoomSocket` mockado. */
 export function getLastHandlers() {
   return lastHandlers;
 }
 
+/** Último callback de saída registrado pelo mock de fullscreen. */
 export function getLastOnExit() {
   return lastOnExit;
 }
 
+/** Restaura os mocks ao estado inicial antes de cada teste. */
 export function resetSetup() {
   lastHandlers = null;
   lastOnExit = null;
@@ -201,6 +204,7 @@ export function resetSetup() {
   fullscreenMock.supported = true;
 }
 
+/** Limpa o estado persistido deixado pelos testes. */
 export function teardown() {
   window.sessionStorage.clear();
   vi.clearAllMocks();

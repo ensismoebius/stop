@@ -310,10 +310,12 @@ export async function loginSession({ token = "tok-1", teacher = { id: 1, name: "
   api.me.mockResolvedValue(teacher);
 }
 
+/** Últimos handlers registrados pelo `useRoomSocket` mockado. */
 export function getLastHandlers() {
   return lastHandlers;
 }
 
+/** Restaura os mocks ao estado inicial antes de cada teste. */
 export function resetSetup() {
   lastHandlers = null;
   seed = { connected: false, state: null };
@@ -330,6 +332,7 @@ export function resetSetup() {
   api.gameHistory.mockResolvedValue({ rounds: [] });
 }
 
+/** Limpa o estado persistido e reseta os mocks deixados pelos testes. */
 export function teardown() {
   window.localStorage.clear();
   // resetAllMocks (not clearAllMocks): também descarta qualquer
