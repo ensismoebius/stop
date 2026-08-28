@@ -12,6 +12,7 @@ import Countdown from "../components/public/Countdown.jsx";
 import PlayerCount from "../components/public/PlayerCount.jsx";
 import GameStatus from "../components/public/GameStatus.jsx";
 import Ranking from "../components/public/Ranking.jsx";
+import PublicBackdrop from "../components/public/PublicBackdrop.jsx";
 import Field from "../components/common/Field.jsx";
 import api from "../services/api.js";
 import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
@@ -199,6 +200,28 @@ function useScreenState(code) {
   useEffect(() => {
     if (view?.serverTime) sync(view.serverTime);
   }, [view?.serverTime, sync]);
+
+  // Volume/mudo da TV comandados remotamente pelo professor: cada broadcast
+  // que muda os ajustes da sala é aplicado na preferência de áudio local.
+  // O ref guarda o último valor aplicado — `setVolume`/`toggle` criam objeto
+  // novo a cada troca de preferência, então sem o guard o efeito (que
+  // depende de `audio`, re-criado a cada render) entraria em loop.
+  const appliedRemote = useRef({ volume: undefined, muted: undefined });
+  const remoteVolume = view?.settings?.volume;
+  const remoteMuted = view?.settings?.muted;
+  useEffect(() => {
+    if (typeof remoteVolume === "number" && appliedRemote.current.volume !== remoteVolume) {
+      appliedRemote.current.volume = remoteVolume;
+      audio.setVolume(remoteVolume);
+    }
+  }, [remoteVolume, audio]);
+
+  useEffect(() => {
+    if (typeof remoteMuted === "boolean" && appliedRemote.current.muted !== remoteMuted) {
+      appliedRemote.current.muted = remoteMuted;
+      if (audio.enabled !== !remoteMuted) audio.toggle();
+    }
+  }, [remoteMuted, audio]);
 
   const round = view?.round ?? null;
   // O QR Code grande e o motivo da tela existir enquanto o professor ainda
@@ -411,11 +434,20 @@ export function PublicScreenPage() {
             : undefined
         }
       >
+        {/* Fundo animado: bolhas de cor e particulas derivando por tras de
+            tudo — no podio o céu calculado (que muda com a hora do dia)
+            continua acima dele, e as estrelas aparecem a noite. */}
+        <PublicBackdrop variant={finished ? "podium" : "default"} />
         {/* Pódio olímpico só no encerramento da partida; entre rodadas,
             o ranking normal. O céu (calculado, não é imagem) só entra
             nesse caso — é o pódio que pediu "background que muda com a
             hora do dia", não a lista de sempre. */}
-        <Ranking entries={view?.ranking ?? []} audio={audio} finished={finished} />
+        <Ranking
+          entries={view?.ranking ?? []}
+          audio={audio}
+          finished={finished}
+          hidePoints={Boolean(view?.settings?.hidePoints)}
+        />
         <EmojiBursts items={emojiBursts.items} />
       </div>
     );
@@ -423,6 +455,7 @@ export function PublicScreenPage() {
 
   return (
     <div className="screen">
+      <PublicBackdrop />
       <GameTitle name={view?.game?.name ?? "Partida"} roomCode={code} />
 
       <ScreenMain

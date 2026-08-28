@@ -104,7 +104,7 @@ Missing the PLAYING push + half-open socket = stuck for the whole round.
 ### 3. Detect dead peers sooner so rejoin self-heals
 
 - [x] Shorten `pingInterval`/`pingTimeout` (e.g. 10 s/15 s) in
-  `backend/src/sockets/index.js`. *Implemented.*
+  `backend/src/sockets/index.js`. *Implemented: `pingInterval 5s / pingTimeout 10s`.*
 - [x] Client-side "no event received in X seconds while `connected` -> force
   reconnect" timer, so half-open sockets rejoin and re-`joinRoom` sooner.
   *Implemented: 3 s staleness watchdog in `StudentGamePage.jsx` forces

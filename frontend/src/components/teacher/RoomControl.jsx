@@ -133,7 +133,15 @@ export function RoomControl({
   onSelectGame,
   onCreateRoom,
   busy,
+  settings,
+  onToggleHidePoints,
+  onVolumeChange,
+  onToggleMuted,
 }) {
+  const hidePoints = Boolean(settings?.hidePoints);
+  const volume = typeof settings?.volume === "number" ? settings.volume : 0.65;
+  const muted = Boolean(settings?.muted);
+
   return (
     <section className="card stack">
       <h2>Sala</h2>
@@ -162,6 +170,46 @@ export function RoomControl({
             // em que ela foi fechada sozinha, pelo botao de encerrar sala.
             closed={game.status === "FINISHED" || room?.status === "CLOSED"}
           />
+
+          {/* Ajustes AO VIVO da tela publica, aplicados por broadcast: ocultar
+              pontos no ranking e controles de volume/mudo do som da TV. Valem
+              já para a próxima projeção que a tela publica receber. */}
+          {room ? (
+            <div className="stack">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={hidePoints}
+                  onChange={(event) => onToggleHidePoints?.(event.target.checked)}
+                />
+                <span>Ocultar pontos na tela pública (ranking)</span>
+              </label>
+
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={muted}
+                  onChange={(event) => onToggleMuted?.(event.target.checked)}
+                />
+                <span>Mudo na tela pública</span>
+              </label>
+
+              <div className="spread">
+                <span className="small">Volume da tela pública</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={volume}
+                  disabled={muted}
+                  aria-label="Volume da tela pública"
+                  onChange={(event) => onVolumeChange?.(Number(event.target.value))}
+                />
+                <span className="small tabular">{Math.round(volume * 100)}%</span>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <GameSelector classes={classes} games={games} onCreateGame={onCreateGame} onSelectGame={onSelectGame} busy={busy} />

@@ -198,4 +198,68 @@ describe("RoomControl", () => {
     );
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
+
+  it("offers a hide-points toggle once a room exists and reflects the current setting", async () => {
+    const user = userEvent.setup();
+    const onToggleHidePoints = vi.fn();
+
+    const { rerender } = render(
+      <RoomControl
+        classes={classes}
+        games={[]}
+        game={{ id: 1, name: "Jogo A", class: { name: "9A" } }}
+        room={{ code: "STOP-77" }}
+        qrCode={null}
+        onCreateGame={vi.fn()}
+        onSelectGame={vi.fn()}
+        onCreateRoom={vi.fn()}
+        busy={false}
+        settings={{ hidePoints: false }}
+        onToggleHidePoints={onToggleHidePoints}
+      />,
+    );
+
+    const toggle = screen.getByRole("checkbox", { name: /Ocultar pontos/ });
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+    expect(onToggleHidePoints).toHaveBeenCalledWith(true);
+
+    // Quando o estado do servidor chega, o checkbox reflete.
+    rerender(
+      <RoomControl
+        classes={classes}
+        games={[]}
+        game={{ id: 1, name: "Jogo A", class: { name: "9A" } }}
+        room={{ code: "STOP-77" }}
+        qrCode={null}
+        onCreateGame={vi.fn()}
+        onSelectGame={vi.fn()}
+        onCreateRoom={vi.fn()}
+        busy={false}
+        settings={{ hidePoints: true }}
+        onToggleHidePoints={onToggleHidePoints}
+      />,
+    );
+    expect(screen.getByRole("checkbox", { name: /Ocultar pontos/ })).toBeChecked();
+  });
+
+  it("does not offer the hide-points toggle before a room exists", () => {
+    render(
+      <RoomControl
+        classes={classes}
+        games={[]}
+        game={{ id: 1, name: "Jogo A", class: { name: "9A" } }}
+        room={null}
+        qrCode={null}
+        onCreateGame={vi.fn()}
+        onSelectGame={vi.fn()}
+        onCreateRoom={vi.fn()}
+        busy={false}
+        settings={{ hidePoints: false }}
+        onToggleHidePoints={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("checkbox", { name: /Ocultar pontos/ })).not.toBeInTheDocument();
+  });
 });

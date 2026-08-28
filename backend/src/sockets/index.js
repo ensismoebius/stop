@@ -14,10 +14,12 @@ export function createSocketServer(httpServer) {
     },
     // Heartbeat curto (fixme.md #3): router/AP baratos de sala de aula
     // "engolem" conexoes sem avisar (half-open); o servidor so derruba o
-    // par defunto ao detectar o ping perdido. 20s+25s era tempo demais —
-    // ficava um aluno "conectado" por quase um minuto sem receber nada.
-    pingInterval: 10_000,
-    pingTimeout: 15_000,
+    // par defunto ao detectar o ping perdido. Era 20s+25s — um aluno ficava
+    // "conectado" por quase um minuto sem receber nada; 10s/15s foi um meio
+    // termo, ainda lento demais quando a associação Wi-Fi do próprio servidor
+    // cai de forma silenciosa (conectados so voltam quando o sinal volta).
+    pingInterval: 5_000,
+    pingTimeout: 10_000,
     maxHttpBufferSize: 1e5,
   });
 

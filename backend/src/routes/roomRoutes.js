@@ -35,5 +35,6 @@ router.get("/:code/qrcode", roomController.qrCode);
 // Rotas administrativas.
 router.get("/:code/state", requireTeacher, roomController.teacherState);
 router.post("/:code/close", requireTeacher, roomController.close);
+router.patch("/:code/settings", requireTeacher, roomController.updateSettings);
 
 export default router;

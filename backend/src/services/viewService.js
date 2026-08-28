@@ -6,6 +6,7 @@ import answerRepository from "../repositories/answerRepository.js";
 import answerReviewRepository from "../repositories/answerReviewRepository.js";
 import { buildRanking } from "../game/ranking.js";
 import { notFound } from "../lib/errors.js";
+import { getRoomSettings } from "./room/roomSettings.js";
 
 /**
  * Avaliacoes atribuidas a um aluno na correcao colaborativa, no mesmo
@@ -185,6 +186,7 @@ export const viewService = {
     return withVersion(
       {
         room: { id: room.id, code: room.code, status: room.status },
+        settings: getRoomSettings(room.code),
         game: {
           id: room.game.id,
           name: room.game.name,
@@ -216,32 +218,33 @@ export const viewService = {
   },
 
   /** Estado da TV/projetor: sem dados privados dos alunos (spec 4.3). */
-  async publicState(roomCode, ctx = {}) {
-    const { room, round } = ctx.room ? ctx : await viewService.loadRoomContext(roomCode);
-    const participants =
-      ctx.participants !== undefined
-        ? ctx.participants
-        : round
-          ? await roundParticipantRepository.listByRound(round.id)
-          : [];
-    const activePlayers = participants.filter((p) => p.status === "PLAYING").length;
-
-    return withVersion(
-      {
-        room: { code: room.code, status: room.status },
-        game: { name: room.game.name, className: room.game.class?.name ?? null, status: room.game.status },
-        round: roundSummary(round),
-        serverTime: new Date().toISOString(),
-        connectedPlayers: room.sessions.filter((session) => Boolean(session.socketId)).length,
-        totalPlayers: room.sessions.length,
-        activePlayers,
-        submittedPlayers: participants.filter((p) => p.status === "SUBMITTED").length,
-        eliminatedPlayers: participants.filter((p) => p.status === "ELIMINATED").length,
-        ranking: ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId),
-      },
-      ctx.version,
-    );
-  },
+   async publicState(roomCode, ctx = {}) {
+     const { room, round } = ctx.room ? ctx : await viewService.loadRoomContext(roomCode);
+     const participants =
+       ctx.participants !== undefined
+         ? ctx.participants
+         : round
+           ? await roundParticipantRepository.listByRound(round.id)
+           : [];
+     const activePlayers = participants.filter((p) => p.status === "PLAYING").length;
+ 
+     return withVersion(
+       {
+         room: { code: room.code, status: room.status },
+         settings: getRoomSettings(room.code),
+         game: { name: room.game.name, className: room.game.class?.name ?? null, status: room.game.status },
+         round: roundSummary(round),
+         serverTime: new Date().toISOString(),
+         connectedPlayers: room.sessions.filter((session) => Boolean(session.socketId)).length,
+         totalPlayers: room.sessions.length,
+         activePlayers,
+         submittedPlayers: participants.filter((p) => p.status === "SUBMITTED").length,
+         eliminatedPlayers: participants.filter((p) => p.status === "ELIMINATED").length,
+         ranking: ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId),
+       },
+       ctx.version,
+     );
+   },
 
   /**
    * Mesmo formato de `playerState`, mas para todos os jogadores da sala de

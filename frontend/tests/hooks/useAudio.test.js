@@ -77,11 +77,11 @@ afterEach(() => {
 });
 
 describe("useAudio", () => {
-  it("defaults to enabled/volume 0.4 when nothing stored", async () => {
+  it("defaults to enabled/volume 0.65 when nothing stored", async () => {
     const useAudio = await loadHook();
     const { result } = renderHook(() => useAudio());
     expect(result.current.enabled).toBe(true);
-    expect(result.current.volume).toBe(0.4);
+    expect(result.current.volume).toBe(0.65);
   });
 
   it("reads a stored preference", async () => {
@@ -97,7 +97,7 @@ describe("useAudio", () => {
     const useAudio = await loadHook();
     const { result } = renderHook(() => useAudio());
     expect(result.current.enabled).toBe(true);
-    expect(result.current.volume).toBe(0.4);
+    expect(result.current.volume).toBe(0.65);
   });
 
   it("persists preference changes to localStorage on toggle/setVolume", async () => {
@@ -286,13 +286,15 @@ describe("useAudio", () => {
     }
   });
 
-  it("unlock() retoma de verdade a trilha ativa bloqueada pelo autoplay, sem pausá-la de novo (regressão)", async () => {
+  it("unlock() destrava a trilha ativa que o autoplay deixou tocando mudo, sem pausá-la de novo (regressão)", async () => {
     // Cenário real: a tela pública abre com a rodada já em PLAYING, então
-    // playMusic() tenta tocar ANTES de qualquer gesto do usuário — o
-    // primeiro play() é recusado pelo navegador. Só depois vem o clique
-    // que chama unlock(). Antes da correção, o laço de "priming" de
-    // unlock() tocava (com sucesso, já com gesto) e imediatamente
-    // PAUSAVA de volta essa mesma trilha ativa, deixando a música muda.
+    // playMusic() tenta tocar ANTES de qualquer gesto do usuário. O
+    // primeiro play() é recusado por autoplay, e o fallback de `safePlay`
+    // entra em reprodução MUTA (autoplay mudo é permitido). Só depois vem
+    // o clique que chama unlock(). Antes da correção, o laço de "priming"
+    // de unlock() tocava (com sucesso, já com gesto) e imediatamente
+    // PAUSAVA de volta essa mesma trilha ativa, deixando a música muda;
+    // agora unlock() também remove o mute do fallback.
     const elements = {};
     const originalAudio = window.Audio;
     window.Audio = function MockAudio(src) {
@@ -327,10 +329,14 @@ describe("useAudio", () => {
       await act(async () => {
         result.current.playMusic("ROUND");
         await Promise.resolve();
+        await Promise.resolve();
       });
       const activeEl = elements["/audio/round-tension.mp3"];
       expect(activeEl).toBeTruthy();
-      expect(activeEl.paused).toBe(true); // bloqueado pelo autoplay, como no navegador real
+      // O play() com som foi recusado, então o fallback toca mudo: já está
+      // em reprodução, só inaudível até o gesto.
+      expect(activeEl.muted).toBe(true);
+      expect(activeEl.paused).toBe(false);
 
       await act(async () => {
         result.current.unlock();
@@ -339,8 +345,80 @@ describe("useAudio", () => {
       });
 
       // A trilha ativa nunca é pausada pelo priming de unlock() (ela é
-      // pulada de propósito) e termina tocando de verdade.
+      // pulada de propósito), o mute do fallback é removido e ela segue
+      // tocando de verdade.
       expect(activeEl.pause).not.toHaveBeenCalled();
+      expect(activeEl.muted).toBe(false);
+      expect(activeEl.paused).toBe(false);
+    } finally {
+      window.Audio = originalAudio;
+      randomSpy.mockRestore();
+    }
+  });
+
+  it("refaz o fade-in de uma trilha re-sorteada AUDÍVEL, mesmo se o fallback mudo a deixou mutada (regressão)", async () => {
+    // Cenário real: uma trilha caiu no fallback mudo do autoplay (ficou
+    // `muted=true`), a fase terminou (fade-out + pause) e depois a MESMA
+    // trilha é sorteada de novo numa rodada futura. Antes da correção o
+    // elemento reutilizado ressurgia em silêncio, porque `el.muted`
+    // continuava `true`; agora cada fade-in reseta o mute.
+    const elements = {};
+    const originalAudio = window.Audio;
+    window.Audio = function MockAudio(src) {
+      let playAttempts = 0;
+      const el = {
+        src,
+        muted: false,
+        loop: false,
+        preload: "",
+        volume: 0,
+        currentTime: 0,
+        paused: true,
+        play: vi.fn(function play() {
+          playAttempts += 1;
+          if (playAttempts === 1) {
+            return Promise.reject(Object.assign(new Error("blocked"), { name: "NotAllowedError" }));
+          }
+          el.paused = false;
+          return Promise.resolve();
+        }),
+        pause: vi.fn(function pause() {
+          el.paused = true;
+        }),
+      };
+      elements[src] = el;
+      return el;
+    };
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      const useAudio = await loadHook();
+      const { result } = renderHook(() => useAudio());
+
+      // 1ª rodada: autoplay recusado → toca mudo.
+      await act(async () => {
+        result.current.playMusic("ROUND");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const activeEl = elements["/audio/round-tension.mp3"];
+      expect(activeEl.muted).toBe(true);
+      expect(activeEl.paused).toBe(false);
+
+      // Fim da fase: pausa (fade-out). O elemento continua mutado do fallback.
+      act(() => result.current.stopMusic());
+      expect(activeEl.paused).toBe(true);
+
+      // 2ª rodada: o podium entra (trilha nova, no fallback mudo — normal
+      // até o primeiro gesto), depois volta a rodada re-sorteando a MESMA
+      // trilha de round anterior. O fade-in dela deve limpar o mute antigo.
+      act(() => result.current.playMusic("PODIUM"));
+      act(() => result.current.playMusic("ROUND"));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      // A trilha reutilizada volta audível (mute do fallback foi limpo).
+      expect(activeEl.muted).toBe(false);
       expect(activeEl.paused).toBe(false);
     } finally {
       window.Audio = originalAudio;

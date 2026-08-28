@@ -106,6 +106,16 @@ describe("Ranking entre rodadas (lista de sempre)", () => {
     expect(screen.getByTestId("podium-step-1")).toBeInTheDocument();
     expect(screen.queryByText("🏆 RANKING 🏆")).not.toBeInTheDocument();
   });
+
+  it("oculta os pontos na lista quando hidePoints=true", () => {
+    const { container } = render(<Ranking entries={fullField()} audio={null} hidePoints />);
+    for (let i = 0; i < 5; i += 1) act(() => vi.advanceTimersByTime(1100));
+    // As linhas reveladas mostram o placeholder, não o número real.
+    expect(container.querySelectorAll(".ranking-reveal__total--hidden").length).toBeGreaterThan(0);
+    expect(container.querySelector(".ranking-reveal__total--hidden").textContent).toBe("•••");
+    expect(screen.queryByText("30")).not.toBeInTheDocument();
+    expect(screen.queryByText("20")).not.toBeInTheDocument();
+  });
 });
 
 describe("Ranking (cerimônia de pódio)", () => {
@@ -173,7 +183,7 @@ describe("Ranking (cerimônia de pódio)", () => {
     expect(within(stepOf(3)).getByText("10")).toBeInTheDocument();
   });
 
-  it("shows the rest of the class only at the very end", () => {
+  it("shows everyone — podium and the rest — at the very end", () => {
     render(<Ranking entries={fullField()} audio={null} finished />);
     toThird();
     toSecond();
@@ -182,10 +192,12 @@ describe("Ranking (cerimônia de pódio)", () => {
 
     toAudience();
     const audience = within(screen.getByTestId("audience"));
+    // Fora do pódio, mas também quem subiu ao degrau — ninguém fica de fora.
     expect(audience.getByText("Davi")).toBeInTheDocument();
     expect(audience.getByText("Elis")).toBeInTheDocument();
-    // Quem subiu ao pódio não se repete no rodapé.
-    expect(audience.queryByText("Ana")).not.toBeInTheDocument();
+    expect(audience.getByText("Ana")).toBeInTheDocument();
+    expect(audience.getByText("Bruno")).toBeInTheDocument();
+    expect(audience.getByText("Carla")).toBeInTheDocument();
   });
 
   it("plays drumroll for the tease and a fanfare for the winner", () => {
@@ -251,7 +263,7 @@ describe("Ranking (cerimônia de pódio)", () => {
     expect(audience.getByText("E")).toBeInTheDocument();
   });
 
-  it("omits the audience strip when nobody finished outside the podium", () => {
+  it("shows the full class in the audience strip even when only the podium placed", () => {
     const entries = [
       entry({ studentId: "s1", name: "Ana", total: 30, position: 1 }),
       entry({ studentId: "s2", name: "Bruno", total: 20, position: 2 }),
@@ -261,7 +273,10 @@ describe("Ranking (cerimônia de pódio)", () => {
     toSecond();
     toFirst();
     toAudience();
-    expect(screen.queryByTestId("audience")).not.toBeInTheDocument();
+    // O rodapé agora traz todo mundo — inclusive os medalhistas.
+    const audience = within(screen.getByTestId("audience"));
+    expect(audience.getByText("Ana")).toBeInTheDocument();
+    expect(audience.getByText("Bruno")).toBeInTheDocument();
   });
 
   it("restarts the ceremony when the ranking actually changes", () => {
@@ -293,5 +308,19 @@ describe("Ranking (cerimônia de pódio)", () => {
     toFirst();
     toAudience();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("oculta as pontuações no pódio quando hidePoints=true", () => {
+    const { container } = render(<Ranking entries={fullField()} audio={null} finished hidePoints />);
+    toThird();
+    toSecond();
+    toFirst();
+
+    // Os degraus revelados mostram o placeholder, não o número.
+    const hiddenTotals = container.querySelectorAll(".podium__total--hidden");
+    expect(hiddenTotals.length).toBeGreaterThan(0);
+    expect(hiddenTotals[0].textContent).toBe("•••");
+    expect(screen.queryByText("30")).not.toBeInTheDocument();
+    expect(screen.queryByText("20")).not.toBeInTheDocument();
   });
 });

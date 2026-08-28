@@ -284,6 +284,7 @@ function buildGameLifecycleActions({
   token,
   guard,
   game,
+  room,
   setGame,
   setRoom,
   loadBasics,
@@ -345,7 +346,17 @@ function buildGameLifecycleActions({
       await loadBasics();
     });
 
-  return { createGame, selectGame, createRoom, finishGame };
+  // Ajuste de apresentação AO VIVO (ex.: ocultar pontos no ranking). O
+  // backend já dispara o broadcast — aqui só refletimos no painel.
+  const updateRoomSettings = (patch) =>
+    room
+      ? guard(async () => {
+          await api.updateRoomSettings(room.code, patch, token);
+          await reloadGame();
+        })
+      : Promise.resolve();
+
+  return { createGame, selectGame, createRoom, finishGame, updateRoomSettings };
 }
 
 /** Ações de fluxo da rodada: criar, sortear letra, iniciar/encerrar/cancelar, fechar correção colaborativa. */
@@ -648,7 +659,7 @@ function QuickActions({ game, round, busy, actions }) {
 }
 
 /** Aba "Controle da partida": ações rápidas, RoundControl, RoomControl, monitor de jogadores e ranking ao vivo. */
-function ControlTab({ catalog, gameState, realtime, busy, actions, setTab }) {
+function ControlTab({ catalog, gameState, realtime, busy, actions, setTab, token, guard, onRoomSettings }) {
   const { game, room, qrCode, usedLetters } = gameState;
   const { round, seconds, view, collabProgress } = realtime;
   const { classes, games, categorySets } = catalog;
@@ -690,6 +701,10 @@ function ControlTab({ catalog, gameState, realtime, busy, actions, setTab }) {
           room={room}
           qrCode={qrCode}
           busy={busy}
+          settings={view?.settings}
+          onToggleHidePoints={(hidePoints) => onRoomSettings({ hidePoints })}
+          onVolumeChange={(volume) => onRoomSettings({ volume })}
+          onToggleMuted={(muted) => onRoomSettings({ muted })}
           onCreateGame={actions.createGame}
           onSelectGame={actions.selectGame}
           onCreateRoom={actions.createRoom}
@@ -939,7 +954,7 @@ export function TeacherDashboardPage() {
       {/* Cada aba renderiza dentro do seu proprio `tabpanel`, ligado de
           volta a aba que o controla (`aria-labelledby`). */}
       <TabPanel tabKey="control" active={tab}>
-        <ControlTab catalog={catalog} gameState={gameState} realtime={realtime} busy={busy} actions={actions} setTab={setTab} />
+        <ControlTab catalog={catalog} gameState={gameState} realtime={realtime} busy={busy} actions={actions} setTab={setTab} token={token} guard={guard} onRoomSettings={actions.updateRoomSettings} />
       </TabPanel>
 
       <TabPanel tabKey="correction" active={tab}>

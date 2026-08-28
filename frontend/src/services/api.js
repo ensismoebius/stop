@@ -140,6 +140,8 @@ export const api = {
     request(`/rooms/${code}/avatar`, { method: "POST", body: { registrationNumber, avatarUrl } }),
   playerState: (code, playerToken) => request(`/rooms/${code}/me`, { playerToken }),
   publicState: (code) => request(`/rooms/${code}/public-state`),
+  updateRoomSettings: (code, settings, t) =>
+    request(`/rooms/${code}/settings`, { method: "PATCH", body: settings, adminToken: t }),
 };
 
 export default api;

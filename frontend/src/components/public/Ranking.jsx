@@ -57,17 +57,23 @@ function useCountUp(target, active) {
   return active ? value : 0;
 }
 
-function PodiumWinner({ entry, revealed }) {
+function PodiumWinner({ entry, revealed, hidePoints }) {
   const total = useCountUp(entry.total, revealed);
   return (
-    <div className="podium__winner">
+    <div className={`podium__winner podium__winner--p${entry.position}`}>
       {entry.avatarUrl ? (
         <Avatar className="podium__avatar" value={entry.avatarUrl} name={entry.name} />
       ) : (
         <span className="podium__avatar podium__avatar--blank" aria-hidden="true" />
       )}
       <span className="podium__name">{entry.name}</span>
-      <span className="podium__total">{total}</span>
+      {hidePoints ? (
+        <span className="podium__total podium__total--hidden" aria-hidden="true">
+          •••
+        </span>
+      ) : (
+        <span className="podium__total">{total}</span>
+      )}
     </div>
   );
 }
@@ -79,7 +85,7 @@ function PodiumWinner({ entry, revealed }) {
  * Empates são reais aqui — dois alunos em 1º sobem no mesmo degrau —, então
  * o degrau recebe uma lista, não uma pessoa.
  */
-function PodiumStep({ place, entries, revealed }) {
+function PodiumStep({ place, entries, revealed, hidePoints }) {
   return (
     <div
       className={`podium__step podium__step--p${place}${revealed ? " podium__step--in" : ""}`}
@@ -88,7 +94,7 @@ function PodiumStep({ place, entries, revealed }) {
       <div className="podium__people">
         {revealed
           ? entries.map((entry) => (
-              <PodiumWinner key={entry.studentId} entry={entry} revealed={revealed} />
+              <PodiumWinner key={entry.studentId} entry={entry} revealed={revealed} hidePoints={hidePoints} />
             ))
           : null}
       </div>
@@ -105,12 +111,35 @@ function PodiumStep({ place, entries, revealed }) {
 const FIREWORKS_BURSTS = 6;
 const FIREWORKS_SPARKS = 18;
 
-/** Fogos do 1º lugar — puro CSS, sem biblioteca nem canvas. */
+/** Um valor aleatório estável por montagem do componente, para os fogos
+ *  não abrirem todos juntos nem re-sortearem a cada re-render do pódio. */
+function useStableRandom() {
+  const ref = useRef(null);
+  if (ref.current === null) {
+    ref.current = {
+      // Cada explosão ganha um atraso e um ritmo próprios, em segundos:
+      // quanto maior o delay, mais "solta" a sequência fica no ar.
+      delay: Array.from({ length: FIREWORKS_BURSTS }, () => +(Math.random() * 1.8).toFixed(2)),
+      duration: Array.from(
+        { length: FIREWORKS_BURSTS },
+        () => +(1.5 + Math.random() * 1.0).toFixed(2),
+      ),
+    };
+  }
+  return ref.current;
+}
+
+/** Fogos do 1º lugar — puro CSS, com tempos de explosão aleatórios. */
 function Fireworks() {
+  const { delay, duration } = useStableRandom();
   return (
     <div className="fireworks" aria-hidden="true">
       {Array.from({ length: FIREWORKS_BURSTS }, (_, burst) => (
-        <span key={burst} className={`fireworks__burst fireworks__burst--${burst + 1}`}>
+        <span
+          key={burst}
+          className={`fireworks__burst fireworks__burst--${burst + 1}`}
+          style={{ "--fx-delay": `${delay[burst]}s`, "--fx-duration": `${duration[burst]}s` }}
+        >
           {Array.from({ length: FIREWORKS_SPARKS }, (__, spark) => (
             <i key={spark} style={{ "--angle": `${(spark * 360) / FIREWORKS_SPARKS}deg` }} />
           ))}
@@ -120,7 +149,10 @@ function Fireworks() {
   );
 }
 
-/** Todo mundo que não subiu ao pódio, no rodapé, ao final da cerimônia. */
+/** Todo mundo que participou, no rodapé ao final da cerimônia: os vencedores
+ *  do pódio sobem ao degrau e ainda aparecem aqui, junto com o resto da turma
+ *  — ninguém fica de fora da "foto" final da partida.
+ */
 function Audience({ entries }) {
   if (entries.length === 0) return null;
   return (
@@ -128,7 +160,11 @@ function Audience({ entries }) {
       <span className="audience__label">Participantes</span>
       <ul className="audience__list">
         {entries.map((entry) => (
-          <li key={entry.studentId} className="audience__item" title={`${entry.position}º ${entry.name}`}>
+          <li
+            key={entry.studentId}
+            className={`audience__item${entry.position <= 3 ? ` audience__item--p${entry.position}` : ""}`}
+            title={`${entry.position}º ${entry.name}`}
+          >
             {entry.avatarUrl ? (
               <Avatar className="audience__avatar" value={entry.avatarUrl} name={entry.name} />
             ) : (
@@ -145,17 +181,22 @@ function Audience({ entries }) {
 }
 
 /** Uma linha da lista: some até ser revelada, depois conta os pontos. */
-function RankingRow({ entry, revealed }) {
+function RankingRow({ entry, revealed, hidePoints }) {
   const value = useCountUp(entry.total, revealed);
   if (!revealed) return null;
 
   const podium = entry.position <= 3 ? ` ranking-reveal__row--p${entry.position}` : "";
   const winner = entry.position === 1 ? " ranking-reveal__row--winner" : "";
+  const decisive = entry.position <= 3 ? " ranking-reveal__row--decisive" : "";
 
   return (
-    <li className={`ranking-reveal__row${podium}${winner}`}>
+    <li className={`ranking-reveal__row${podium}${decisive}${winner}`}>
       <span className="ranking-reveal__position">
-        {MEDAL_BY_POSITION[entry.position] ? `${MEDAL_BY_POSITION[entry.position]} ` : ""}
+        {MEDAL_BY_POSITION[entry.position] ? (
+          <span className="ranking-reveal__medal" aria-hidden="true">
+            {MEDAL_BY_POSITION[entry.position]}
+          </span>
+        ) : null}
         {entry.position}º
       </span>
       <span className="ranking-reveal__name">
@@ -164,7 +205,15 @@ function RankingRow({ entry, revealed }) {
         ) : null}
         {entry.name}
       </span>
-      <span className="ranking-reveal__total">{value}</span>
+      <span className="ranking-reveal__score">
+        {hidePoints ? (
+          <span className="ranking-reveal__total ranking-reveal__total--hidden" aria-hidden="true">
+            •••
+          </span>
+        ) : (
+          <span className="ranking-reveal__total">{value}</span>
+        )}
+      </span>
     </li>
   );
 }
@@ -173,7 +222,7 @@ function RankingRow({ entry, revealed }) {
  * Ranking de rodada: revela do último colocado para o primeiro, uma
  * posição por vez, com os pontos contando até o valor final.
  */
-function RankingList({ entries, audio }) {
+function RankingList({ entries, audio, hidePoints }) {
   const shown = entries.slice(0, 8);
   const [step, setStep] = useState(0);
 
@@ -207,7 +256,7 @@ function RankingList({ entries, audio }) {
       <div className="ranking-reveal__title">🏆 RANKING 🏆</div>
       <ol className="ranking-reveal__list">
         {shown.map((entry, index) => (
-          <RankingRow key={entry.studentId} entry={entry} revealed={index >= revealFrom} />
+          <RankingRow key={entry.studentId} entry={entry} revealed={index >= revealFrom} hidePoints={hidePoints} />
         ))}
       </ol>
     </div>
@@ -219,7 +268,7 @@ function RankingList({ entries, audio }) {
  * suspense, revela o 2º, segura de novo e só então o 1º, com fogos. No
  * fim, todos os outros participantes aparecem no rodapé.
  */
-function PodiumCeremony({ entries, audio }) {
+function PodiumCeremony({ entries, audio, hidePoints = false }) {
   const all = entries ?? [];
   const [step, setStep] = useState(0);
 
@@ -264,7 +313,8 @@ function PodiumCeremony({ entries, audio }) {
   const done = step >= SCRIPT.length - 1;
 
   const byPlace = (place) => all.filter((entry) => entry.position === place);
-  const audience = all.filter((entry) => entry.position > 3);
+  // No rodapé ao final entram todos — inclusive os que subiram ao pódio.
+  const audience = [...all];
 
   return (
     <div className="podium-stage">
@@ -279,9 +329,9 @@ function PodiumCeremony({ entries, audio }) {
 
       {/* Ordem olímpica: 2º, 1º, 3º — o degrau do meio é o mais alto. */}
       <div className="podium">
-        <PodiumStep place={2} entries={byPlace(2)} revealed={revealedPlaces.has(2)} />
-        <PodiumStep place={1} entries={byPlace(1)} revealed={revealedPlaces.has(1)} />
-        <PodiumStep place={3} entries={byPlace(3)} revealed={revealedPlaces.has(3)} />
+        <PodiumStep place={2} entries={byPlace(2)} revealed={revealedPlaces.has(2)} hidePoints={hidePoints} />
+        <PodiumStep place={1} entries={byPlace(1)} revealed={revealedPlaces.has(1)} hidePoints={hidePoints} />
+        <PodiumStep place={3} entries={byPlace(3)} revealed={revealedPlaces.has(3)} hidePoints={hidePoints} />
       </div>
 
       {revealedPlaces.has(1) ? <Fireworks /> : null}
@@ -295,13 +345,13 @@ function PodiumCeremony({ entries, audio }) {
  * cerimônia de pódio fica guardada para o encerramento da partida
  * (`finished`), que é quando ela significa alguma coisa.
  */
-export function Ranking({ entries, audio, finished = false }) {
+export function Ranking({ entries, audio, finished = false, hidePoints = false }) {
   const all = entries ?? [];
   if (all.length === 0) return null;
   return finished ? (
-    <PodiumCeremony entries={all} audio={audio} />
+    <PodiumCeremony entries={all} audio={audio} hidePoints={hidePoints} />
   ) : (
-    <RankingList entries={all} audio={audio} />
+    <RankingList entries={all} audio={audio} hidePoints={hidePoints} />
   );
 }
 

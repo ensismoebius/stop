@@ -156,6 +156,8 @@ describe("PublicScreenPage", () => {
     expect(screen.getByText("STOP-1")).toBeInTheDocument();
     expect(screen.getByTestId("game-title")).toHaveTextContent("Jogo · STOP-1");
     expect(screen.getByTestId("game-status")).toHaveTextContent("none");
+    // O fundo animado está sempre presente, inclusive no lobby/pré-rodada.
+    expect(document.querySelector(".screen__backdrop")).not.toBeNull();
   });
 
   it("treats a CREATED round as still waiting for players", () => {
@@ -349,6 +351,9 @@ describe("PublicScreenPage", () => {
     expect(screen.getByTestId("ranking")).toHaveAttribute("data-finished", "false");
     expect(screen.queryByTestId("game-title")).not.toBeInTheDocument();
     expect(screen.queryByTestId("connection-badge")).not.toBeInTheDocument();
+    // Fundo animado presente (bolhas + particulas), sem a variante do cenário.
+    expect(document.querySelector(".screen__backdrop")).not.toBeNull();
+    expect(document.querySelector(".screen__backdrop--podium")).toBeNull();
   });
 
   it("also shows only the Ranking when the game itself is FINISHED, defaulting entries to an empty list", () => {
@@ -357,6 +362,8 @@ describe("PublicScreenPage", () => {
     expect(screen.getByTestId("ranking")).toHaveTextContent("ranking:0");
     // Partida encerrada: e aqui, e so aqui, que o podio entra.
     expect(screen.getByTestId("ranking")).toHaveAttribute("data-finished", "true");
+    // Na partida encerrada o fundo animado usa a variante do cenário.
+    expect(document.querySelector(".screen__backdrop--podium")).not.toBeNull();
   });
 
   it("toggles audio from the footer, and reflects the connection badge state", async () => {
@@ -367,6 +374,27 @@ describe("PublicScreenPage", () => {
     expect(screen.getByTestId("connection-badge")).toHaveTextContent("offline");
     await user.click(screen.getByRole("button", { name: "🔊" }));
     expect(audioMock.toggle).toHaveBeenCalled();
+  });
+
+  it("aplica o volume da TV comandado remotamente pelo professor", () => {
+    socketReturn = {
+      connected: true,
+      state: { round: { status: "PLAYING" }, settings: { volume: 0.4 } },
+    };
+    renderPage("/screen/STOP-1");
+    expect(audioMock.setVolume).toHaveBeenCalledWith(0.4);
+  });
+
+  it("muda a tela pública quando o professor ativa o mudo", () => {
+    audioMock.enabled = true;
+    socketReturn = {
+      connected: true,
+      state: { round: { status: "PLAYING" }, settings: { muted: true } },
+    };
+    renderPage("/screen/STOP-1");
+    expect(audioMock.toggle).toHaveBeenCalled();
+    expect(audioMock.enabled).toBe(true); // o mock não sofre efeito; só verifica a chamada
+    audioMock.enabled = true;
   });
 
   it("unlocks audio on the very first interaction anywhere on the page, unattended (spec bells-and-whistles)", async () => {

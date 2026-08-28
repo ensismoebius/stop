@@ -21,12 +21,12 @@ const CUES = {
   ],
   /** Fanfare when the letter stops spinning on the TV. */
   LETTER_REVEAL: [
-    { freq: 659, duration: 0.09, gain: 0.16 },
-    { freq: 880, duration: 0.09, gain: 0.16 },
-    { freq: 1047, duration: 0.09, gain: 0.16 },
-    { freq: 1397, duration: 0.32, gain: 0.2 },
+    { freq: 659, duration: 0.09, gain: 0.2 },
+    { freq: 880, duration: 0.09, gain: 0.2 },
+    { freq: 1047, duration: 0.09, gain: 0.2 },
+    { freq: 1397, duration: 0.32, gain: 0.24 },
   ],
-  TICK: [{ freq: 660, duration: 0.06, gain: 0.05 }],
+  TICK: [{ freq: 660, duration: 0.06, gain: 0.08 }],
   FINAL_SECONDS: [{ freq: 440, duration: 0.09 }],
   STOPPED: [
     { freq: 392, duration: 0.14 },
@@ -44,24 +44,24 @@ const CUES = {
   ],
   /** Tensão enquanto a próxima colocação do pódio não aparece. */
   DRUMROLL: [
-    { freq: 165, duration: 0.05, gain: 0.05 },
-    { freq: 165, duration: 0.05, gain: 0.07 },
-    { freq: 196, duration: 0.05, gain: 0.09 },
-    { freq: 196, duration: 0.05, gain: 0.11 },
-    { freq: 233, duration: 0.14, gain: 0.14 },
+    { freq: 165, duration: 0.05, gain: 0.08 },
+    { freq: 165, duration: 0.05, gain: 0.1 },
+    { freq: 196, duration: 0.05, gain: 0.12 },
+    { freq: 196, duration: 0.05, gain: 0.14 },
+    { freq: 233, duration: 0.14, gain: 0.18 },
   ],
   /** 3º e 2º lugares: acorde curto de revelação. */
   PODIUM: [
-    { freq: 523, duration: 0.1, gain: 0.16 },
-    { freq: 784, duration: 0.24, gain: 0.18 },
+    { freq: 523, duration: 0.1, gain: 0.2 },
+    { freq: 784, duration: 0.24, gain: 0.22 },
   ],
   /** 1º lugar: fanfarra inteira, junto com os fogos. */
   FANFARE: [
-    { freq: 523, duration: 0.13, gain: 0.18 },
-    { freq: 659, duration: 0.13, gain: 0.18 },
-    { freq: 784, duration: 0.13, gain: 0.2 },
-    { freq: 1047, duration: 0.16, gain: 0.22 },
-    { freq: 1319, duration: 0.55, gain: 0.24 },
+    { freq: 523, duration: 0.13, gain: 0.22 },
+    { freq: 659, duration: 0.13, gain: 0.22 },
+    { freq: 784, duration: 0.13, gain: 0.24 },
+    { freq: 1047, duration: 0.16, gain: 0.26 },
+    { freq: 1319, duration: 0.55, gain: 0.3 },
   ],
 };
 
@@ -74,10 +74,10 @@ const CUES = {
 function readPreference() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === null) return { enabled: true, volume: 0.4 };
+    if (stored === null) return { enabled: true, volume: 0.65 };
     return JSON.parse(stored);
   } catch {
-    return { enabled: true, volume: 0.4 };
+    return { enabled: true, volume: 0.65 };
   }
 }
 
@@ -119,8 +119,8 @@ const MUSIC_TRACKS = {
     "/audio/podium-celebration-4.mp3", // "Merry Go"
   ],
 };
-/** Música fica mais baixa que os efeitos — é ambiente, não é o destaque. */
-const MUSIC_GAIN = 0.5;
+/** Música fica um pouco mais baixa que os efeitos — é ambiente, não é o destaque. */
+const MUSIC_GAIN = 0.65;
 
 /** Sorteia uma trilha entre as candidatas da fase (chave de `MUSIC_TRACKS`). */
 function pickTrack(key) {
@@ -152,10 +152,27 @@ function getMusicPlayerForSrc(src) {
  * alguns navegadores restringindo autoplay) pode lançar de forma síncrona
  * ou devolver `undefined` em vez de rejeitar — daí o try/catch em volta do
  * encadeamento inteiro, não só um `.catch()` nele.
+ *
+ * Com `retryMuted`, quando o primeiro play() é recusado pelo autoplay
+ * (NotAllowedError), tentamos de novo com `el.muted = true`: autoplay mudo
+ * normalmente é permitido mesmo sem gesto, então a trilha já entra em
+ * reprodução em silêncio na tela pública — no primeiro gesto o `unlock()`
+ * só precisa destravar o som, sem reiniciar nada.
  */
-function safePlay(el) {
+function safePlay(el, { retryMuted = false } = {}) {
   try {
-    el?.play()?.catch(() => {});
+    const attempt = el?.play();
+    if (attempt && typeof attempt.catch === "function") {
+      attempt.catch(() => {
+        if (!retryMuted || el.muted) return;
+        try {
+          el.muted = true;
+          el.play().catch(() => {});
+        } catch {
+          /* continua silencioso até o unlock() */
+        }
+      });
+    }
   } catch {
     /* autoplay bloqueado ou play() não implementado: silencioso de propósito */
   }
@@ -173,7 +190,16 @@ const fadeFrames = {};
 function fadeMusic(el, src, to, ms) {
   if (!el) return;
   if (fadeFrames[src]) cancelAnimationFrame(fadeFrames[src]);
-  if (to > 0 && el.paused) safePlay(el);
+  if (to > 0) {
+    // Cada fade-in começa AUDÍVEL. Um fallback mudo anterior (o
+    // `retryMuted` de `safePlay`, que toca a trilha em silêncio até o
+    // primeiro gesto) deixa `el.muted = true` pendurado no elemento. Se a
+    // MESMA trilha for sorteada de novo numa fase posterior (é um cache
+    // por arquivo), sem esse reset ela ressurge muda — um dos motivos de a
+    // música "às vezes não tocar".
+    el.muted = false;
+    if (el.paused) safePlay(el, { retryMuted: true });
+  }
   const from = el.volume;
   const start = performance.now();
   const step = (now) => {
@@ -246,11 +272,15 @@ export function useAudio() {
       }
     }
     // A trilha ativa pode ter ficado pausada esperando permissão do
-    // navegador (o play() de playMusic() foi recusado antes deste gesto) —
-    // agora que temos um gesto de verdade, retoma a reprodução de fato.
+    // navegador (o play() de playMusic() foi recusado antes deste gesto),
+    // ou tocando em silêncio via o fallback mudo de `safePlay` — agora que
+    // temos um gesto de verdade, destrava o som e, se preciso, retoma a
+    // reprodução de fato.
     if (activeTrack.src) {
       const el = getMusicPlayerForSrc(activeTrack.src);
-      if (el?.paused) safePlay(el);
+      if (!el) return;
+      if (el.muted) el.muted = false;
+      if (el.paused) safePlay(el);
     }
   }, [ensureContext]);
 
@@ -269,7 +299,7 @@ export function useAudio() {
         const gain = context.createGain();
         oscillator.type = "triangle";
         oscillator.frequency.setValueAtTime(step.freq, start);
-        const peak = (step.gain ?? 0.12) * preference.volume;
+        const peak = (step.gain ?? 0.18) * preference.volume;
         gain.gain.setValueAtTime(0.0001, start);
         gain.gain.exponentialRampToValueAtTime(peak, start + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.0001, start + step.duration);

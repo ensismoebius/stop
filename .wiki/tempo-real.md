@@ -157,7 +157,7 @@ O `roomState` é fire-and-forget, então o cliente não espera passivamente por 
 - **Watchdog periódico**: em fases sem digitação (`""`/CREATED/READY/STARTING), se
   nenhum estado chega em 3s, o cliente pede de novo; se até o pedido falhar, derruba
   e reconecta de forma limpa (o `joinRoom` do reconnect reentrega o estado).
-- **Heartbeat** (`sockets/index.js`): `pingInterval 10s / pingTimeout 15s`
+- **Heartbeat** (`sockets/index.js`): `pingInterval 5s / pingTimeout 10s`
   (era 20s/25s) para derrubar mais cedo conexões meio-abertas que routers baratos
   "engolem".
 
