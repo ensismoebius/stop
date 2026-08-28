@@ -1222,13 +1222,15 @@
   inset: 0;
 }
 
-/* Nuvens rechonchudas, estilo Super Mario: duas elipses empilhadas. */
+/* Nuvens rechonchudas, estilo Super Mario: duas elipses empilhadas.
+   Um leve desfoque suaviza as bordas das "algodões" no plano profundo. */
 .screen__backdrop-nube {
   position: absolute;
   width: 9rem;
   height: 3.4rem;
   background: rgba(255, 255, 255, 0.22);
   border-radius: 999px;
+  filter: blur(1.6px);
   transform: scale(var(--fx-scale));
   animation: billboard-drift 48s linear infinite;
   animation-delay: var(--fx-delay);
