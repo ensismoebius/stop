@@ -57,7 +57,7 @@ function useCountUp(target, active) {
   return active ? value : 0;
 }
 
-function PodiumWinner({ entry, revealed, hidePoints }) {
+function PodiumWinner({ entry, revealed }) {
   const total = useCountUp(entry.total, revealed);
   return (
     <div className={`podium__winner podium__winner--p${entry.position}`}>
@@ -67,13 +67,9 @@ function PodiumWinner({ entry, revealed, hidePoints }) {
         <span className="podium__avatar podium__avatar--blank" aria-hidden="true" />
       )}
       <span className="podium__name">{entry.name}</span>
-      {hidePoints ? (
-        <span className="podium__total podium__total--hidden" aria-hidden="true">
-          •••
-        </span>
-      ) : (
-        <span className="podium__total">{total}</span>
-      )}
+      {/* O pódio SEMPRE mostra os pontos — o ocultar-pontos vale para a lista
+          de classificação entre rodadas, nunca para a cerimônia. */}
+      <span className="podium__total">{total}</span>
     </div>
   );
 }
@@ -85,7 +81,7 @@ function PodiumWinner({ entry, revealed, hidePoints }) {
  * Empates são reais aqui — dois alunos em 1º sobem no mesmo degrau —, então
  * o degrau recebe uma lista, não uma pessoa.
  */
-function PodiumStep({ place, entries, revealed, hidePoints }) {
+function PodiumStep({ place, entries, revealed }) {
   return (
     <div
       className={`podium__step podium__step--p${place}${revealed ? " podium__step--in" : ""}`}
@@ -94,7 +90,7 @@ function PodiumStep({ place, entries, revealed, hidePoints }) {
       <div className="podium__people">
         {revealed
           ? entries.map((entry) => (
-              <PodiumWinner key={entry.studentId} entry={entry} revealed={revealed} hidePoints={hidePoints} />
+              <PodiumWinner key={entry.studentId} entry={entry} revealed={revealed} />
             ))
           : null}
       </div>
@@ -268,7 +264,7 @@ function RankingList({ entries, audio, hidePoints }) {
  * suspense, revela o 2º, segura de novo e só então o 1º, com fogos. No
  * fim, todos os outros participantes aparecem no rodapé.
  */
-function PodiumCeremony({ entries, audio, hidePoints = false }) {
+function PodiumCeremony({ entries, audio }) {
   const all = entries ?? [];
   const [step, setStep] = useState(0);
 
@@ -329,9 +325,9 @@ function PodiumCeremony({ entries, audio, hidePoints = false }) {
 
       {/* Ordem olímpica: 2º, 1º, 3º — o degrau do meio é o mais alto. */}
       <div className="podium">
-        <PodiumStep place={2} entries={byPlace(2)} revealed={revealedPlaces.has(2)} hidePoints={hidePoints} />
-        <PodiumStep place={1} entries={byPlace(1)} revealed={revealedPlaces.has(1)} hidePoints={hidePoints} />
-        <PodiumStep place={3} entries={byPlace(3)} revealed={revealedPlaces.has(3)} hidePoints={hidePoints} />
+        <PodiumStep place={2} entries={byPlace(2)} revealed={revealedPlaces.has(2)} />
+        <PodiumStep place={1} entries={byPlace(1)} revealed={revealedPlaces.has(1)} />
+        <PodiumStep place={3} entries={byPlace(3)} revealed={revealedPlaces.has(3)} />
       </div>
 
       {revealedPlaces.has(1) ? <Fireworks /> : null}
@@ -349,7 +345,7 @@ export function Ranking({ entries, audio, finished = false, hidePoints = false }
   const all = entries ?? [];
   if (all.length === 0) return null;
   return finished ? (
-    <PodiumCeremony entries={all} audio={audio} hidePoints={hidePoints} />
+    <PodiumCeremony entries={all} audio={audio} />
   ) : (
     <RankingList entries={all} audio={audio} hidePoints={hidePoints} />
   );

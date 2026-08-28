@@ -310,17 +310,20 @@ describe("Ranking (cerimônia de pódio)", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("oculta as pontuações no pódio quando hidePoints=true", () => {
+  it("sempre mostra os pontos no pódio, mesmo com hidePoints=true", () => {
     const { container } = render(<Ranking entries={fullField()} audio={null} finished hidePoints />);
     toThird();
     toSecond();
     toFirst();
 
-    // Os degraus revelados mostram o placeholder, não o número.
-    const hiddenTotals = container.querySelectorAll(".podium__total--hidden");
-    expect(hiddenTotals.length).toBeGreaterThan(0);
-    expect(hiddenTotals[0].textContent).toBe("•••");
-    expect(screen.queryByText("30")).not.toBeInTheDocument();
-    expect(screen.queryByText("20")).not.toBeInTheDocument();
+    // O ocultar-pontos vale para a lista de classificação entre rodadas,
+    // nunca para a cerimônia do pódio — aqui os totais sempre aparecem.
+    expect(container.querySelector(".podium__total--hidden")).toBeNull();
+    const totals = container.querySelectorAll(".podium__total");
+    expect(totals.length).toBeGreaterThan(0);
+    const texts = Array.from(totals).map((el) => el.textContent);
+    expect(texts).toContain("30");
+    expect(texts).toContain("20");
+    expect(texts).toContain("10");
   });
 });

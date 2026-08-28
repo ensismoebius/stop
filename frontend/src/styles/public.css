@@ -831,8 +831,8 @@
   box-shadow: 0 0 1.2rem rgba(255, 180, 0, 0.45);
 }
 
-/* Pontos ocultos por ajuste do professor: o número vira um segredo visual. */
-.podium__total--hidden,
+/* Pontos ocultos por ajuste do professor: o número vira um segredo visual
+   (vale só para a lista de classificação; o pódio sempre mostra os totais). */
 .ranking-reveal__total--hidden {
   color: var(--text-muted);
   box-shadow: none;
