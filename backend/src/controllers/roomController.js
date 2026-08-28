@@ -1,16 +1,70 @@
+import nodeOs from "node:os";
 import asyncHandler from "../lib/asyncHandler.js";
 import roomService from "../services/roomService.js";
 import viewService from "../services/viewService.js";
 import roomRepository from "../repositories/roomRepository.js";
+import env from "../config/env.js";
+import logger from "../lib/logger.js";
 import { syncStats } from "../sockets/syncRegistry.js";
 import * as realtime from "../sockets/realtime.js";
 import { applyRoomSettings } from "../services/room/roomSettings.js";
 
+/** Enderecos IPv4 atuais da maquina em interfaces nao-internas, excluindo bridges do Docker/veth. */
+function lanAddresses() {
+  return Object.values(nodeOs.networkInterfaces())
+    .flat()
+    .filter(
+      (iface) =>
+        iface &&
+        iface.family === "IPv4" &&
+        !iface.internal &&
+        !iface.address.startsWith("169.254.") &&
+        !/^(br-|veth|docker|virbr)/.test(iface.name),
+    )
+    .map((iface) => iface.address);
+}
+
+/**
+ * Resolve o base URL (proto://host[:port]) do link/QR de entrada da sala.
+ * `null` cai no `PUBLIC_BASE_URL` (joinUrl).
+ *
+ * Um Host de loopback (painel aberto como "localhost") ou um IP antigo da
+ * maquina (ela trocou de rede e o Host ainda carrega o endereco anterior —
+ * o proprio incidente do 192.168.10.121) produz uma URL que o celular da
+ * sala nunca alcanca; nesses casos substitui pelo endereco LAN atual.
+ */
+export function resolveBaseUrl(
+  { protocol, forwardedHost, host },
+  { lanAddresses: lans = [], publicBaseUrl = "", port = 3000 } = {},
+) {
+  if (publicBaseUrl) return null;
+  if (forwardedHost) return `${protocol}://${forwardedHost}`;
+
+  const hostname = host ? String(host).replace(/:\d+$/, "") : "";
+  const loopback =
+    !hostname || /^localhost$/i.test(hostname) || hostname === "127.0.0.1" || /^\[?::1\]?$/.test(hostname);
+  const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(":");
+  const stale = isIp && lans.length > 0 && !lans.includes(hostname);
+
+  if (loopback || stale) {
+    if (lans[0]) {
+      logger.warn(
+        `Host "${host ?? "(vazio)"}" inalcancavel pelos celulares; usando a rede local http://${lans[0]}:${port} no link de entrada`,
+      );
+      return `${protocol}://${lans[0]}:${port}`;
+    }
+    return null;
+  }
+  return host ? `${protocol}://${host}` : null;
+}
+
 /** Reconstrói o base URL (proto + host) a partir do proxy reverso, se houver. */
 function baseUrlFromRequest(req) {
-  const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
-  const host = req.headers["x-forwarded-host"] ?? req.get("host");
-  return `${proto}://${host}`;
+  const protocol = req.headers["x-forwarded-proto"] ?? req.protocol ?? "http";
+  return resolveBaseUrl(
+    { protocol, forwardedHost: req.headers["x-forwarded-host"], host: req.get("host") },
+    { lanAddresses: lanAddresses(), publicBaseUrl: env.publicBaseUrl, port: env.port },
+  );
 }
 
 export const roomController = {
