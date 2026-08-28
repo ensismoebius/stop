@@ -67,17 +67,31 @@ async function build(roomCode, { bump }) {
   };
 }
 
+/** Retenta uma vez difusões interrompidas por falha transitória (ex.: P2034
+ *  de concorrência no bump do MySQL): uma difusão perdida é a causa clássica
+ *  de "o painel ficou preso numa fase antiga até recarregar". Como a versão
+ *  é monotônica, o retry pode incrementar de novo sem comprometer clientes. */
+const PUBLISH_RETRIES = 1;
+
 /** Difunde o estado autoritativo corrente (increments versão). Nunca lança. */
 export async function publish(roomCode) {
-  try {
-    const snapshot = await build(roomCode, { bump: true });
-    snapshotsByRoom.set(roomCode, snapshot);
-    enqueueRoomState(roomCode, snapshot);
-    return snapshot;
-  } catch (error) {
-    logger.warn(`Falha ao difundir estado da sala ${roomCode}`, error?.message ?? error);
-    return null;
+  for (let attempt = 0; attempt <= PUBLISH_RETRIES; attempt += 1) {
+    try {
+      const snapshot = await build(roomCode, { bump: true });
+      snapshotsByRoom.set(roomCode, snapshot);
+      enqueueRoomState(roomCode, snapshot);
+      return snapshot;
+    } catch (error) {
+      const lastAttempt = attempt === PUBLISH_RETRIES;
+      if (!lastAttempt) {
+        logger.warn(`Falha transitória ao difundir estado da sala ${roomCode} — tentando de novo`, error?.message ?? error);
+        continue;
+      }
+      logger.warn(`Falha ao difundir estado da sala ${roomCode}`, error?.message ?? error);
+      return null;
+    }
   }
+  return null;
 }
 
 /** Estado autoritativo corrente SEM incrementar versão (requestState/heartbeat). */

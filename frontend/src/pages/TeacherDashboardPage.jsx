@@ -263,7 +263,7 @@ function useDashboardRealtime({ token, room, sync, now, emojiBursts, reloadGame,
     [loadGrid, reloadGame, sync, emojiBursts, setTab, setError, setLiveSettings],
   );
 
-  const { connected, state } = useDashboardSocket({ token, room, handlers });
+  const { connected, state, refresh } = useDashboardSocket({ token, room, handlers });
   const { view, round, seconds } = useDashboardView({ token, room, state, sync, now });
 
   // Toda projeção de estado completa (publish de troca de rodada, REST de
@@ -275,13 +275,15 @@ function useDashboardRealtime({ token, room, sync, now, emojiBursts, reloadGame,
     }
   }, [view?.settings]);
 
-  return { connected, view, round, seconds, collabProgress, setCollabProgress, liveSettings, setLiveSettings };
+  return { connected, view, round, seconds, collabProgress, setCollabProgress, liveSettings, setLiveSettings, refresh };
 }
 
-/** Estatísticas/histórico da partida atual — recarregados na aba "Configuração" ou assim que uma rodada é pontuada. */
-function useDashboardStats({ token, game, tab, roundStatus, setError }) {
+/** Estatísticas/histórico da partida atual — recarregados na aba "Configuração", ao pontuar, ou quando entra uma rodada nova. */
+function useDashboardStats({ token, game, tab, round, setError }) {
   const [statistics, setStatistics] = useState(null);
   const [history, setHistory] = useState(null);
+  const roundStatus = round?.status;
+  const roundId = round?.id;
 
   useEffect(() => {
     if (!token || !game) return;
@@ -292,7 +294,7 @@ function useDashboardStats({ token, game, tab, roundStatus, setError }) {
         setHistory(hist);
       })
       .catch((statsError) => setError(statsError.message));
-  }, [token, game?.id, roundStatus, tab, setError]);
+  }, [token, game?.id, roundStatus, roundId, tab, setError]);
 
   return { statistics, setStatistics, history, setHistory };
 }
@@ -378,13 +380,21 @@ function buildGameLifecycleActions({
 }
 
 /** Ações de fluxo da rodada: criar, sortear letra, iniciar/encerrar/cancelar, fechar correção colaborativa. */
-function buildRoundFlowActions({ token, guard, game, round, usedLetters, setUsedLetters, setGrid, setGroupedGrid, setCollabProgress, setTab, reloadGame }) {
+function buildRoundFlowActions({ token, guard, game, round, usedLetters, setUsedLetters, setGrid, setGroupedGrid, setCollabProgress, setTab, reloadGame, refresh }) {
   const createRound = (payload) =>
     guard(async () => {
       await api.createRound(token, { ...payload, gameId: game.id });
       setGrid(null);
       setGroupedGrid(null);
       await reloadGame();
+      // A rodada é criada no banco na hora, mas o broadcast de `roomState`
+      // que carrega o round CREATED para este painel pode se perder quando a
+      // criação acontece logo após abrir a sala (socket ainda se juntando ao
+      // canal do professor). Puxar o estado autoritativo aqui garante que o
+      // painel saia da fase "tema" e mostre o "Sortear letra" mesmo se a
+      // difusão não chegou. É um no-op seguro se o socket ainda não estiver
+      // pronto (o join, quando completar, entrega o round).
+      refresh?.();
     });
 
   const drawLetter = () =>
@@ -953,7 +963,7 @@ export function TeacherDashboardPage() {
   const gameState = useDashboardGame(token);
   const grids = useDashboardGrids(token);
   const realtime = useDashboardRealtime({ token, sync, now, emojiBursts, setError, setTab, ...gameState, ...grids });
-  const stats = useDashboardStats({ token, game: gameState.game, tab, roundStatus: realtime.round?.status, setError });
+  const stats = useDashboardStats({ token, game: gameState.game, tab, round: realtime.round, setError });
   useGridAutoload(realtime.round, grids.grid, grids.loadGrid);
 
   const actions = buildDashboardActions({ token, guard, setTab, loadBasics: catalog.loadBasics, ...gameState, ...grids, ...realtime, ...stats });
