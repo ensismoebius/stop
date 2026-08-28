@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePlayer } from "../state/PlayerContext.jsx";
 import { useServerClock } from "../hooks/useServerClock.js";
@@ -32,14 +32,20 @@ export function useStudentConnectionState() {
   const [completedReviewIds, setCompletedReviewIds] = useState(() => new Set());
   const [stopSplash, setStopSplash] = useState(false);
 
+  // Rascunhos de resposta ainda nao confirmados pelo servidor (spec 48):
+  // compartilhado entre `useApplyState` (nao reescreve texto em edicao) e
+  // `useStudentAnswers` (marca no digitar, limpa na confirmacao do push).
+  const dirtyRef = useRef(new Set());
+
   useEffect(() => {
     if (!player?.playerToken) navigate("/", { replace: true });
   }, [player, navigate]);
 
-  const applyState = useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds, setRanking });
+  const applyState = useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds, setRanking, dirtyRef });
   const handlers = useStudentHandlers({
     applyState,
     audio,
+    dirtyRef,
     emojiBursts,
     setAnswers,
     setCurrentId,
@@ -79,7 +85,7 @@ export function useStudentConnectionState() {
 
 /** Ações da tela do aluno — tela cheia, respostas, STOP e correção colaborativa — a metade "o que dá pra fazer com os dados". */
 export function useStudentActionState(base) {
-  const { clear, navigate, audio, connection, phase, answers, setAnswers, currentId, setCurrentId, setFeedback, setCompletedReviewIds } = base;
+  const { clear, navigate, audio, connection, phase, answers, setAnswers, currentId, setCurrentId, setFeedback, setCompletedReviewIds, dirtyRef } = base;
 
   const fullscreenFlow = useStudentFullscreenFlow({
     clear,
@@ -100,6 +106,7 @@ export function useStudentActionState(base) {
     socketRef: connection.socketRef,
     setFeedback,
     playing: phase.playing,
+    dirtyRef,
   });
   const stop = useStudentStop({
     round: phase.round,

@@ -158,23 +158,39 @@ async function handleJoinRoom(client, data) {
 async function handleDisconnect(socket, reason) {
   const context = socket.data.context;
   if (!context || context.role !== "player") return;
+
+  // "Sempre a sessao mais recente vence": quando um socket antigo desconecta
+  // depois de uma conexao nova ja ter assumido a sessao, esta desconexao nao
+  // pode (a) zerar o socketId da sessao nem (b) apagar a entrada de
+  // sincronizacao/avisar "playerLeft" como se o aluno tivesse saido — a
+  // conexao mais nova ainda esta viva e e a dona legitima da sessao.
+  let stillCurrent = true;
   try {
-    await playerSessionRepository.markDisconnected(context.session.id);
+    const result = await playerSessionRepository.markDisconnected(context.session.id, socket.id);
+    // updateMany devolve quantas linhas casaram com `{id, socketId}`: 0
+    // significa que a sessao ja e de outro socket mais novo.
+    stillCurrent = result?.count !== 0;
     await telemetryRepository.record({
       type: "PLAYER_DISCONNECTED",
       roomId: context.room.id,
       playerSessionId: context.session.id,
       payload: { reason },
     });
+  } catch (error) {
+    // Escrita falhou (conflito transiente 1020 apos retries): nao sabemos
+    // se este socket ainda era o dono — segue com a limpeza como failsafe.
+    logger.warn("Falha ao tratar desconexao no banco", error?.message ?? error);
+  }
+
+  if (stillCurrent) {
     dropClientSync(context);
     realtime.toTeachers(context.room.code, "playerLeft", {
       playerSessionId: context.session.id,
       reason,
     });
-    roundService.broadcastStateSoon(context.room.code);
-  } catch (error) {
-    logger.warn("Falha ao tratar desconexao", error?.message ?? error);
   }
+  // Coalescido e barato: recalcula o painel do professor com o estado real.
+  roundService.broadcastStateSoon(context.room.code);
 }
 
 /** Consulta de matricula antes da confirmacao (spec 6). */

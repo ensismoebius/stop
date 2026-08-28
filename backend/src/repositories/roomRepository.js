@@ -1,4 +1,5 @@
 import prisma from "../lib/prisma.js";
+import { retryOnWriteConflict } from "../lib/retry.js";
 
 const sessionInclude = {
   sessions: {
@@ -43,17 +44,21 @@ export const roomRepository = {
    * Dentro de uma transação, o UPDATE com increment tem precedência sobre
    * leituras concorrentes (bloqueio de linha em MySQL) e o SELECT devolve o
    * valor já-incrementado — em difusões concorrentes cada uma vê um número
-   * distinto e monotônico.
+   * distinto e monotônico. Sob rajadas (turma inteira entrando/respondendo
+   * junto, cada difusão bumpa) o MySQL pode responder 1020 na linha da sala;
+   * o retry curto resolve porque a outra transação já comitou o increment.
    */
   bumpStateVersion: (id) =>
-    prisma.$transaction(async (tx) => {
-      const room = await tx.room.update({
-        where: { id },
-        data: { stateVersion: { increment: 1 } },
-        select: { roomEpoch: true, stateVersion: true },
-      });
-      return { roomEpoch: room.roomEpoch, stateVersion: room.stateVersion };
-    }),
+    retryOnWriteConflict(() =>
+      prisma.$transaction(async (tx) => {
+        const room = await tx.room.update({
+          where: { id },
+          data: { stateVersion: { increment: 1 } },
+          select: { roomEpoch: true, stateVersion: true },
+        });
+        return { roomEpoch: room.roomEpoch, stateVersion: room.stateVersion };
+      }),
+    ),
 };
 
 export default roomRepository;

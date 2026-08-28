@@ -163,11 +163,48 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     expect(statePlayer.data.student.name).toBe(scenario.students[0].name);
   });
 
-  it("uma falha ao tratar a desconexão de um jogador é registrada, sem derrubar o servidor", async () => {
+  it("desconexão de um socket antigo não derruba a conexão mais nova (sempre a sessão mais recente vence)", async () => {
+    const token = (await roomService.join(scenario.room.code, scenario.students[0].registrationNumber)).playerToken;
+
+    const teacher = await joinTeacher(url, scenario.room.code, clients);
+    const playerLefts = [];
+    teacher.client.on("playerLeft", (payload) => playerLefts.push(payload));
+
+    const socketAntigo = await joinPlayer(url, scenario.room.code, token, clients);
+    const playerSessionId = socketAntigo.playerSessionId;
+    const socketNovo = await joinPlayer(url, scenario.room.code, token, clients);
+
+    // O socket antigo cai DEPOIS de o novo já ter assumido a sessão: a
+    // desconexão dele nao vale mais do que a conexão corrente.
+    socketAntigo.client.close();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(playerLefts.some((p) => p.playerSessionId === playerSessionId)).toBe(false);
+    const session = await playerSessionRepository.findById(playerSessionId);
+    expect(session.socketId).toBe(socketNovo.client.id);
+
+    // Quando o socket novo (dono legitimo) cai, aí sim avisa o professor e
+    // limpa o socketId.
+    socketNovo.client.close();
+    await vi.waitFor(
+      () => expect(playerLefts.some((p) => p.playerSessionId === playerSessionId)).toBe(true),
+      { timeout: 2000 },
+    );
+    const sessionApos = await playerSessionRepository.findById(playerSessionId);
+    expect(sessionApos.socketId).toBeNull();
+  });
+
+  it("uma falha ao tratar a desconexão de um jogador é registrada, sem derrubar o servidor, e a limpeza em memória ainda roda", async () => {
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
     vi.spyOn(playerSessionRepository, "markDisconnected").mockRejectedValueOnce(
       new Error("falha simulada ao marcar desconexão"),
     );
+
+    const teacher = await joinTeacher(url, scenario.room.code, clients);
+    let playerLeftSeen = false;
+    teacher.client.on("playerLeft", () => {
+      playerLeftSeen = true;
+    });
 
     const player = await joinPlayer(url, scenario.room.code, (await roomService.join(scenario.room.code, scenario.students[0].registrationNumber)).playerToken, clients);
     player.client.close();
@@ -175,15 +212,19 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
     await vi.waitFor(
       () => {
         expect(warnSpy).toHaveBeenCalledWith(
-          "Falha ao tratar desconexao",
+          "Falha ao tratar desconexao no banco",
           "falha simulada ao marcar desconexão",
         );
       },
       { timeout: 2000 },
     );
 
+    // Mesmo com a escrita no banco falhando, o professor recebe o playerLeft e
+    // o estado volta a ser difundido — sem isso o socketId fantasma fica
+    // gravado e a sala fica "Sincronizando X/Y" para sempre.
+    await vi.waitFor(() => expect(playerLeftSeen).toBe(true), { timeout: 2000 });
+
     // O servidor continua respondendo normalmente após a falha tratada.
-    const teacher = await joinTeacher(url, scenario.room.code, clients);
     const state = await emitAck(teacher.client, "requestState", {});
     expect(state.ok).toBe(true);
   });
@@ -198,7 +239,7 @@ describe("eventos de socket ainda não exercitados diretamente", () => {
 
     await vi.waitFor(
       () => {
-        expect(warnSpy).toHaveBeenCalledWith("Falha ao tratar desconexao", "motivo sem .message");
+        expect(warnSpy).toHaveBeenCalledWith("Falha ao tratar desconexao no banco", "motivo sem .message");
       },
       { timeout: 2000 },
     );

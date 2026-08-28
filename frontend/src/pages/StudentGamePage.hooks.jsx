@@ -40,14 +40,29 @@ const TRANSITION_EVENTS = [
 ];
 
 /** Aplica um `roomState` recebido do servidor (via socket ou REST) ao estado local de respostas/eliminação/revisões. */
-export function useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds, setRanking }) {
+export function useApplyState({ sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds, setRanking, dirtyRef }) {
   return useCallback(
     (state) => {
       if (!state) return;
       sync(state.serverTime);
       const next = {};
       for (const answer of state.answers ?? []) next[answer.roundCategoryId] = answer.value;
-      setAnswers(next);
+      setAnswers((current) => {
+        const merged = { ...next };
+        // O que o aluno esta digitando tem prioridade absoluta sobre o
+        // snapshot autoritativo (spec 48): o push segue um debounce de
+        // SYNC_DELAY e um estado intermediario chega mais rapido que a
+        // confirmacao do proprio push — aplicado cru, apagaria caracteres
+        // em edicao (o "backspace aleatorio"). Rascunhos marcados como
+        // pendentes vencem ate serem confirmados pelo servidor; a limpeza
+        // acontece na confirmacao do push e na transicao de rodada.
+        if (dirtyRef?.current) {
+          for (const id of dirtyRef.current) {
+            if (id in current) merged[id] = current[id];
+          }
+        }
+        return merged;
+      });
       setEliminated(state.roundStatus === "ELIMINATED" ? { reason: "FULLSCREEN_EXIT" } : null);
       // Recupera a correcao colaborativa ao reconectar (spec 38/45): o
       // evento `reviewAssigned` so chega uma vez, ao vivo.
@@ -64,7 +79,7 @@ export function useApplyState({ sync, setAnswers, setEliminated, setReviews, set
       // nunca mais aparece.
       if (state.ranking) setRanking(state.ranking);
     },
-    [sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds, setRanking],
+    [sync, setAnswers, setEliminated, setReviews, setCompletedReviewIds, setRanking, dirtyRef],
   );
 }
 
@@ -72,6 +87,7 @@ export function useApplyState({ sync, setAnswers, setEliminated, setReviews, set
 export function buildLifecycleHandlers({
   applyState,
   audio,
+  dirtyRef,
   setAnswers,
   setCurrentId,
   setEliminated,
@@ -87,6 +103,7 @@ export function buildLifecycleHandlers({
     syncCountdownRequested: () => audio.play("LETTER"),
     roundCreated: () => {
       setAnswers({});
+      dirtyRef?.current?.clear();
       setCurrentId(null);
       setEliminated(null);
       setFeedback(null);
@@ -96,6 +113,7 @@ export function buildLifecycleHandlers({
     roundStarted: () => {
       audio.play("START");
       setAnswers({});
+      dirtyRef?.current?.clear();
       setCurrentId(null);
       setEliminated(null);
       setFeedback(null);
@@ -103,6 +121,7 @@ export function buildLifecycleHandlers({
     roundStopped: (payload) => {
       audio.play("STOPPED");
       audio.playVoice();
+      dirtyRef?.current?.clear();
       setStopSplash(true);
       setFeedback({
         kind: "warning",
@@ -114,11 +133,13 @@ export function buildLifecycleHandlers({
     roundTimedOut: () => {
       audio.play("STOPPED");
       audio.playVoice();
+      dirtyRef?.current?.clear();
       setStopSplash(true);
       setFeedback({ kind: "warning", message: "O tempo acabou. A rodada foi encerrada." });
     },
     roundCancelled: (payload) => {
       setAnswers({});
+      dirtyRef?.current?.clear();
       setCurrentId(null);
       setEliminated(null);
       setFeedback({
@@ -159,6 +180,7 @@ export function buildMiscHandlers({ setReviews, setCompletedReviewIds, audio, se
 export function useStudentHandlers({
   applyState,
   audio,
+  dirtyRef,
   emojiBursts,
   setAnswers,
   setCurrentId,
@@ -174,6 +196,7 @@ export function useStudentHandlers({
       ...buildLifecycleHandlers({
         applyState,
         audio,
+        dirtyRef,
         setAnswers,
         setCurrentId,
         setEliminated,
@@ -187,6 +210,7 @@ export function useStudentHandlers({
     [
       applyState,
       audio,
+      dirtyRef,
       emojiBursts,
       setAnswers,
       setCurrentId,
@@ -413,7 +437,7 @@ export function useStudentFullscreenFlow({ clear, navigate, round, state, socket
 }
 
 /** Respostas: estado local + sincronização controlada e debounce (spec 48). */
-export function useStudentAnswers({ round, categories, answers, setAnswers, currentId, setCurrentId, socketRef, setFeedback, playing }) {
+export function useStudentAnswers({ round, categories, answers, setAnswers, currentId, setCurrentId, socketRef, setFeedback, playing, dirtyRef }) {
   const timersRef = useRef({});
   const answersRef = useRef(answers);
   answersRef.current = answers;
@@ -428,20 +452,27 @@ export function useStudentAnswers({ round, categories, answers, setAnswers, curr
         roundCategoryId,
         value,
       });
-      if (!response.ok && response.error?.code !== "TIMEOUT") {
+      if (response.ok) {
+        // Resposta confirmada no servidor — o snapshot autoritativo agora
+        // tem este valor e pode voltar a ter a palavra final sobre o campo.
+        dirtyRef?.current?.delete(roundCategoryId);
+      } else if (response.error?.code !== "TIMEOUT") {
+        // Rejeitada de vez: adota a verdade do servidor no proximo estado.
+        dirtyRef?.current?.delete(roundCategoryId);
         setFeedback({ kind: "error", message: response.error?.message ?? "Falha ao salvar" });
       }
     },
-    [round, socketRef, setFeedback],
+    [round, socketRef, setFeedback, dirtyRef],
   );
 
   const handleChange = useCallback(
     (roundCategoryId, value) => {
       setAnswers((current) => ({ ...current, [roundCategoryId]: value }));
+      dirtyRef?.current?.add(roundCategoryId);
       clearTimeout(timersRef.current[roundCategoryId]);
       timersRef.current[roundCategoryId] = setTimeout(() => pushAnswer(roundCategoryId), SYNC_DELAY);
     },
-    [pushAnswer, setAnswers],
+    [pushAnswer, setAnswers, dirtyRef],
   );
 
   const commit = useCallback(
