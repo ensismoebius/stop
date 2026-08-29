@@ -16,6 +16,38 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe("api.request (timeout)", () => {
+  it("aborts a request that never resolves and surfaces REQUEST_TIMEOUT", async () => {
+    vi.useFakeTimers();
+    fetch.mockImplementation(
+      (_url, { signal }) =>
+        new Promise((resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          });
+        }),
+    );
+    const promise = api.request("/hang").then(
+      () => "resolved",
+      (error) => error,
+    );
+    await vi.advanceTimersByTimeAsync(30_001);
+    const result = await promise;
+    expect(result).toBeInstanceOf(ApiError);
+    expect(result.code).toBe("REQUEST_TIMEOUT");
+    expect(result.message).toContain("Tempo esgotado");
+  });
+
+  it("clears the abort timer when the request succeeds", async () => {
+    vi.useFakeTimers();
+    fetch.mockResolvedValue(jsonResponse({ ok: true }));
+    await api.request("/ok");
+    const timers = vi.getTimerCount();
+    expect(timers).toBe(0);
+  });
 });
 
 describe("api.request (low level)", () => {

@@ -1,5 +1,11 @@
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
+// Timeout generico de todas as requisicoes REST. Sem ele, uma resposta
+// perdida no caminho de volta (socket meia-aberta do router barato, tempo-real.md)
+// deixaria o `guard` do painel com `busy` travado para sempre — o botao
+// "Criar rodada" ficaria desabilitado ate recarregar a pagina.
+const REQUEST_TIMEOUT_MS = 30_000;
+
 /** Erro de API carregando status, codigo e detalhes da resposta. */
 export class ApiError extends Error {
   /** Constrói o erro com dados opcionais de status, código e detalhes. */
@@ -19,11 +25,24 @@ async function request(path, { method = "GET", body, adminToken, playerToken } =
   if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
   if (playerToken) headers["x-player-token"] = playerToken;
 
-  const response = await fetch(`${BASE}/api${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(`${BASE}/api${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (fetchError) {
+    if (fetchError?.name === "AbortError") {
+      throw new ApiError("Tempo esgotado na requisição", { code: "REQUEST_TIMEOUT" });
+    }
+    throw fetchError;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (response.status === 204) return null;
 

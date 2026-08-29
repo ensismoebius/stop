@@ -114,6 +114,12 @@ o teste manual final pede recarga forçada (Ctrl+Shift+R) — o hash no nome do 
 curl -s http://127.0.0.1:3000/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js'
 ```
 
+> O evento de "30 alunos baixando o bundle no mesmo instante" tem duas atenuações
+> documentadas em [Tempo real](tempo-real.md#6-compressão): gzip (`compression()` em
+> `app.js`, 603KB → 208KB) e, se a contenção do event loop aparecer em medições, o
+> `frontend/dist` pode ser servido de nginx/caddy numa porta separada — para 30
+> usuários, nunca `cluster` + Redis adapter.
+
 ## 4. Cabeçalho `sticky` + barra `fixed` vs. a rolagem automática do navegador
 
 **Sintoma:** no celular, ao tocar numa categoria, a caixa de resposta aparecia

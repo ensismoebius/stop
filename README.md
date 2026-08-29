@@ -168,6 +168,37 @@ Definidas por `ADMIN_EMAIL` / `ADMIN_PASSWORD` e criadas pelo seed
 
 ---
 
+## Rede Wi-Fi da sala de aula
+
+A plataforma roda na rede local e depende do Wi-Fi da sala para o tráfego dos
+celulares até o servidor (todos na mesma rede, no mesmo roteador/AP). Com ~30
+alunos, um **roteador/AP doméstico barato é o ponto que mais derruba
+conexões**: ele perde o estado do cliente (tabela ARP/lease), a conexão
+WebSocket do aluno morre e só "ligar e desligar o Wi-Fi" do celular recoloca o
+contato. O app já lida com isso (reconexão automática com backoff e jitter),
+mas a rede precisa estar no melhor formato para o servidor aguentar a turma.
+
+Ajustes recomendados no roteador/AP:
+
+| Ajuste | Valor recomendado | Motivo |
+| --- | --- | --- |
+| Segurança | **WPA2-PSK** (não WPA3) | WPA3/PMKSA-caching falha com muitos clientes em firmware barato |
+| Largura de banda / canal | **20 MHz** no 2.4 GHz, canal **fixo** | evita saltos de canal e interferência com redes vizinhas |
+| Band steering / roaming | **desligado** | evita reassociações em massa dos clientes |
+| Roteamento | **modo Access Point/bridge** (sem duplo NAT) | alunos alcançam o notebook em camada 2, poupando a tabela NAT do roteador |
+| DHCP | pool com **≥ 50** endereços e lease longo (ou reservas fixas) | o pool padrão pequeno costuma ser o teto real de clientes |
+
+Sempre que possível, **ligue o notebook do professor ao roteador por cabo
+Ethernet**: tira um cliente do rádio (mais ar para os 30 celulares), libera um
+slot do chipset e dá ao servidor um enlace estável — a WebSocket do servidor
+deixa de cair e a avalanche de reconexões dos alunos desaparece.
+
+Se mesmo assim a rede for muito limitada, o build suporta forçar HTTP
+long-polling (mais robusto contra half-open) em vez de WebSocket:
+`VITE_SOCKET_TRANSPORTS=polling` no build do frontend (ver `tempo-real.md #5`).
+
+---
+
 ## Fluxo de uma aula
 
 1. Professor entra em `/teacher` e autentica.

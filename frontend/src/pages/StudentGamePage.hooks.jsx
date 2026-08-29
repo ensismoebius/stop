@@ -10,18 +10,18 @@ const SYNC_DELAY = 450;
 // Watchdog (baseline: recuperação). Base de 3s — no limite do intervalo de
 // heartbeat (15s) fica uma espera longa demais para a turma; aqui a
 // recuperação de um push perdido sai em ~3s.
-const WATCHDOG_STALE_MS = 3_000;
+export const WATCHDOG_STALE_MS = 3_000;
 // Jitter aleatório reparte os pedidos de 30+ alunos vigiando ao mesmo tempo
 // (semancha o "thundering herd"); backoff limitado evita martelar o servidor
 // quando a rede está degradada.
-const WATCHDOG_JITTER_MS = 3_000;
-const WATCHDOG_MAX_MS = 12_000;
+export const WATCHDOG_JITTER_MS = 3_000;
+export const WATCHDOG_MAX_MS = 12_000;
 
 // Eventos nomeados que implicam mudanca de estado da rodada. O `roomState`
 // que os acompanha e fire-and-forget: um aluno pode receber o evento
 // nomeado e ainda assim perder o push que o descolaria da tela de espera —
 // exatamente o sintoma da turma. Ao ouvir qualquer um deles, o cliente
-// pede o estado autoritativo na hora (fixme.md #1), barato (so este aluno).
+// pede o estado autoritativo na hora (tempo-real.md #1), barato (so este aluno).
 const TRANSITION_EVENTS = [
   "roundCreated",
   "letterSelected",
@@ -224,7 +224,7 @@ export function useStudentHandlers({
   );
 }
 
-/** Envolve os handlers de transicao para que, alem do efeito local, pecam o estado autoritativo na hora (fixme.md #1). */
+/** Envolve os handlers de transicao para que, alem do efeito local, pecam o estado autoritativo na hora (tempo-real.md #1). */
 export function withTransitionRefresh(handlers, refreshRef) {
   const enriched = { ...handlers };
   for (const event of TRANSITION_EVENTS) {
@@ -238,7 +238,7 @@ export function withTransitionRefresh(handlers, refreshRef) {
   return enriched;
 }
 
-/** Conexão de socket do aluno + fallback REST inicial + `refresh` sob demanda + watchdog (fixme.md #1/#3, spec 45). */
+/** Conexão de socket do aluno + fallback REST inicial + `refresh` sob demanda + watchdog (tempo-real.md #1/#3, spec 45). */
 export function useStudentConnection(player, handlers, applyState) {
   const socketRef = useRef(null);
   const lastStateAtRef = useRef(Date.now());
@@ -284,10 +284,10 @@ export function useStudentConnection(player, handlers, applyState) {
     if (state) lastStateAtRef.current = Date.now();
   }, [state]);
 
-  // Watchdog de recuperacao (fixme.md #1, spec 46/47): independente de fase
+  // Watchdog de recuperacao (tempo-real.md #1, spec 46/47): independente de fase
   // da rodada — roda sempre, nao so na espera. Com requestState versionado
   // (respota CURRENT quando nada mudou), perguntar durante o jogo é barato e
-  // detecta socket meia-aberta (fixme.md #3) mesmo na fase em que os eventos
+  // detecta socket meia-aberta (tempo-real.md #3) mesmo na fase em que os eventos
   // nomeados de transicao nao chegam. Jitter aleatorio reparte os pedidos da
   // turma; em falha, backoff exponencial limitado + reconexao limpa — o
   // `joinRoom` do reconectar reentrega o estado autoritativo.

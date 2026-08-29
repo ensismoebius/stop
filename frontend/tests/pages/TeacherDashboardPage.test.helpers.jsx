@@ -94,7 +94,7 @@ export function useRoomSocketImpl(config) {
   lastHandlers = config.handlers;
   const [state, setState] = useState(seed.state);
   lastSetState = setState;
-  return { socket: null, connected: seed.connected, state, setState };
+  return { socket: null, connected: seed.connected, state, setState, refresh: vi.fn(() => Promise.resolve({ ok: true })) };
 }
 vi.mock("../../src/hooks/useRoomSocket.js", () => ({
   default: (config) => useRoomSocketImpl(config),

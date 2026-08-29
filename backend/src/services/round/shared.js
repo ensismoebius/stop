@@ -47,7 +47,7 @@ const COALESCE_WINDOW_MS = env.isTest ? 0 : 150;
 const coalescedByRoom = new Map();
 
 /**
- * `broadcastState` coalescido (fixme.md #2): agrupa varias solicitacoes da
+ * `broadcastState` coalescido (tempo-real.md #2): agrupa varias solicitacoes da
  * mesma sala numa unica difusao alguns milissegundos depois. Nunca perde
  * correcao — a difusao rele o estado ja persistido do banco no momento em
  * que dispara. Transicoes criticas da rodada continuam usando

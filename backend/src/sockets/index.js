@@ -13,7 +13,7 @@ export function createSocketServer(httpServer) {
       origin: env.corsOrigins ?? true,
       credentials: true,
     },
-    // Heartbeat curto (fixme.md #3): router/AP baratos de sala de aula
+    // Heartbeat curto (tempo-real.md #3): router/AP baratos de sala de aula
     // "engolem" conexoes sem avisar (half-open); o servidor so derruba o
     // par defunto ao detectar o ping perdido. Era 20s+25s — um aluno ficava
     // "conectado" por quase um minuto sem receber nada; 10s/15s foi um meio

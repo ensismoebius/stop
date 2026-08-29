@@ -359,7 +359,7 @@ describe("TeacherDashboardPage", () => {
     expect(screen.getByRole("button", { name: "Pontuar rodada e atualizar ranking" })).toBeInTheDocument();
   });
 
-  it("loads statistics/history when opening the Configuração tab, and on SCORED rounds even off that tab", async () => {
+  it("loads statistics/history for the active game when opening the Configuração tab", async () => {
     const user = userEvent.setup();
     await loginSession();
     api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [] });
@@ -367,15 +367,31 @@ describe("TeacherDashboardPage", () => {
     api.gameHistory.mockResolvedValue({ rounds: [{ id: "r1" }] });
     renderDashboard();
     await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
-
+    api.gameStatistics.mockClear();
     await user.click(screen.getByRole("tab", { name: "Configuração" }));
     expect(await screen.findByTestId("statistics-panel")).toHaveTextContent("has-stats");
+    expect(api.gameStatistics).toHaveBeenCalledWith("tok-1", 5);
+  });
+
+  it("re-fetches statistics every time Configuração is reopened, without pre-fetching on SCORED off-tab", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    api.getGame.mockResolvedValue({ id: 5, name: "Jogo 5", rooms: [] });
+    api.gameStatistics.mockResolvedValue({ totals: { rounds: 1 } });
+    api.gameHistory.mockResolvedValue({ rounds: [{ id: "r1" }] });
+    renderDashboard();
+    await user.click(await screen.findByRole("button", { name: "rc-select-game" }));
+    await user.click(screen.getByRole("tab", { name: "Configuração" }));
+    await screen.findByTestId("statistics-panel");
 
     await user.click(screen.getByRole("tab", { name: "Controle da partida" }));
     api.gameStatistics.mockClear();
     seedSocket({ connected: true, state: { round: { id: 9, status: "SCORED" } } });
     act(() => pushRoomState({ round: { id: 9, status: "SCORED" } }));
-    await waitFor(() => expect(api.gameStatistics).toHaveBeenCalled());
+    expect(api.gameStatistics).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("tab", { name: "Configuração" }));
+    await waitFor(() => expect(api.gameStatistics).toHaveBeenCalledWith("tok-1", 5));
   });
 
   it("shows an error when loading statistics/history fails", async () => {

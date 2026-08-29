@@ -35,8 +35,11 @@ foram tomadas e quais armadilhas já morderam alguém aqui. Complementa, sem dup
   `RoundStatus`, a regra da letra (`STARTS_WITH`/`CONTAINS`), correção colaborativa,
   correção do professor, ranking e medalhas, e o que "Finalizar partida" encerra
   de fato.
-* [Tempo real (Socket.IO)](tempo-real.md) — salas de socket, catálogo de eventos, e o
-  padrão `broadcastState()` (com dois bugs reais desta base como estudo de caso).
+* [Tempo real (Socket.IO)](tempo-real.md) — salas de socket, catálogo de eventos, o
+  padrão `broadcastState()` (com dois bugs reais desta base como estudo de caso) e o
+  estudo de caso "30 alunos presos na tela de espera" (watchdog, coalescência,
+  heartbeat, transporte configurável, compressão — as seções `[#N]` citadas no código
+  como `tempo-real.md #N`).
 
 ## Frontend
 

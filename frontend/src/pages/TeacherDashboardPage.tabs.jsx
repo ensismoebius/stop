@@ -10,7 +10,8 @@ import ConfigPanel from "../components/teacher/ConfigPanel.jsx";
 import CategorySetsPanel from "../components/teacher/CategorySetsPanel.jsx";
 import ReportsPanel from "../components/teacher/ReportsPanel.jsx";
 import ConnectionBadge from "../components/common/ConnectionBadge.jsx";
-import { GAME_KEY } from "./TeacherDashboardPage.hooks.jsx";
+import Field from "../components/common/Field.jsx";
+import { useConfigStats, GAME_KEY } from "./TeacherDashboardPage.hooks.jsx";
 
 const TABS = [
   { key: "control", label: "Controle da partida" },
@@ -265,10 +266,27 @@ export function CorrectionTab({ round, busy, grids, view, actions }) {
   );
 }
 
-/** Aba "Configuração": turmas/alunos (ConfigPanel) e estatísticas/histórico da partida atual. */
-export function ConfigTab({ catalog, token, guard, stats, deleteRound, busy }) {
-  const { classes, students, selectedClassId, setSelectedClassId, loadBasics, setStudents } = catalog;
-  const { statistics, history } = stats;
+/**
+ * Aba "Configuração": turmas/alunos (ConfigPanel) e estatísticas/histórico.
+ * As estatísticas valem para uma partida escolhida aqui mesmo (spec 43) — o
+ * seletor deixa visível que o "Resumo" é de um jogo específico, já que o
+ * professor acumula várias partidas. Trocar a partida das estatísticas não
+ * mexe na partida ativa do painel (controle/QR-code/sala seguem intactos).
+ */
+export function ConfigTab({ catalog, token, guard, busy, setError, game, onRefreshDashboardGame }) {
+  const { classes, students, selectedClassId, setSelectedClassId, loadBasics, setStudents, games } = catalog;
+  const stats = useConfigStats({ token, defaultGameId: game?.id ?? null, setError });
+  const statsGame = games.find((candidate) => candidate.id === stats.gameId) ?? null;
+
+  const deleteRound = (roundId) =>
+    guard(async () => {
+      await api.deleteRound(token, stats.gameId, roundId);
+      await stats.refresh();
+      // Deletar na própria partida ativa do painel libera a letra do
+      // histórico de letras — precisa recarregar o painel para refletir.
+      if (stats.gameId && stats.gameId === game?.id) await onRefreshDashboardGame();
+    });
+
   return (
     <div className="panel">
       <ConfigPanel
@@ -346,7 +364,32 @@ export function ConfigTab({ catalog, token, guard, stats, deleteRound, busy }) {
         }
         busy={busy}
       />
-      <StatisticsPanel statistics={statistics} history={history} onDeleteRound={deleteRound} busy={busy} />
+      <div className="stack">
+        <section className="card stack">
+          <Field id="stats-game" label="Partida das estatísticas">
+            <select
+              id="stats-game"
+              className="input"
+              value={stats.gameId ?? ""}
+              onChange={(event) => stats.setGameId(Number(event.target.value) || null)}
+            >
+              {games.length === 0 && <option value="">Nenhuma partida encontrada</option>}
+              {games.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <StatisticsPanel
+            statistics={stats.statistics}
+            history={stats.history}
+            onDeleteRound={deleteRound}
+            busy={busy}
+            gameName={statsGame?.name ?? null}
+          />
+        </section>
+      </div>
     </div>
   );
 }

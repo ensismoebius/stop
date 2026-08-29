@@ -37,6 +37,29 @@ describe("TeacherDashboardPage", () => {
     await waitFor(() => expect(api.gameStatistics).toHaveBeenCalledTimes(2));
   });
 
+  it("loads statistics for whatever partida is chosen in the stats selector", async () => {
+    const user = userEvent.setup();
+    await loginSession();
+    api.listGames.mockResolvedValue([
+      { id: 5, name: "Jogo 5" },
+      { id: 6, name: "Jogo 6" },
+    ]);
+    api.gameStatistics.mockResolvedValue({ totals: {}, byCategory: [], byTheme: [] });
+    api.gameHistory.mockResolvedValue({ rounds: [] });
+    renderDashboard();
+    await screen.findByTestId("room-control");
+    await user.click(screen.getByRole("tab", { name: "Configuração" }));
+    await screen.findByTestId("config-panel");
+
+    const optionSix = await screen.findByRole("option", { name: "Jogo 6" });
+    expect(screen.getByTestId("statistics-panel")).toHaveTextContent("no-stats");
+
+    const select = await screen.findByLabelText("Partida das estatísticas");
+    await user.selectOptions(select, optionSix);
+    await waitFor(() => expect(api.gameStatistics).toHaveBeenCalledWith("tok-1", 6));
+    expect(screen.getByTestId("statistics-panel")).toHaveTextContent("has-stats");
+  });
+
   it("runs every ConfigPanel CRUD callback through the guard, reloading students/basics as appropriate", async () => {
     const user = userEvent.setup();
     await loginSession();

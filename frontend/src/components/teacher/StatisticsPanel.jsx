@@ -1,44 +1,53 @@
 /** Resumo geral da partida (spec 43). */
-function SummaryStats({ totals }) {
+function SummaryStats({ totals, gameName }) {
   return (
     <section className="card stack">
       <h2>Resumo</h2>
-      <div className="stat-grid">
-        <div className="stat">
-          <div className="stat__value">{totals.rounds}</div>
-          <div className="stat__label">Rodadas</div>
-        </div>
-        <div className="stat">
-          <div className="stat__value">{Math.round(totals.fillRate * 100)}%</div>
-          <div className="stat__label">Taxa de preenchimento</div>
-        </div>
-        <div className="stat">
-          <div className="stat__value">{totals.validAnswers}</div>
-          <div className="stat__label">Respostas válidas</div>
-        </div>
-        <div className="stat">
-          <div className="stat__value">{totals.answers - totals.validAnswers}</div>
-          <div className="stat__label">Respostas inválidas</div>
-        </div>
-        <div className="stat">
-          <div className="stat__value">{totals.stops}</div>
-          <div className="stat__label">STOPs</div>
-        </div>
-        <div className="stat">
-          <div className="stat__value">{totals.timeouts}</div>
-          <div className="stat__label">Timeouts</div>
-        </div>
-        <div className="stat">
-          <div className="stat__value">{totals.eliminations}</div>
-          <div className="stat__label">Eliminações</div>
-        </div>
-        <div className="stat">
-          <div className="stat__value">
-            {totals.averageSecondsToStop === null ? "—" : `${totals.averageSecondsToStop}s`}
+      {gameName ? <p className="small muted">Partida: {gameName}</p> : null}
+      {totals.rounds === 0 ? (
+        <p className="muted">
+          Este jogo ainda não tem rodadas. O "Resumo" vale para a partida
+          escolhida no seletor de estatísticas acima — selecione um dos jogos
+          jogados para ver os números.
+        </p>
+      ) : (
+        <div className="stat-grid">
+          <div className="stat">
+            <div className="stat__value">{totals.rounds}</div>
+            <div className="stat__label">Rodadas</div>
           </div>
-          <div className="stat__label">Tempo médio até STOP</div>
+          <div className="stat">
+            <div className="stat__value">{Math.round(totals.fillRate * 100)}%</div>
+            <div className="stat__label">Taxa de preenchimento</div>
+          </div>
+          <div className="stat">
+            <div className="stat__value">{totals.validAnswers}</div>
+            <div className="stat__label">Respostas válidas</div>
+          </div>
+          <div className="stat">
+            <div className="stat__value">{totals.answers - totals.validAnswers}</div>
+            <div className="stat__label">Respostas inválidas</div>
+          </div>
+          <div className="stat">
+            <div className="stat__value">{totals.stops}</div>
+            <div className="stat__label">STOPs</div>
+          </div>
+          <div className="stat">
+            <div className="stat__value">{totals.timeouts}</div>
+            <div className="stat__label">Timeouts</div>
+          </div>
+          <div className="stat">
+            <div className="stat__value">{totals.eliminations}</div>
+            <div className="stat__label">Eliminações</div>
+          </div>
+          <div className="stat">
+            <div className="stat__value">
+              {totals.averageSecondsToStop === null ? "—" : `${totals.averageSecondsToStop}s`}
+            </div>
+            <div className="stat__label">Tempo médio até STOP</div>
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }
@@ -179,7 +188,7 @@ function RoundHistoryTable({ history, onDeleteRound, busy }) {
 }
 
 /** Estatisticas da partida (spec 43). */
-export function StatisticsPanel({ statistics, history, onDeleteRound, busy }) {
+export function StatisticsPanel({ statistics, history, onDeleteRound, busy, gameName }) {
   if (!statistics) {
     return (
       <section className="card">
@@ -191,7 +200,7 @@ export function StatisticsPanel({ statistics, history, onDeleteRound, busy }) {
 
   return (
     <div className="stack">
-      <SummaryStats totals={statistics.totals} />
+      <SummaryStats totals={statistics.totals} gameName={gameName} />
       <PerCategoryStats byCategory={statistics.byCategory} />
       <PerThemeStats byTheme={statistics.byTheme} />
       <RoundHistoryTable history={history} onDeleteRound={onDeleteRound} busy={busy} />

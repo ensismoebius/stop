@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 const URL = import.meta.env.VITE_SOCKET_URL ?? undefined;
 
 /**
- * Meios de transporte configuráveis (fixme.md #5). Padrao:
+ * Meios de transporte configuráveis (tempo-real.md #5). Padrao:
  * `["websocket","polling"]`. Em router/AP barato de sala cheio de conexoes,
  * forque com `VITE_SOCKET_TRANSPORTS=polling` no build para o jogo andar
  * por HTTP long-polling (mais robusto contra half-open) ao custo de um
@@ -23,14 +23,21 @@ function resolveTransports() {
  * Conexao Socket.IO. A reconexao automatica e essencial em rede Wi-Fi de
  * sala de aula (spec 45): o cliente reentra na sala e pede o estado
  * autoritativo ao servidor.
+ *
+ * Backoff com jitter (randomizationFactor) para nao estampedar o
+ * roteador/AP barato da sala: com 30 celulares reconectando juntos, a
+ * primeira tentativa em 0,5s virava uma onda sincronizada de handshakes
+ * que o Wi-Fi mal-adaptado recusava. Agora cada aparelho se afasta um
+ * pouco do outro (base 2s, fator 0.7) e o teto sobe a 10s.
  */
 export function createSocket() {
   return io(URL, {
     transports: resolveTransports(),
     reconnection: true,
-    reconnectionDelay: 500,
-    reconnectionDelayMax: 4000,
+    reconnectionDelay: 2000,
+    reconnectionDelayMax: 10000,
     reconnectionAttempts: Infinity,
+    randomizationFactor: 0.7,
     autoConnect: true,
   });
 }

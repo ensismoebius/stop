@@ -76,6 +76,131 @@ de repassar o payload — o servidor só usa isso como confirmação de recebime
 E um evento tratado à parte por atualizar o estado compartilhado diretamente:
 `roomState` (ver abaixo).
 
+## Estudo de caso — aula: 30 alunos presos na tela de espera
+
+Numa turma real (30 alunos, notebook do professor como servidor, todos num único
+router barato), ao iniciar a rodada alguns alunos chegavam à tela de categorias, mas
+a maioria ficava presa na tela que segue a montagem do avatar (`/play`). Este caso
+motivou quase todas as seções desta página — as seções com rótulo `[#N]` abaixo são
+os detalhes de implementação de cada fix, e o código se refere a elas como
+`tempo-real.md #1..#7`.
+
+### Por que era possível ficar preso (o desenho)
+
+A UI do aluno só sai da tela de espera quando `state.round.status` vira `PLAYING`
+(`StudentGamePage.jsx` `roundHasStarted`; `CategoryList` só renderiza então). `state`
+é atualizado por exatamente quatro coisas:
+
+1. o `playerState` REST inicial (uma vez, no primeiro mount),
+2. o ack do `joinRoom`,
+3. um push `roomState`,
+4. `requestState` — chamado **só dentro do handler de STOP**. Sem poll, sem watchdog.
+
+Os pushes `roomState` são fire-and-forget: `io.to(...).emit` sem ack
+(`backend/src/sockets/realtime.js`). Quem perde um único push (o que anunciava
+`PLAYING`) fica preso **até o socket reconectar fisicamente ou recarregar a página**.
+A tela pública já se auto-curava com um poll REST (`PublicScreenPage.jsx`, 15s); a
+página do aluno não tinha equivalente.
+
+### Por que o push é fácil de perder no início (carga)
+
+No início da rodada o servidor dispara três `broadcastState` completos quase em
+sequência — `start()` → `STARTING`, `syncCountdownReleased`, `beginPlaying` →
+`PLAYING` (`backend/src/services/round/lifecycle.js`). Cada `broadcastState`
+(`round/shared.js`):
+
+- roda ~15-17 consultas no banco (`teacherState` + `publicState` +
+  `playerStatesForRoom` computam cada um seu ranking — o ranking era calculado 3x
+  por difusão, corrigido no [#2](#2-coalescência-e-um-único-passe-de-contexto)),
+- emite, em seguida, ~35 payloads de socket individuais (30 alunos + professor +
+  tela) num único processo Node que também serve o bundle estático e o MySQL.
+
+Cada **join** e cada **ready** de aluno também disparava outro `broadcastState`
+completo. No minuto antes de "iniciar", o servidor absorve ~60 difusões satélites —
+saturando o pool do Prisma e travando o event loop bem quando a transição `PLAYING`
+precisa chegar a todo mundo.
+
+### A contagem regressiva adiciona espera dura
+
+`runRevealSequence` aguarda `requestAck` de cada socket de aluno com timeout de
+1500ms (`round/lifecycle.js`, `config/env.js`) e só então define
+`revealAt = now + 3000`. Alguns aparelhos lentos/polling forçam o timeout completo
+antes de liberar qualquer um — o trecho mais congestionado serializa nos clientes
+mais lentos primeiro. Limitado, mas é latência de cauda empilhada sobre a carga
+acima.
+
+### Realidade de rede (por que "uns ok, a maioria presa")
+
+`transports: ["websocket", "polling"]` (ver [#5](#5-transporte-configurável)), host é
+o laptop num router barato. Esses routers derrubam/ofuscam o TCP sob muitos fluxos
+WebSocket, produzindo **conexões meio-abertas**: os dois lados acreditam estar
+conectados (o cliente nunca vê o disconnect, então nunca re-emite `joinRoom` — a
+única coisa que devolveria o estado completo). O servidor só detectava o peer morto
+após `pingInterval 20s + pingTimeout 25s` (hoje 5s/10s), e o cliente não tinha
+watchdog equivalente. Push `PLAYING` perdido + socket meio-aberto = preso a rodada
+toda.
+
+### Fixes (por prioridade)
+
+1. **Watchdog no cliente** (maior alavancagem — resolve o preso permanente). Enquanto
+   espera (`CREATED`/`READY`/`STARTING`) e sempre que um `roomState` não chega há ~N
+   segundos com o socket conectado, re-pedir o estado autoritativo (`emitAck
+   "requestState"` ou o REST `playerState` — ambos existem e devolvem o estado
+   completo). Transforma push perdido numa recuperação de segundos. Implementado no
+   aluno em **todas** as fases: 3s de staleness (`WATCHDOG_STALE_MS`) → `requestState`
+   versão-aware (posição adotada) → fallback REST (`adoptState`); refresh falho →
+   `disconnect()` + `connect()` para o `joinRoom` reentregar o estado. De brinde, o
+   refresh reconcilia os efeitos perdidos de um `fullscreenExited` (spec 24/26) que
+   eliminaria o aluno.
+   O **painel do professor ganhou o mesmo watchdog** (`useTeacherWatchdog` em
+   `TeacherDashboardPage.hooks.jsx`): sem ele, um socket meio-aberto congelava o
+   avanço de fase (ex.: "Criar rodada" gravava a rodada no banco mas o painel ficava
+   no tema até recarregar — pedido de estado perdido + resposta REST perdida travavam
+   também o `busy`). Hoje o painel pede `requestState` a cada ~3-12s sem estado novo
+   e reconecta o socket em falha, e **toda requisição REST tem timeout de 30s** para
+   o `guard` nunca prender o botão para sempre.
+2. **Coalescer a rajada + um único ranking.** `broadcastStateSoon` (~150ms) para
+   join/ready/disconnect; `loadRanking`/`playerStatesForRoom` calculados **uma vez**
+   por difusão e compartilhados via `ctx` (`viewService.js`) — de ~6 consultas de
+   ranking + 3 de contexto para ~2. Detalhes na seção
+[#2](#2-coalescência-e-um-único-passe-de-contexto).
+3. **Detectar peer morto mais cedo.** Heartbeat `pingInterval 5s / pingTimeout 10s`
+   (`sockets/index.js`); watchdog de staleness no cliente (3s) que força
+`disconnect()`+`connect()` quando `requestState` também falha. Detalhes na seção
+    [#3](#13-recuperação-do-lado-do-cliente).
+4. **Reforço da transição PLAYING.** `beginPlaying` agenda uma `broadcastStateSoon`
+   ~1,5s depois (0 nos testes) para quem recebeu o `roundStarted` nomeado mas perdeu
+o push `roomState`, sem ack de volta. Detalhes na seção
+    [#4](#4-confirmação-da-transição-playing).
+5. **Transporte configurável.** O transporte era hardcoded
+   `["websocket", "polling"]`; routers baratos derrubam fluxos WebSocket longos. Agora
+   `resolveTransports()` em `frontend/src/socket/socket.js` lê
+   `VITE_SOCKET_TRANSPORTS` (padrão inalterado). Se o modo de falha do router for
+   esse, forçar `["polling"]` na aula pode ser a resposta — polling são trocas HTTP
+   curtas, sem conexão persistente para o router corromper; para 30 clientes a
+   latência extra é desprezível. Fica o A/B numa aula real.
+6. **Compressão.** `app.use(compression())` em `backend/src/app.js`: no início ~30
+   celulares baixam o bundle quase no mesmo instante; gzip reduz a transferência
+   várias vezes (bundle 603KB → 208KB gzip), menos colisões no router durante o load.
+   `frontend/dist` precisa ser reconstruído após qualquer mudança no frontend (o
+   aviso de bundle velho em `app.js` cobre o esquecimento).
+7. **Separação de processos** (opcional — um computador, não obrigatório). Se a
+   contenção do event loop ao servir o bundle a 30 celulares aparecer em medições,
+   sirva `frontend/dist` de nginx/caddy (ou `npx serve` noutra porta) e deixe o Node
+   só com `/api` + `/socket.io`. Não tentar `cluster` + Redis adapter de Socket.IO
+   para 30 usuários — o gargalo era trabalho redundante (#2) e recuperação faltante
+   (#1), não contagem de processos.
+
+### Critério de aceite (próxima aula)
+
+**Iniciar a rodada deve levar todo aluno conectado à tela de categorias em poucos
+segundos do `PLAYING`, sem recarregamentos manuais.** Quem abre `/play` no meio da
+rodada também deve cair na rodada em andamento (já funciona via REST fallback +
+rejoin; o watchdog torna isso confiável). E, como o `testes.md` adverte,
+comportamento visual/em tempo real é exatamente o tipo de coisa que uma suíte verde
+de unidades não pega — validar no cenário real (muitos celulares, um router), não só
+contra `stop_test`.
+
 ## O padrão `broadcastState()` — e por que ele existe
 
 `backend/src/services/round/shared.js:34`. Junta e envia, numa só chamada, o estado
@@ -123,7 +248,7 @@ Ao adicionar uma nova ação que muda status de jogo/rodada/sala, confira se
 de notar em teste manual rápido, porque o evento específico *parece* funcionar) neste
 código.
 
-### Coalescência e um único passe de contexto (fixme.md #2)
+### [#2] Coalescência e um único passe de contexto
 
 Dois ajustes no `broadcastState` para a rajada de join/ready de 30 alunos:
 
@@ -140,13 +265,13 @@ Dois ajustes no `broadcastState` para a rajada de join/ready de 30 alunos:
    de negócio) vira no-op. Transições críticas da rodada continuam no `broadcastState`
    aguardado/imediato.
 
-### Confirmação da transição PLAYING (fixme.md #4)
+### [#4] Confirmação da transição PLAYING
 
 `beginPlaying` agenda uma re-difusão coalescida (`broadcastStateSoon`) ~1,5s depois do
 `roomState` PLAYING: pega o aluno que recebeu o `roundStarted` nomeado mas perdeu o
 push fire-and-forget que o descolaria da tela de espera.
 
-### Recuperação do lado do cliente (fixme.md #1/#3)
+### [#1/#3] Recuperação do lado do cliente
 
 O `roomState` é fire-and-forget, então o cliente não espera passivamente por ele:
 

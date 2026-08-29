@@ -10,7 +10,6 @@ import {
   useDashboardGame,
   useDashboardGrids,
   useDashboardRealtime,
-  useDashboardStats,
   useGuard,
   useGridAutoload,
   useExitFullscreenOnMount,
@@ -47,10 +46,9 @@ export function TeacherDashboardPage() {
   const gameState = useDashboardGame(token);
   const grids = useDashboardGrids(token);
   const realtime = useDashboardRealtime({ token, sync, now, emojiBursts, setError, setTab, ...gameState, ...grids });
-  const stats = useDashboardStats({ token, game: gameState.game, tab, round: realtime.round, setError });
   useGridAutoload(realtime.round, grids.grid, grids.loadGrid);
 
-  const actions = buildDashboardActions({ token, guard, setTab, loadBasics: catalog.loadBasics, ...gameState, ...grids, ...realtime, ...stats });
+  const actions = buildDashboardActions({ token, guard, setTab, loadBasics: catalog.loadBasics, ...gameState, ...grids, ...realtime });
 
   if (checking) return <div className="container">Carregando...</div>;
   if (!authenticated) return <TeacherLoginPage />;
@@ -74,7 +72,7 @@ export function TeacherDashboardPage() {
       </TabPanel>
 
       <TabPanel tabKey="config" active={tab}>
-        <ConfigTab catalog={catalog} token={token} guard={guard} stats={stats} deleteRound={actions.deleteRound} busy={busy} />
+        <ConfigTab catalog={catalog} token={token} guard={guard} busy={busy} setError={setError} game={gameState.game} onRefreshDashboardGame={gameState.reloadGame} />
       </TabPanel>
 
       <TabPanel tabKey="categories" active={tab}>

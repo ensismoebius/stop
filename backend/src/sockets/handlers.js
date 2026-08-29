@@ -158,7 +158,7 @@ async function handlePlayerJoin(client, context, code) {
     registrationNumber: context.session.student.registrationNumber,
   });
   // Coalescido: dezenas de alunos entrando em rajada nao devem disparar
-  // uma difusao completa cada um (fixme.md #2). O cliente recém-entrado ja
+  // uma difusao completa cada um (tempo-real.md #2). O cliente recém-entrado ja
   // recebeu o proprio estado no ack/imediato acima.
   roundService.broadcastStateSoon(code);
   return state;
@@ -254,7 +254,7 @@ async function handleReady(client) {
   const context = requirePlayer(client);
   await playerSessionRepository.update(context.session.id, { status: "READY" });
   // Coalescido pelo mesmo motivo do join: a classe inteira manda `ready`
-  // no mesmo segundo em que entra na tela do jogo (fixme.md #2).
+  // no mesmo segundo em que entra na tela do jogo (tempo-real.md #2).
   roundService.broadcastStateSoon(context.room.code);
   return { status: "READY" };
 }

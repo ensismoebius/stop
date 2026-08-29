@@ -117,4 +117,29 @@ describe("StatisticsPanel", () => {
     render(<StatisticsPanel statistics={statistics} history={history} onDeleteRound={vi.fn()} busy={true} />);
     expect(screen.getByRole("button", { name: "Remover" })).toBeDisabled();
   });
+
+  it("labels which partida the summary refers to when a gameName is given", () => {
+    render(
+      <StatisticsPanel statistics={statistics} history={null} gameName="Jogo 46" onDeleteRound={vi.fn()} busy={false} />,
+    );
+    expect(screen.getByText("Partida: Jogo 46")).toBeInTheDocument();
+    // O resumo continua sendo renderizado normalmente ao lado do rótulo.
+    expect(screen.getByText("12.5s")).toBeInTheDocument();
+  });
+
+  it("explains that a zero-round game simply has no rounds yet, instead of showing zeros", () => {
+    render(
+      <StatisticsPanel
+        statistics={{ totals: { rounds: 0 }, byCategory: [], byTheme: [] }}
+        history={null}
+        gameName="Jogo 49"
+        onDeleteRound={vi.fn()}
+        busy={false}
+      />,
+    );
+    expect(screen.getByText("Partida: Jogo 49")).toBeInTheDocument();
+    expect(screen.getByText(/ainda não tem rodadas/)).toBeInTheDocument();
+    // A grade de estatísticas não substitui o aviso quando não há rodadas.
+    expect(document.querySelector(".stat-grid")).toBeNull();
+  });
 });

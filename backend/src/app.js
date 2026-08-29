@@ -72,7 +72,7 @@ export function createApp() {
       credentials: true,
     }),
   );
-  // Gzip (fixme.md #6): o bundle do frontend cru atravessa o router barato
+  // Gzip (tempo-real.md #6): o bundle do frontend cru atravessa o router barato
   // da sala para 30+ celulares de uma vez. Compressao antes das rotas API,
   // do static e do fallback. O trafego Socket.IO nao passa por aqui (o
   // engine.io atende pelo propio path antes do Express).

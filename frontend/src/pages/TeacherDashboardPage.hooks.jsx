@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api.js";
 import useRoomSocket from "../hooks/useRoomSocket.js";
 import { useCountdown } from "../hooks/useServerClock.js";
+import { WATCHDOG_MAX_MS, WATCHDOG_JITTER_MS, WATCHDOG_STALE_MS } from "./StudentGamePage.hooks.jsx";
 
 export const GAME_KEY = "stop:teacher:game";
 
@@ -159,6 +160,62 @@ export function useDashboardSocket({ token, room, handlers }) {
   });
 }
 
+/**
+ * Watchdog de recuperação do painel do professor (tempo-real.md #1/#3, spec 45).
+ *
+ * O painel vive do push `roomState` + `refresh`; num socket meia-aberta
+ * (router barato berrando) nenhum dos dois responde — o heartbeat (6s)
+ * também trava no silêncio e o estado fica congelado até recarregar a
+ * página. Igual ao watchdog do aluno: sem estado autoritativo por
+ * `WATCHDOG_STALE_MS`, pede `refresh` (requestState versionado, ~zero custo
+ * quando CURRENT); em falha, backoff + reconexão limpa — o `joinRoom` do
+ * reconectar reentrega o estado completo e o painel avança sozinho.
+ */
+export function useTeacherWatchdog({ connected, state, refresh, socket }) {
+  const lastStateAtRef = useRef(Date.now());
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const socketRef = useRef(socket);
+  socketRef.current = socket;
+
+  useEffect(() => {
+    if (state) lastStateAtRef.current = Date.now();
+  }, [state]);
+
+  useEffect(() => {
+    if (!connected || !state || !socketRef.current) return undefined;
+    let timer;
+    let backoffMs = WATCHDOG_STALE_MS;
+    const schedule = () => {
+      const jitter = Math.floor(Math.random() * (WATCHDOG_JITTER_MS + 1));
+      const delay = Math.min(backoffMs + jitter, WATCHDOG_MAX_MS);
+      timer = setTimeout(run, delay);
+    };
+    const run = async () => {
+      if (Date.now() - lastStateAtRef.current < WATCHDOG_STALE_MS) {
+        schedule();
+        return;
+      }
+      const response = await refreshRef.current();
+      const instance = socketRef.current;
+      if (response?.ok) {
+        backoffMs = WATCHDOG_STALE_MS;
+      } else {
+        backoffMs = Math.min(backoffMs * 2, WATCHDOG_MAX_MS);
+        if (instance?.connected) {
+          instance.disconnect();
+          instance.connect();
+        }
+      }
+      schedule();
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [connected, state]);
+
+  return null;
+}
+
 /** Estado por REST (fallback antes do handshake) + derivação de `round`/contador a partir do estado ao vivo. */
 export function useDashboardView({ token, room, state, sync, now }) {
   // Estado inicial por REST: o painel fica utilizavel imediatamente apos um
@@ -239,8 +296,9 @@ export function useDashboardRealtime({ token, room, sync, now, emojiBursts, relo
     [loadGrid, reloadGame, sync, emojiBursts, setTab, setError, setLiveSettings],
   );
 
-  const { connected, state, refresh } = useDashboardSocket({ token, room, handlers });
+  const { socket, connected, state, refresh } = useDashboardSocket({ token, room, handlers });
   const { view, round, seconds } = useDashboardView({ token, room, state, sync, now });
+  useTeacherWatchdog({ connected, state, refresh, socket });
 
   // Toda projeção de estado completa (publish de troca de rodada, REST de
   // fallback) traz os `settings` autoritativos — a linha de base; o evento
@@ -254,25 +312,41 @@ export function useDashboardRealtime({ token, room, sync, now, emojiBursts, relo
   return { connected, view, round, seconds, collabProgress, setCollabProgress, liveSettings, setLiveSettings, refresh };
 }
 
-/** Estatísticas/histórico da partida atual — recarregados na aba "Configuração", ao pontuar, ou quando entra uma rodada nova. */
-export function useDashboardStats({ token, game, tab, round, setError }) {
+/**
+ * Estatísticas/histórico de uma partida escolhida na aba "Configuração"
+ * (spec 43). Vive dentro da própria aba — cada jogo é um record separado e
+ * o "Resumo" só faz sentido para a partida selecionada, não para alguma
+ * deduzida do painel inteiro. `defaultGameId` é a partida ativa do painel,
+ * usada apenas como padrão ao abrir a aba; trocar a seleção aqui não
+ * perturba a partida em andamento (controle/QR-code/sala continuam intactos).
+ */
+export function useConfigStats({ token, defaultGameId, setError }) {
+  const [gameId, setGameId] = useState(defaultGameId ?? null);
   const [statistics, setStatistics] = useState(null);
   const [history, setHistory] = useState(null);
-  const roundStatus = round?.status;
-  const roundId = round?.id;
+
+  const refresh = useCallback(async () => {
+    if (!token || !gameId) {
+      setStatistics(null);
+      setHistory(null);
+      return;
+    }
+    const [stats, hist] = await Promise.all([
+      api.gameStatistics(token, gameId),
+      api.gameHistory(token, gameId),
+    ]);
+    setStatistics(stats);
+    setHistory(hist);
+  }, [token, gameId]);
 
   useEffect(() => {
-    if (!token || !game) return;
-    if (tab !== "config" && roundStatus !== "SCORED") return;
-    Promise.all([api.gameStatistics(token, game.id), api.gameHistory(token, game.id)])
-      .then(([stats, hist]) => {
-        setStatistics(stats);
-        setHistory(hist);
-      })
-      .catch((statsError) => setError(statsError.message));
-  }, [token, game?.id, roundStatus, roundId, tab, setError]);
+    setStatistics(null);
+    setHistory(null);
+    if (!token || !gameId) return;
+    refresh().catch((loadError) => setError(loadError.message));
+  }, [token, gameId, refresh, setError]);
 
-  return { statistics, setStatistics, history, setHistory };
+  return { gameId, setGameId, statistics, history, refresh };
 }
 
 /** Ações de partida/sala: criar, selecionar, abrir sala, encerrar. Sempre por `guard`, exceto `selectGame` (ver nota). */
@@ -287,8 +361,6 @@ export function buildGameLifecycleActions({
   reloadGame,
   setGrid,
   setGroupedGrid,
-  setStatistics,
-  setHistory,
 }) {
   const createGame = (payload) =>
     guard(async () => {
@@ -303,13 +375,6 @@ export function buildGameLifecycleActions({
   const selectGame = async (selected) => {
     if (!selected) {
       setGame(null);
-      // Sem isso, "Histórico das rodadas" (aba Configuração) continua
-      // mostrando as rodadas da partida anterior, com "Remover" ativo —
-      // clicar chama api.deleteRound(token, game.id, ...) com game=null
-      // e falha silenciosamente (o erro cai dentro do catch do guard()
-      // dos outros handlers, mas aqui nem chega a isso: so nao apaga nada).
-      setStatistics(null);
-      setHistory(null);
       window.localStorage.removeItem(GAME_KEY);
       return;
     }
@@ -402,8 +467,10 @@ export function buildRoundFlowActions({ token, guard, game, round, usedLetters, 
   return { createRound, drawLetter, startRound, stopRound, finishCollaborativeCorrection, cancelRound };
 }
 
-/** Ações de resultado: pontuar, avançar para a próxima rodada, apagar uma rodada do histórico. */
-export function buildRoundResultActions({ token, guard, game, round, setGrid, setGroupedGrid, setTab, reloadGame, setStatistics, setHistory }) {
+/** Ações de resultado: pontuar e avançar para a próxima rodada. A remoção de
+ * uma rodada do histórico é da aba "Configuração" (apaga da partida que está
+ * sendo exibida lá, não necessariamente da partida ativa do painel). */
+export function buildRoundResultActions({ token, guard, game, round, setGrid, setGroupedGrid, setTab, reloadGame }) {
   const scoreRound = () =>
     guard(async () => {
       await api.scoreRound(token, round.id);
@@ -420,19 +487,7 @@ export function buildRoundResultActions({ token, guard, game, round, setGrid, se
       await reloadGame();
     });
 
-  const deleteRound = (roundId) =>
-    guard(async () => {
-      await api.deleteRound(token, game.id, roundId);
-      const [stats, hist] = await Promise.all([
-        api.gameStatistics(token, game.id),
-        api.gameHistory(token, game.id),
-      ]);
-      setStatistics(stats);
-      setHistory(hist);
-      await reloadGame();
-    });
-
-  return { scoreRound, nextRound, deleteRound };
+  return { scoreRound, nextRound };
 }
 
 /** Ações de correção: marcar uma resposta, ou um grupo agregado inteiro de uma vez (spec 18). */

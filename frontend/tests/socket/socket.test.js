@@ -26,9 +26,10 @@ describe("createSocket", () => {
     expect(options).toMatchObject({
       transports: ["websocket", "polling"],
       reconnection: true,
-      reconnectionDelay: 500,
-      reconnectionDelayMax: 4000,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
       reconnectionAttempts: Infinity,
+      randomizationFactor: 0.7,
       autoConnect: true,
     });
   });

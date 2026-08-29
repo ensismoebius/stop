@@ -168,7 +168,7 @@ export const viewService = {
    * `participants`/`ranking` uma unica vez e reaproveitar nas tres
    * projecoes — sem isso, cada chamada independente refaz as mesmas
    * consultas (o padrao N+1 que disparava ~6 queries de ranking por
-   * difusao, fixme.md #2). Chamadas avulsas (REST) continuam carregando
+   * difusao, tempo-real.md #2). Chamadas avulsas (REST) continuam carregando
    * tudo sozinhas.
    */
   async teacherState(roomCode, ctx = {}) {
