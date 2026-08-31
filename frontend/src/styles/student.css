@@ -518,6 +518,22 @@
   white-space: nowrap;
 }
 
+/* "Ocultar pontos" ligado pelo professor: o lugar do número continua ocupado
+   (a linha não muda de forma quando o interruptor vira), mas o valor sai de
+   cena — discreto, sem competir com a colocação, que continua visível. */
+.ranking__total--hidden,
+.ranking__me-total--hidden {
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.ranking__me-total--hidden {
+  font-size: 0.8rem;
+  letter-spacing: normal;
+  font-style: italic;
+}
+
 /* A propria linha do aluno dentro da lista. */
 .ranking__item--me {
   background: rgba(139, 61, 255, 0.14);

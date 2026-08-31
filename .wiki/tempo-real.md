@@ -50,8 +50,9 @@ por schema Zod antes de chegar à lógica de negócio:
 
 ## Eventos servidor → cliente
 
-Todos escutados centralmente em `frontend/src/hooks/useRoomSocket.js` — a lista
-`named` (linha ~70) é a fonte da verdade de quais eventos o frontend reconhece:
+Todos escutados centralmente em `frontend/src/hooks/useRoomSocket.js` — a constante
+`NAMED_EVENTS` (topo do arquivo) é a fonte da verdade de quais eventos o frontend
+reconhece:
 
 `playerJoined`, `playerLeft`, `roundCreated`, `letterSelected`, `roundStarting`,
 `syncCountdownReleased`, `roundStarted`, `answerUpdated`, `playerProgress`,
@@ -59,9 +60,10 @@ Todos escutados centralmente em `frontend/src/hooks/useRoomSocket.js` — a list
 `reviewAssigned`, `reviewCompleted`, `collaborativeCorrectionProgress`,
 `collaborativeCorrectionFinished`, `correctionStarted`, `answerReviewed`,
 `answersReviewed`, `scoreUpdated`, `rankingUpdated`, `roundFinished`,
-`roundCancelled`, `nextRound`, `roomStatusChanged`, `emojiReceived`.
+`roundCancelled`, `nextRound`, `roomStatusChanged`, `roomSettingsChanged`,
+`emojiReceived`.
 
-Mais um evento tratado à parte, fora da lista `named`, por esperar um **ack** de
+Mais um evento tratado à parte, fora da lista `NAMED_EVENTS`, por esperar um **ack** de
 volta: `syncCountdownRequested` (o handler chama `ack(true)` automaticamente depois
 de repassar o payload — o servidor só usa isso como confirmação de recebimento, spec
 54).
@@ -152,6 +154,14 @@ toda.
    `disconnect()` + `connect()` para o `joinRoom` reentregar o estado. De brinde, o
    refresh reconcilia os efeitos perdidos de um `fullscreenExited` (spec 24/26) que
    eliminaria o aluno.
+   Dois detalhes que não são decoração: o atraso real é `WATCHDOG_STALE_MS` **mais um
+   jitter** de 0-`WATCHDOG_JITTER_MS` (3s), com backoff exponencial até
+   `WATCHDOG_MAX_MS` (12s) em falha — sem o jitter, 30 celulares que entraram juntos
+   perguntam juntos, e o watchdog vira a rajada que ele deveria absorver. E o laço
+   reagenda a si mesmo *depois* de um `await`, então a limpeza do efeito marca
+   `cancelled` além de `clearTimeout`: sem isso, sair da página no meio de um refresh
+   deixava um watchdog órfão pedindo estado e reconectando um socket abandonado, para
+   sempre, um por visita.
    O **painel do professor ganhou o mesmo watchdog** (`useTeacherWatchdog` em
    `TeacherDashboardPage.hooks.jsx`): sem ele, um socket meio-aberto congelava o
    avanço de fase (ex.: "Criar rodada" gravava a rodada no banco mas o painel ficava
@@ -305,16 +315,41 @@ sessões de sala; `stateVersion` ordena dentro da sessão). Estados sem metadado
 versão (push "cru"/mock) são adotados preservando a posição corrente — um snapshot
 autoritativo nunca é rejeitado por falta de versão.
 
+**A barreira do cliente só é segura se o servidor nunca inverter o par.**
+`roomState.build` LÊ o contexto da sala e só depois incrementa a versão — duas
+difusões concorrentes podiam, portanto, inverter o par: a leitura mais antiga recebia
+o número maior, o payload velho chegava rotulado como o mais novo, e a barreira
+passava a **rejeitar o estado novo por ser "mais antigo"**. O sintoma é o pior
+possível para depurar: aluno parado numa fase que já passou, sem erro em lugar
+nenhum, e a suíte inteira verde. Por isso `roomState.publish` é serializado por sala
+(`gameLock`, chave `room-publish:<code>` — espaço de chaves distinto do `round:<id>`
+do ciclo de vida, que chama `publish` de dentro do próprio lock, então não há ciclo).
+Ler-e-incrementar é uma seção crítica: a ordem das versões volta a refletir a ordem
+dos estados.
+
 ### `requestState` versão-aware e heartbeat de aplicação
 
-O cliente manda a posição que adotou; o servidor (`handlers.js:254`) responde:
+O cliente manda a posição que adotou; o servidor (`handlers.js:handleRequestState`)
+responde:
 
 - **`CURRENT`** — a posição informada já é a atual: nada novo a enviar;
 - **`ROOM_STATE`** — posição antiga/não informada: snapshot autoritativo completo
   (`roomEpoch`, `stateVersion`, `serverTime` + projeção do papel).
 
+> **A comparação tem de vir ANTES de montar o snapshot.** A primeira versão deste
+> handler montava o snapshot autoritativo e só então comparava as posições para
+> talvez responder `CURRENT`. Montar o snapshot custa ~35 consultas (as três
+> projeções da sala inteira — medido com 30 alunos); a comparação custa uma. Como o
+> watchdog de *cada* aluno bate aqui a cada ~3-6s e quase sempre a resposta é "nada
+> mudou", uma turma de 30 gerava ~230 consultas/segundo só para dizer `CURRENT` —
+> exatamente a saturação de banco que esta camada existe para eliminar, reintroduzida
+> pela porta dos fundos. O caminho barato está preso por
+> `tests/integration/requestStateCost.test.js`, que falha se alguém voltar a montar o
+> snapshot antes de comparar.
+
 Enquanto conectado, o hook dispara `applicationHeartbeat` com a posição + `sentAt`
-(`useRoomSocket.js:130`), e o servidor devolve `serverTime`/posição/`stale` — é o que
+(`useRoomSocket.js:useApplicationHeartbeat`, a cada `HEARTBEAT_MS` = 6s), e o servidor
+devolve `serverTime`/posição/`stale` — é o que
 distingue "só clock para trás" (posição igual → `SYNCHRONIZED`) de "estado atrás"
 (`DEGRADED`/`RECOVERING`). `SyncStatus` em `synchronization.js` modela
 `IDLE/CONNECTING/SYNCHRONIZED/RECOVERING/DEGRADED/UNREACHABLE`.
@@ -338,3 +373,12 @@ do `syncRegistry.js` e anexa ao estado do professor. `TeacherDashboardPage.jsx` 
 uma pill no header — "Sincronizado N/M" (verde) ou "Sincronizando N/M" (âmbar, com o
 count de `stale` no tooltip) — sinalizando quando há aluno defasado do estado
 autoritativo.
+
+`expected` conta as `PlayerSession` **conectadas**, então o cálculo só considera as
+entradas de aluno (`player:<id>`) do registro. O professor e a tela pública reportam
+posição pelo mesmo caminho (`requestState`/`applicationHeartbeat`) e caem no mesmo
+mapa; contá-los junto misturava dois denominadores e a pill chegava a exibir
+"Sincronizado 32/30". Um indicador que passa de 100% não é um detalhe cosmético: ele é
+a única pista que o professor tem de que metade da turma ficou para trás, e um número
+impossível ensina a ignorar o indicador inteiro. Preso por
+`tests/unit/syncRegistry.test.js`.

@@ -151,7 +151,7 @@ export function buildLifecycleHandlers({
 }
 
 /** Handlers de correção colaborativa, eliminação, ranking e reações — não dependem da fase da rodada. */
-export function buildMiscHandlers({ setReviews, setCompletedReviewIds, audio, setEliminated, setRanking, emojiBursts }) {
+export function buildMiscHandlers({ setReviews, setCompletedReviewIds, audio, setEliminated, setRanking, emojiBursts, setLiveSettings }) {
   return {
     // Correcao colaborativa (spec 9-16): respostas anonimas de colegas,
     // atribuidas so a este aluno.
@@ -173,6 +173,11 @@ export function buildMiscHandlers({ setReviews, setCompletedReviewIds, audio, se
     // Reacoes em emoji (Kahoot-like): visivel para todo mundo na sala,
     // inclusive quem mandou — puramente visual, sem estado persistido.
     emojiReceived: (payload) => emojiBursts.push(payload.emoji),
+    // Ajustes de apresentacao (evento LEVE, sem publish): hoje so "ocultar
+    // pontos" interessa ao aluno, e precisa valer na hora — o professor
+    // esconde o placar e a tela na mao do aluno tem de acompanhar, nao
+    // esperar a proxima rodada.
+    roomSettingsChanged: (payload) => setLiveSettings?.(payload ?? null),
   };
 }
 
@@ -190,6 +195,7 @@ export function useStudentHandlers({
   setCompletedReviewIds,
   setRanking,
   setStopSplash,
+  setLiveSettings,
 }) {
   return useMemo(
     () => ({
@@ -205,7 +211,15 @@ export function useStudentHandlers({
         setCompletedReviewIds,
         setStopSplash,
       }),
-      ...buildMiscHandlers({ setReviews, setCompletedReviewIds, audio, setEliminated, setRanking, emojiBursts }),
+      ...buildMiscHandlers({
+        setReviews,
+        setCompletedReviewIds,
+        audio,
+        setEliminated,
+        setRanking,
+        emojiBursts,
+        setLiveSettings,
+      }),
     }),
     [
       applyState,
@@ -220,6 +234,7 @@ export function useStudentHandlers({
       setCompletedReviewIds,
       setRanking,
       setStopSplash,
+      setLiveSettings,
     ],
   );
 }
@@ -294,18 +309,27 @@ export function useStudentConnection(player, handlers, applyState) {
   useEffect(() => {
     if (!connected || !state) return undefined;
     let timer;
+    // `run` reagenda a si mesmo DEPOIS de um await; sem esta marca, uma
+    // desmontagem no meio do refresh deixava um watchdog órfão se
+    // reagendando para sempre — pedindo estado e até derrubando/reconectando
+    // um socket que a página nem usa mais. Um aluno que sai e volta algumas
+    // vezes acumularia um laço desses por visita.
+    let cancelled = false;
     let backoffMs = WATCHDOG_STALE_MS;
     const schedule = () => {
+      if (cancelled) return;
       const jitter = Math.floor(Math.random() * (WATCHDOG_JITTER_MS + 1));
       const delay = Math.min(backoffMs + jitter, WATCHDOG_MAX_MS);
       timer = setTimeout(run, delay);
     };
     const run = async () => {
+      if (cancelled) return;
       if (Date.now() - lastStateAtRef.current < WATCHDOG_STALE_MS) {
         schedule();
         return;
       }
       const response = await refresh();
+      if (cancelled) return;
       const instance = socketRef.current;
       if (response?.ok) {
         backoffMs = WATCHDOG_STALE_MS;
@@ -319,7 +343,10 @@ export function useStudentConnection(player, handlers, applyState) {
       schedule();
     };
     schedule();
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [connected, state, refresh]);
 
   // Primeira pintura por REST, antes do handshake do WebSocket (spec 45).

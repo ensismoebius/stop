@@ -64,6 +64,7 @@ export function StudentGamePage() {
           round={phase.round}
           gameStatus={game.connection.state?.game?.status}
           studentId={game.connection.state?.student?.id}
+          hidePoints={Boolean(game.settings?.hidePoints)}
         />
 
         <StudentAnswerArea

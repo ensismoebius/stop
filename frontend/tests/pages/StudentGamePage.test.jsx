@@ -309,6 +309,73 @@ describe("StudentGamePage", () => {
     expect(screen.getAllByText("🥈").length).toBeGreaterThan(1);
   });
 
+  it("hides every point value when the teacher turned hidePoints on, keeping placements", () => {
+    // O interruptor do professor vale também na mão do aluno: a colocação
+    // continua visível (é o que dá sentido ao ranking), os números somem.
+    seedSocket({
+      connected: true,
+      state: {
+        round: { status: "SCORED", id: 1 },
+        student: { id: 2, name: "Aluno 2" },
+        settings: { hidePoints: true },
+      },
+    });
+    renderPage();
+    const ranking = Array.from({ length: 3 }, (_, i) => ({
+      studentId: i + 1,
+      position: i + 1,
+      name: `Aluno ${i + 1}`,
+      total: 100 - i,
+    }));
+    act(() => getLastHandlers().rankingUpdated({ ranking }));
+
+    expect(screen.getByText("2º lugar")).toBeInTheDocument();
+    expect(screen.getByText("Aluno 1")).toBeInTheDocument();
+    expect(screen.queryByText("100")).not.toBeInTheDocument();
+    expect(screen.queryByText("99")).not.toBeInTheDocument();
+    expect(screen.getByText(/pontos ocultos/i)).toBeInTheDocument();
+  });
+
+  it("reveals the points again as soon as the teacher turns hidePoints off, without a new round", () => {
+    seedSocket({
+      connected: true,
+      state: {
+        round: { status: "SCORED", id: 1 },
+        student: { id: 2, name: "Aluno 2" },
+        settings: { hidePoints: true },
+      },
+    });
+    renderPage();
+    const ranking = [{ studentId: 2, position: 1, name: "Aluno 2", total: 42 }];
+    act(() => getLastHandlers().rankingUpdated({ ranking }));
+    expect(screen.queryByText("42")).not.toBeInTheDocument();
+
+    // Evento LEVE, sem publish novo: o placar tem de reaparecer na hora.
+    act(() => getLastHandlers().roomSettingsChanged({ hidePoints: false }));
+    expect(screen.getAllByText("42").length).toBeGreaterThan(0);
+  });
+
+  it("shows the points at the end of the game even with hidePoints on (same rule as the podium)", () => {
+    seedSocket({
+      connected: true,
+      state: {
+        round: { status: "SCORED", id: 1 },
+        game: { status: "FINISHED" },
+        student: { id: 2, name: "Aluno 2" },
+        settings: { hidePoints: true },
+      },
+    });
+    renderPage();
+    act(() =>
+      getLastHandlers().rankingUpdated({
+        ranking: [{ studentId: 2, position: 1, name: "Aluno 2", total: 42 }],
+      }),
+    );
+
+    expect(screen.getAllByText("42").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/pontos ocultos/i)).not.toBeInTheDocument();
+  });
+
   it("shows the student's own placement even when they are far outside the top 10", () => {
     // O caso real que quebrava: turma grande, aluno em 42o lugar. Antes ele
     // via so o top 10 e nunca a propria colocacao.

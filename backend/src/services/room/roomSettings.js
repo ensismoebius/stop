@@ -28,12 +28,13 @@ export function getRoomSettings(roomCode) {
  * mesclados, então `{ hidePoints: true }` não apaga demais.
  */
 export function applyRoomSettings(roomCode, patch = {}) {
-  const current = settingsByRoom.get(roomCode) ?? {};
-  const next = {
-    ...current,
-    ...patch,
-    ...(patch.volume !== undefined ? {} : {}),
-  };
+  // Parte dos ajustes COMPLETOS (defaults preenchidos), não de `{}`: um PATCH
+  // parcial — `{ hidePoints: true }`, que é como a UI manda — produzia um
+  // objeto sem `volume`/`muted`, e daí em diante todo cliente recebia
+  // `volume: undefined` (o controle de áudio da tela pública vira NaN).
+  const current = getRoomSettings(roomCode);
+  const next = { ...current, ...patch };
+  if (patch.hidePoints !== undefined) next.hidePoints = Boolean(patch.hidePoints);
   if (patch.volume !== undefined) {
     next.volume = clamp(Number.isFinite(patch.volume) ? patch.volume : 0.65, 0, 1);
   }

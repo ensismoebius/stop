@@ -12,6 +12,8 @@ Teacher 1───* Game *───1 Class (discipline: String?)
                 │            └─1───* Enrollment *───1 Student
                 │
                 ├──1───* Room ──1───* PlayerSession ──1─── Student
+                │         │    (roomEpoch, stateVersion)
+                │         └──1───* ProcessedOperation (idempotência de comandos)
                 │
                 ├──1───* Round ──1───* RoundCategory ──*───1 Category ──*───1 CategorySet
                 │         │              │
@@ -86,6 +88,36 @@ diferentes, cada uma tem seu próprio registro `Class` com o mesmo valor de
 rodada — e porque uma rodada já jogada precisa continuar sendo lida com a regra que
 valia quando foi jogada (mesmo princípio de imutabilidade do `RoundCategory` acima).
 Ver [Ciclo de vida da rodada](ciclo-de-vida-da-rodada.md#regra-da-letra-letterrule-spec-21).
+
+## `Room.roomEpoch` / `Room.stateVersion`: a posição autoritativa
+
+Duas colunas `Int` na `Room` (`roomEpoch @default(1)`, `stateVersion @default(0)`)
+formam o par que ordena os estados enviados aos clientes. Cada difusão autoritativa
+incrementa `stateVersion`; o cliente guarda a última posição adotada e **descarta**
+qualquer estado com posição menor (ver
+[Tempo real](tempo-real.md#posição-autoritativa-roomepoch-stateversion)).
+
+Ficam **no banco**, e não só em memória, por um motivo específico: se a versão
+vivesse no processo, um restart do servidor a devolveria a zero e todos os clientes
+já conectados passariam a rejeitar todo estado novo como "antigo" — o servidor
+reiniciaria e a sala inteira congelaria. Persistidas, a monotonicidade sobrevive ao
+restart. `Int` (2³¹ mudanças) é folgado para uma sala de aula; `BigInt` só arrastaria
+problemas de serialização para o cliente.
+
+## `ProcessedOperation`: idempotência de comandos (spec 3.1)
+
+Chave composta `@@id([roomId, id])`, onde `id` é o `operationId` (UUID) que o cliente
+gera por comando de escrita. O `create` funciona como trava: o primeiro vence, um
+reenvio do mesmo comando (ack perdido, retry após timeout) colide com P2002 e recebe
+de volta o `responseJson` já gravado em vez de reexecutar o efeito. `status` é
+`PENDING` durante o processamento e `DONE` ao gravar o resultado; **falha apaga a
+linha**, para que um retry legítimo possa reexecutar do zero.
+
+A FK para `Room` é `Cascade` — e aqui isso é o correto, não uma exceção ao padrão de
+proteção de histórico acima: estas linhas são travas efêmeras, não registro
+acadêmico. É também o que faz `maintenanceService` continuar íntegro sem listar o
+modelo: ao restaurar um backup, o `deleteMany` das salas leva as operações junto pelo
+cascade do próprio banco.
 
 ## `avatarUrl`: dois formatos, um só validador
 

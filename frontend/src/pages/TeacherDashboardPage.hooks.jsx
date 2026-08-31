@@ -185,18 +185,25 @@ export function useTeacherWatchdog({ connected, state, refresh, socket }) {
   useEffect(() => {
     if (!connected || !state || !socketRef.current) return undefined;
     let timer;
+    // Mesma proteção do watchdog do aluno: `run` reagenda depois de um
+    // await, então sem esta marca sair do painel no meio de um refresh
+    // deixava um laço órfão reconectando um socket abandonado.
+    let cancelled = false;
     let backoffMs = WATCHDOG_STALE_MS;
     const schedule = () => {
+      if (cancelled) return;
       const jitter = Math.floor(Math.random() * (WATCHDOG_JITTER_MS + 1));
       const delay = Math.min(backoffMs + jitter, WATCHDOG_MAX_MS);
       timer = setTimeout(run, delay);
     };
     const run = async () => {
+      if (cancelled) return;
       if (Date.now() - lastStateAtRef.current < WATCHDOG_STALE_MS) {
         schedule();
         return;
       }
       const response = await refreshRef.current();
+      if (cancelled) return;
       const instance = socketRef.current;
       if (response?.ok) {
         backoffMs = WATCHDOG_STALE_MS;
@@ -210,7 +217,10 @@ export function useTeacherWatchdog({ connected, state, refresh, socket }) {
       schedule();
     };
     schedule();
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [connected, state]);
 
   return null;

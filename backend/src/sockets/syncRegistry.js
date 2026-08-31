@@ -50,7 +50,14 @@ export function dropClientSync(context) {
 export function syncStats(roomCode, { totalConnected, currentEpoch, currentVersion }) {
   const perRoom = byRoom.get(roomCode);
   const expected = totalConnected ?? 0;
-  const entries = perRoom ? [...perRoom.values()] : [];
+  // Só as entradas de ALUNO entram na conta: `expected` vem das
+  // `PlayerSession` conectadas, então contar também as chaves `teacher` e
+  // `screen` misturava dois denominadores e o painel exibia coisas como
+  // "Sincronizado 32/30" — um indicador que passa de 100% destrói a única
+  // pista que o professor tem de que a turma ficou para trás.
+  const entries = perRoom
+    ? [...perRoom.entries()].filter(([key]) => key.startsWith("player:")).map(([, value]) => value)
+    : [];
   const synchronized = entries.filter(
     (entry) =>
       entry.roomEpoch === currentEpoch &&

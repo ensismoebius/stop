@@ -151,12 +151,18 @@ export function StudentAnswerArea({ currentCategory, answers, phase, answerActio
  * finalizar a partida com a ultima rodada ainda em correcao (nunca
  * pontuada) — sem isso, o ranking final nunca aparecia nesse caso.
  */
-export function StudentRankingList({ ranking, round, gameStatus, studentId }) {
+export function StudentRankingList({ ranking, round, gameStatus, studentId, hidePoints = false }) {
   const show =
     gameStatus === "FINISHED" || round?.status === "SCORED" || round?.status === "FINISHED" || !round;
   if (!(ranking.length > 0 && show)) {
     return null;
   }
+
+  // "Ocultar pontos" vale enquanto a partida corre — no resultado final os
+  // números aparecem de qualquer forma, igual ao pódio da tela pública: o
+  // interruptor existe para não estragar a virada durante o jogo, não para
+  // esconder do aluno como ele terminou.
+  const maskPoints = hidePoints && gameStatus !== "FINISHED";
 
   // A lista visivel e so o top 10, entao numa turma de 100+ alunos a
   // maioria simplesmente nao se encontrava nela e terminava a partida sem
@@ -179,7 +185,13 @@ export function StudentRankingList({ ranking, round, gameStatus, studentId }) {
     >
       <span className="ranking__position">{MEDAL_BY_POSITION[entry.position] ?? entry.position}</span>
       <span className="ranking__name">{entry.name}</span>
-      <span className="ranking__total">{entry.total}</span>
+      {maskPoints ? (
+        <span className="ranking__total ranking__total--hidden" aria-hidden="true">
+          •••
+        </span>
+      ) : (
+        <span className="ranking__total">{entry.total}</span>
+      )}
     </li>
   );
 
@@ -193,9 +205,15 @@ export function StudentRankingList({ ranking, round, gameStatus, studentId }) {
           <span className="ranking__me-label">
             Sua colocação: <strong>{me.position}º lugar</strong>
           </span>
-          <span className="ranking__me-total">
-            <strong>{me.total}</strong> {me.total === 1 ? "ponto" : "pontos"}
-          </span>
+          {maskPoints ? (
+            <span className="ranking__me-total ranking__me-total--hidden">
+              pontos ocultos pelo professor
+            </span>
+          ) : (
+            <span className="ranking__me-total">
+              <strong>{me.total}</strong> {me.total === 1 ? "ponto" : "pontos"}
+            </span>
+          )}
         </div>
       ) : null}
 

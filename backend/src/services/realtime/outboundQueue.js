@@ -76,9 +76,7 @@ export function enqueueRoomState(roomCode, snapshot) {
   scheduleFlush(roomCode);
 }
 
-/** Limpa difusões pendentes (uso em restart/tear-down). */
-export function dropRoom(roomCode) {
-  pendingByRoom.delete(roomCode);
-}
+// Sem `dropRoom` aqui: um pendente vive no máximo até o `setImmediate` do
+// mesmo tick, então não há o que limpar no encerramento de uma sala.
 
-export default { enqueueRoomState, dropRoom };
+export default { enqueueRoomState };

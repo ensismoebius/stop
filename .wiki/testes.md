@@ -25,6 +25,29 @@ Alguns passos de setup não têm equivalente em REST (ex.: submeter resposta —
 `request(app)` para o endpoint HTTP que o teste está de fato verificando. Mistura
 intencional, não descuido: o objetivo do teste é o endpoint, não o caminho até ele.
 
+### A camada de confiabilidade tem suíte própria
+
+Os testes que sobem um servidor Socket.IO de verdade (`http.createServer` +
+`createSocketServer`, clientes reais via `tests/helpers/socket.js`):
+
+* **`idempotency.test.js`** — reenviar o mesmo `operationId` não executa o efeito duas
+  vezes; a resposta gravada é repetida.
+* **`stateVersioning.test.js`** — `stateVersion` é estritamente monotônico,
+  `requestState` responde `CURRENT`/`ROOM_STATE` conforme a posição informada, e
+  `syncStats` evolui de `recovering` para `synchronized`/`stale`.
+* **`requestStateCost.test.js`** — prende o *custo* do caminho barato: uma resposta
+  `CURRENT` não pode montar o snapshot da sala (ver o quadro em
+  [Tempo real](tempo-real.md#requeststate-versão-aware-e-heartbeat-de-aplicação)).
+  É um teste de desempenho escrito como teste de comportamento — a única forma de uma
+  suíte verde notar essa regressão, que é invisível funcionalmente.
+* **`roomSettings.test.js`** e os unitários `unit/roomSettings.test.js` /
+  `unit/syncRegistry.test.js` — merge parcial dos ajustes preservando defaults, e as
+  contas da pill de sincronização contando só alunos.
+
+Vale reparar no que essa suíte **não** prova: ela roda tudo num processo, numa
+máquina, com rede local perfeita. Concorrência real (30 celulares, router barato,
+socket meio-aberto) continua fora do alcance — a validação de verdade é a aula.
+
 ### `resetDatabase()` e a ordem de `TABLES`
 
 ```js
@@ -75,7 +98,7 @@ DATABASE_URL="mysql://.../stop_test" npx vitest run
 `vitest.config.js` fixa **`fileParallelism: false`**: os arquivos compartilham o
 mesmo banco, então rodar em paralelo faria um teste apagar o cenário do outro.
 
-### Duas falhas intermitentes já corrigidas (e o padrão delas)
+### Três falhas intermitentes já corrigidas (e o padrão delas)
 
 Ambas passavam isoladas e falhavam de vez em quando na suíte inteira — o tipo de
 teste que se aprende a ignorar, que é exatamente o perigo.
@@ -89,9 +112,19 @@ teste que se aprende a ignorar, que é exatamente o perigo.
   bateria com a letra sorteada — só que o `LETTER_POOL` configurado **inclui Z**.
   Uma em cada ~21 execuções sorteava Z, a resposta virava válida e o teste caía.
   Correção: derivar uma letra comprovadamente diferente da sorteada.
+* **`groupedCorrection.test.js`** — a mesma armadilha, de novo e em outra forma: a
+  resposta que "contém a letra mas não começa com ela" era montada como
+  `` `Servi${letra}o` ``. Sortear **S** produz `"ServiSo"`, que começa com a letra —
+  `matchesLetter` virava `true` e o teste caía, uma em cada 20 execuções (o pool tem
+  20 letras). O prefixo agora é derivado do sorteio (`prefixoDiferenteDe`), e a
+  propriedade foi verificada exaustivamente para as 20 letras do pool, não por
+  amostragem.
 
 Moral: teste que depende de sorteio precisa **derivar** o caso do valor sorteado,
-nunca assumir um literal; e sincronização se espera por sinal, não por relógio.
+nunca assumir um literal — nem no meio da string, que é onde a armadilha se esconde
+melhor; e sincronização se espera por sinal, não por relógio. Repare que as três
+passaram despercebidas por muitas execuções verdes: uma suíte que passa **hoje** não
+prova ausência de flake, só que o sorteio foi favorável.
 
 ## Frontend — Vitest + Testing Library (`frontend/tests/`)
 

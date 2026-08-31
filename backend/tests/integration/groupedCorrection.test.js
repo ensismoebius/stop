@@ -14,6 +14,14 @@ let players;
 
 const startedRound = () => startedRoundFixture(scenario);
 
+/**
+ * Primeira letra garantidamente DIFERENTE da sorteada — a letra da rodada é
+ * aleatória, então qualquer prefixo fixo colide com ela mais cedo ou mais
+ * tarde e transforma "não começa com a letra" em "começa", justamente o que
+ * estes testes querem negar.
+ */
+const prefixoDiferenteDe = (letra) => (String(letra).toUpperCase() === "A" ? "B" : "A");
+
 beforeEach(async () => {
   await resetDatabase();
   scenario = await createScenario();
@@ -94,7 +102,13 @@ describe("correção agregada por resposta distinta (spec 17/20/21/52)", () => {
       roundId: round.id,
       playerSessionId: players[0].playerSessionId,
       roundCategoryId: c1.id,
-      value: `Servi${letra}o`, // contem a letra, mas nao comeca com ela
+      // Contem a letra sorteada mas NAO comeca com ela — e a primeira letra
+      // precisa ser escolhida em funcao do sorteio, nao fixada: com o literal
+      // `Servi${letra}o`, sortear "S" produzia "ServiSo", que comeca com a
+      // letra e derrubava o teste em ~1 de cada 20 execucoes (o pool tem 20
+      // letras). Falha intermitente classica desta suite — o mesmo formato do
+      // "zzz-fora-da-letra" descrito em testes.md.
+      value: `${prefixoDiferenteDe(letra)}servi${letra}o`,
     });
 
     const grouped = await roundService.groupedCorrectionGrid(round.id);
@@ -112,7 +126,9 @@ describe("correção agregada por resposta distinta (spec 17/20/21/52)", () => {
       roundId: round.id,
       playerSessionId: players[0].playerSessionId,
       roundCategoryId: c1.id,
-      value: `Servi${letra}o`, // nao comeca com a letra, mas contem
+      // Mesma construcao do teste acima: garantidamente contem a letra sem
+      // comecar com ela, seja qual for o sorteio.
+      value: `${prefixoDiferenteDe(letra)}servi${letra}o`,
     });
 
     const grouped = await roundService.groupedCorrectionGrid(round.id);

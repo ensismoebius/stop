@@ -15,6 +15,28 @@ e monta a UI; a lógica de apresentação fica em `components/<cliente>/`.
 | `/historico`, `/historico/:matrícula` | `StudentHistoryPage.jsx` | aluno (consulta, fora de uma partida) |
 | `/` | `HomePage.jsx` | — |
 
+### As duas páginas grandes moram em vários arquivos
+
+`StudentGamePage` e `TeacherDashboardPage` cresceram até o ponto em que "abrir o
+arquivo da página" deixou de ser a forma de achar a lógica: cada uma foi dividida por
+**responsabilidade**, e o `.jsx` de mesmo nome ficou só com a composição. Procurar um
+comportamento no arquivo errado é o engano mais fácil de cometer aqui:
+
+| Arquivo | O que mora nele |
+| --- | --- |
+| `StudentGamePage.jsx` | composição da página; monta as partes |
+| `StudentGamePage.hooks.jsx` | watchdog de recuperação, refresh versionado, envio de respostas (debounce), efeitos de rodada |
+| `StudentGamePage.state.jsx` | derivação do estado do aluno a partir do `roomState` |
+| `StudentGamePage.parts.jsx` | blocos de UI (cabeçalho, listas, rodapé) |
+| `TeacherDashboardPage.jsx` | composição do painel |
+| `TeacherDashboardPage.hooks.jsx` | `useTeacherWatchdog`, `guard` das ações, timeout de REST, derivação da visão |
+| `TeacherDashboardPage.tabs.jsx` | conteúdo de cada aba |
+
+As constantes do watchdog (`WATCHDOG_STALE_MS`, `WATCHDOG_JITTER_MS`,
+`WATCHDOG_MAX_MS`) são declaradas em `StudentGamePage.hooks.jsx` e **importadas** pelo
+painel do professor — os dois watchdogs são o mesmo desenho e devem continuar com a
+mesma cadência.
+
 ## Hooks (`frontend/src/hooks/`)
 
 * **`useRoomSocket.js`** — conecta o socket, registra todos os listeners de evento
@@ -228,7 +250,27 @@ que só aparecem para quem já está autenticado.
 ### `components/public/`
 
 `GameTitle`, `ThemeDisplay`, `LetterAnimation`, `Countdown`, `PlayerCount`,
-`GameStatus`, `Ranking`.
+`GameStatus`, `Ranking`, `PublicBackdrop`.
+
+`PublicBackdrop.jsx` desenha o fundo animado da tela pública (o céu calculado por
+`lib/sky.js` conforme a hora do servidor, mais as nuvens). É puramente decorativo e
+não recebe nada do estado da sala.
+
+**`hidePoints` é um ajuste de apresentação, não de privacidade.** O interruptor
+"ocultar pontos" do painel vive em `roomSettings` (memória do servidor, propagado por
+`roomSettingsChanged`) e faz o `Ranking` renderizar um marcador no lugar do número —
+mas o `total` continua no payload, porque é o mesmo ranking que alimenta o pódio, que
+sempre mostra pontuação. Serve para não estragar a virada durante a partida na TV da
+sala; não serve como segredo (quem abrir o devtools vê os números).
+
+**Vale para a TV e para a tela de cada aluno.** Esconder só na projeção não escondia
+nada: o placar continuava no celular de todo mundo. Hoje o evento leve vai para a
+sala inteira (`realtime.toRoom` em `roomController.updateSettings`), a projeção do
+aluno carrega `settings` como linha de base (para quem entra ou reconecta depois do
+clique) e `StudentRankingList` mascara os totais — mantendo colocação e nomes, que
+são o que dá sentido ao ranking. **A partida encerrada sempre mostra os pontos**, no
+aluno como no pódio: o interruptor existe para não estragar a virada durante o jogo,
+não para esconder do aluno como ele terminou.
 
 #### `Ranking.jsx` — dois placares, não um
 

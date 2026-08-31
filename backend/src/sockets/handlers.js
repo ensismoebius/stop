@@ -359,10 +359,6 @@ async function handleTelemetry(client, data) {
  */
 async function handleRequestState(client, request) {
   const context = requireContext(client);
-  const snapshot = await roomState.getCurrent(context.room.code);
-  const current = snapshot
-    ? { roomEpoch: snapshot.roomEpoch, stateVersion: snapshot.stateVersion }
-    : await roomRepository.getVersion(context.room.id);
 
   let clientPosition = null;
   if (request && typeof request.roomEpoch === "number" && typeof request.stateVersion === "number") {
@@ -372,20 +368,30 @@ async function handleRequestState(client, request) {
   // reporta posição; sem posição = acabou de entrar, não registra.
   if (clientPosition) recordClientSync(context, clientPosition);
 
+  // A posição autoritativa custa UMA consulta; montar o snapshot custa ~35
+  // (as três projeções da sala inteira, medido com 30 alunos). O watchdog de
+  // cada aluno bate aqui a cada ~3-6s e na esmagadora maioria das vezes a
+  // resposta é "nada mudou" — montar o snapshot para depois descobrir isso
+  // multiplicava a carga do banco pelo tamanho da turma (30 alunos ≈ 230
+  // consultas/s só para responder CURRENT), justamente a saturação que esta
+  // camada existe para evitar. Por isso a comparação vem ANTES do build; ela
+  // é idêntica à antiga, que comparava contra o mesmo `getVersion` lido lá
+  // dentro por `roomState.getCurrent`.
+  const current = await roomRepository.getVersion(context.room.id);
   if (
     clientPosition &&
-    snapshot &&
-    clientPosition.roomEpoch === snapshot.roomEpoch &&
-    clientPosition.stateVersion >= snapshot.stateVersion
+    clientPosition.roomEpoch === current.roomEpoch &&
+    clientPosition.stateVersion >= current.stateVersion
   ) {
     return {
       status: "CURRENT",
-      roomEpoch: snapshot.roomEpoch,
-      stateVersion: snapshot.stateVersion,
+      roomEpoch: current.roomEpoch,
+      stateVersion: current.stateVersion,
       serverTime: new Date().toISOString(),
     };
   }
 
+  const snapshot = await roomState.getCurrent(context.room.code);
   const state = roomState.roleStateFor(context, snapshot);
   const serverTime = new Date().toISOString();
   if (!state) return { status: "ROOM_STATE", roomEpoch: current.roomEpoch, stateVersion: current.stateVersion, serverTime };

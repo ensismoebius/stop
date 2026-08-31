@@ -127,11 +127,14 @@ export const roomController = {
     // Difusão LEVE, sem o `publish()` pesado: nada de `bumpStateVersion`,
     // recarregar ranking ou reconstruir as três projeções — o volume é
     // ajustado em rajadas (arrastar o slider) e cada click não deve custar
-    // uma transação de banco. Um evento pequeno vai para as telas e os
-    // painéis de professor; a convergência total continua garantida pelos
+    // uma transação de banco. A convergência total continua garantida pelos
     // publishes normais (troca de rodada), que incluem `settings`.
-    realtime.toScreens(room.code, "roomSettingsChanged", settings);
-    realtime.toTeachers(room.code, "roomSettingsChanged", settings);
+    //
+    // Vai para a sala INTEIRA, alunos incluídos: "ocultar pontos" também vale
+    // para a tela de cada aluno, e é justamente na mão deles que o interruptor
+    // precisa responder na hora — esperar o próximo publish deixaria o placar
+    // exposto por uma rodada inteira depois de o professor escondê-lo.
+    realtime.toRoom(room.code, "roomSettingsChanged", settings);
     return res.json({ roomCode: room.code, settings });
   }),
 };

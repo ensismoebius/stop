@@ -311,6 +311,7 @@ export const viewService = {
     const showRanking =
       room.game.status === "FINISHED" || !round || round.status === "SCORED" || round.status === "FINISHED";
     const ranking = showRanking ? (ctx.ranking !== undefined ? ctx.ranking : await loadRanking(room.gameId)) : [];
+    const roomSettings = getRoomSettings(room.code);
 
     return new Map(
       room.sessions.map((session) => {
@@ -323,6 +324,9 @@ export const viewService = {
               playerSessionId: session.id,
               student: session.student,
               room: { code: room.code, status: room.status },
+              // Mesmo `settings` para a sala inteira (uma leitura, não uma por
+              // aluno): a linha de base do "ocultar pontos" na tela do aluno.
+              settings: roomSettings,
               game: { id: room.game.id, name: room.game.name, status: room.game.status },
               roomStatus: session.status,
               roundStatus: participant?.status ?? null,
@@ -375,6 +379,10 @@ export const viewService = {
         playerSessionId: session.id,
         student: session.student,
         room: { code: session.room.code, status: session.room.status },
+        // Linha de base do "ocultar pontos" para quem acabou de entrar ou
+        // reconectar: o evento leve `roomSettingsChanged` só alcança quem já
+        // estava na sala quando o professor mexeu no interruptor.
+        settings: getRoomSettings(session.room.code),
         game: { id: session.room.game.id, name: session.room.game.name, status: session.room.game.status },
         roomStatus: session.status,
         roundStatus: participant?.status ?? null,

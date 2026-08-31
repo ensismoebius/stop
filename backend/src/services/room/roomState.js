@@ -1,4 +1,5 @@
 import logger from "../../lib/logger.js";
+import gameLock from "../../lib/asyncLock.js";
 import { syncStats } from "../../sockets/syncRegistry.js";
 import viewService from "../viewService.js";
 import roomRepository from "../../repositories/roomRepository.js";
@@ -15,10 +16,13 @@ import { enqueueRoomState } from "../realtime/outboundQueue.js";
  * (coalescente, latest-wins). Nenhum caminho difunde estado por fora daqui.
  *
  * A versão é persistida no banco (não só em memória): um restart do
- * servidor reidrata o cache a partir do `Room` e os clientes que já
- * adotaram (epoch, vN) nunca são rebaixados.
+ * servidor a relê do `Room` e os clientes que já adotaram (epoch, vN) nunca
+ * são rebaixados.
+ *
+ * Sem cache de snapshot em memória de propósito: o estado autoritativo mora
+ * no banco, e guardar a última projeção de cada sala (que inclui o estado de
+ * cada aluno) só retinha memória para uma leitura que ninguém fazia.
  */
-const snapshotsByRoom = new Map();
 
 /** Contexto comum das três projeções de uma difusão — 2 queries + participantes. */
 async function loadContext(roomCode) {
@@ -74,40 +78,50 @@ async function build(roomCode, { bump }) {
  *  é monotônica, o retry pode incrementar de novo sem comprometer clientes. */
 const PUBLISH_RETRIES = 1;
 
-/** Difunde o estado autoritativo corrente (increments versão). Nunca lança. */
+/**
+ * Chave de serialização das difusões de uma sala. Espaço de chaves distinto
+ * do `round:<id>` usado pelo ciclo de vida da rodada — que chama `publish`
+ * de dentro do próprio lock —, então não há ciclo: nada que segure
+ * `room-publish:` volta a pedir um `round:`.
+ */
+const publishKey = (roomCode) => `room-publish:${roomCode}`;
+
+/**
+ * Difunde o estado autoritativo corrente (incrementa a versão). Nunca lança.
+ *
+ * Serializado por sala porque `build` LÊ o contexto e só então incrementa a
+ * versão: duas difusões concorrentes podiam inverter o par (leitura antiga
+ * recebendo o número maior), e aí o payload velho chega rotulado como o mais
+ * novo — a barreira do cliente adota o velho e passa a REJEITAR o estado
+ * novo por ser "mais antigo". O sintoma é exatamente o que esta camada
+ * existe para evitar: aluno parado numa fase que já passou, sem erro nenhum
+ * em lugar nenhum. Com o lock, ler-e-incrementar vira uma seção crítica e a
+ * ordem das versões volta a refletir a ordem dos estados.
+ */
 export async function publish(roomCode) {
-  for (let attempt = 0; attempt <= PUBLISH_RETRIES; attempt += 1) {
-    try {
-      const snapshot = await build(roomCode, { bump: true });
-      snapshotsByRoom.set(roomCode, snapshot);
-      enqueueRoomState(roomCode, snapshot);
-      return snapshot;
-    } catch (error) {
-      const lastAttempt = attempt === PUBLISH_RETRIES;
-      if (!lastAttempt) {
-        logger.warn(`Falha transitória ao difundir estado da sala ${roomCode} — tentando de novo`, error?.message ?? error);
-        continue;
+  return gameLock.run(publishKey(roomCode), async () => {
+    for (let attempt = 0; attempt <= PUBLISH_RETRIES; attempt += 1) {
+      try {
+        const snapshot = await build(roomCode, { bump: true });
+        enqueueRoomState(roomCode, snapshot);
+        return snapshot;
+      } catch (error) {
+        const lastAttempt = attempt === PUBLISH_RETRIES;
+        if (!lastAttempt) {
+          logger.warn(`Falha transitória ao difundir estado da sala ${roomCode} — tentando de novo`, error?.message ?? error);
+          continue;
+        }
+        logger.warn(`Falha ao difundir estado da sala ${roomCode}`, error?.message ?? error);
+        return null;
       }
-      logger.warn(`Falha ao difundir estado da sala ${roomCode}`, error?.message ?? error);
-      return null;
     }
-  }
-  return null;
+    return null;
+  });
 }
 
 /** Estado autoritativo corrente SEM incrementar versão (requestState/heartbeat). */
 export function getCurrent(roomCode) {
   return build(roomCode, { bump: false });
-}
-
-/** Snapshot em cache (a última versão publicada), se houver. */
-export function getCached(roomCode) {
-  return snapshotsByRoom.get(roomCode) ?? null;
-}
-
-/** Invalida o cache (chamado no encerramento/restart de sala). */
-export function dropRoom(roomCode) {
-  snapshotsByRoom.delete(roomCode);
 }
 
 /** Projeção do snapshot para o perfil de um cliente já conectado. */
@@ -120,4 +134,4 @@ export function roleStateFor(context, snapshot) {
   return snapshot.state.publicView;
 }
 
-export default { publish, getCurrent, getCached, dropRoom, roleStateFor };
+export default { publish, getCurrent, roleStateFor };

@@ -9,7 +9,7 @@ import { generateRoomCode, generateSessionToken } from "../game/codes.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import * as realtime from "../sockets/realtime.js";
 import { dropRoom as dropClientSyncRoom } from "../sockets/syncRegistry.js";
-import roomState from "./room/roomState.js";
+import { dropRoomSettings } from "./room/roomSettings.js";
 import env from "../config/env.js";
 
 const MAX_CODE_ATTEMPTS = 8;
@@ -165,10 +165,13 @@ export const roomService = {
     const updated = await roomRepository.update(room.id, { status });
     realtime.toRoom(code, "roomStatusChanged", { status: updated.status });
     if (status === "CLOSED") {
-      // Encerrou a sessão: invalida snapshot/registro e difusões pendentes —
-      // sala fechada não deve manter estado-residual de outra sessão.
-      roomState.dropRoom(code);
+      // Encerrou a sessão: solta o que é só-memória daquela sala (posições de
+      // sincronização e ajustes de apresentação). Sem isto, cada sala de cada
+      // aula do semestre deixava entradas vivas até o processo reiniciar — e
+      // uma sala reaberta com o mesmo código herdava o "ocultar pontos" de uma
+      // aula anterior.
       dropClientSyncRoom(code);
+      dropRoomSettings(code);
     }
     return updated;
   },

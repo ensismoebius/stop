@@ -28,6 +28,10 @@ export function useStudentConnectionState() {
   const [feedback, setFeedback] = useState(null);
   const [eliminated, setEliminated] = useState(null);
   const [ranking, setRanking] = useState([]);
+  // Ajustes da sala: a linha de base vem da projeção de estado
+  // (`state.settings`); o evento leve `roomSettingsChanged` atualiza ao vivo,
+  // sem esperar o próximo publish. Mesmo desenho da tela pública.
+  const [liveSettings, setLiveSettings] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [completedReviewIds, setCompletedReviewIds] = useState(() => new Set());
   const [stopSplash, setStopSplash] = useState(false);
@@ -55,6 +59,7 @@ export function useStudentConnectionState() {
     setCompletedReviewIds,
     setRanking,
     setStopSplash,
+    setLiveSettings,
   });
   const connection = useStudentConnection(player, handlers, applyState);
   const phase = useStudentRoundPhase(connection.state, now, audio, eliminated);
@@ -73,6 +78,9 @@ export function useStudentConnectionState() {
     setFeedback,
     eliminated,
     ranking,
+    // O evento leve vence a linha de base do estado: ele é mais recente por
+    // definição (chega no instante em que o professor mexe no interruptor).
+    settings: liveSettings ?? connection.state?.settings ?? null,
     reviews,
     completedReviewIds,
     setCompletedReviewIds,
